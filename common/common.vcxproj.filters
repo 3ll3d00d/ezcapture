@@ -18,6 +18,9 @@
     <ClCompile Include="signalinfo.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="capture.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ISpecifyPropertyPages2.h">
@@ -39,6 +42,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="domain.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="capture.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

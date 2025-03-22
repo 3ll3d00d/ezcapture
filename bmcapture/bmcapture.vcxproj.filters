@@ -18,9 +18,15 @@
     <ClCompile Include="dllmain.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="bmcapture.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="bmcapture.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\bmsdk\include\DeckLinkAPIVersion.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -28,5 +34,10 @@
     <None Include="bmcapture.def">
       <Filter>Source Files</Filter>
     </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Midl Include="..\bmsdk\include\DeckLinkAPI.idl">
+      <Filter>Header Files</Filter>
+    </Midl>
   </ItemGroup>
 </Project>
