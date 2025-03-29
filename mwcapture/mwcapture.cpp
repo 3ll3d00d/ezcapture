@@ -582,9 +582,15 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 	{
 		if (pin->mVideoFormat.pixelStructure == MWFOURCC_AYUV)
 		{
-			// TODO endianness is wrong so flip the bytes on a pixel by pixel basis
-			// BYTE* istart = pmsData, * iend = istart + pin->mVideoFormat.imageSize;
-			// std::reverse(istart, iend);
+			// endianness is wrong on a per pixel basis
+			BYTE* pixelStart = pmsData;
+			BYTE* frameEnd = pixelStart + pin->mVideoFormat.imageSize;
+			while (pixelStart < frameEnd)
+			{
+				BYTE* pixelEnd = pixelStart + 4;
+				std::reverse(pixelStart, pixelEnd);
+				pixelStart = pixelEnd;
+			}
 		}
 
 		// TODO move to a base class
