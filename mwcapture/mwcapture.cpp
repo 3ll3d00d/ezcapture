@@ -49,19 +49,6 @@ constexpr auto bitstreamDetectionWindowSecs = 0.075;
 constexpr auto bitstreamDetectionRetryAfter = 1.0 / bitstreamDetectionWindowSecs;
 constexpr auto bitstreamBufferSize = 6144;
 
-// bit depth -> pixel encoding -> fourcc
-constexpr DWORD fourcc[3][4] = {
-	// RGB444, YUV422, YUV444, YUY420
-	{MWFOURCC_BGR24, MWFOURCC_NV16, MWFOURCC_AYUV, MWFOURCC_NV12}, // 8  bit
-	{MWFOURCC_BGR10, MWFOURCC_P210, MWFOURCC_AYUV, MWFOURCC_P010}, // 10 bit
-	{MWFOURCC_BGR10, MWFOURCC_P210, MWFOURCC_AYUV, MWFOURCC_P010}, // 12 bit
-};
-constexpr std::string_view fourccName[3][4] = {
-	{"BGR24", "NV16", "AYUV", "NV12"},
-	{"BGR10", "P210", "AYUV", "P010"},
-	{"BGR10", "P210", "AYUV", "P010"},
-};
-
 //////////////////////////////////////////////////////////////////////////
 // MagewellCaptureFilter
 //////////////////////////////////////////////////////////////////////////
@@ -101,12 +88,12 @@ MagewellCaptureFilter::MagewellCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		if (0 == strcmp(mci.szFamilyName, "Pro Capture"))
 		{
 			di.deviceType = PRO;
-			di.serialNo = std::string{ mci.szBoardSerialNo };
+			di.serialNo = std::string{mci.szBoardSerialNo};
 		}
 		else if (0 == strcmp(mci.szFamilyName, "USB Capture"))
 		{
 			di.deviceType = USB;
-			di.serialNo = std::string{ mci.szBoardSerialNo };
+			di.serialNo = std::string{mci.szBoardSerialNo};
 			// TODO use MWCAP_DEVICE_NAME_MODE and MWUSBGetDeviceNameMode mode?
 		}
 
@@ -115,8 +102,9 @@ MagewellCaptureFilter::MagewellCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		if (di.hChannel == nullptr)
 		{
 			#ifndef NO_QUILL
-			LOG_WARNING(mLogData.logger, "[{}] Unable to open channel on {} device {} at path {}, ignoring", mLogData.prefix,
-				devicetype_to_name(di.deviceType), di.serialNo, std::wstring{ di.devicePath });
+			LOG_WARNING(mLogData.logger, "[{}] Unable to open channel on {} device {} at path {}, ignoring",
+			            mLogData.prefix,
+			            devicetype_to_name(di.deviceType), di.serialNo, std::wstring{ di.devicePath });
 			#endif
 			continue;
 		}
@@ -125,26 +113,34 @@ MagewellCaptureFilter::MagewellCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		{
 			MWCloseChannel(di.hChannel);
 			#ifndef NO_QUILL
-			LOG_WARNING(mLogData.logger, "[{}] Unable to detect video inputs on {} device {} at path {}, ignoring", mLogData.prefix,
-				devicetype_to_name(di.deviceType), di.serialNo, std::wstring{ di.devicePath });
+			LOG_WARNING(mLogData.logger, "[{}] Unable to detect video inputs on {} device {} at path {}, ignoring",
+			            mLogData.prefix,
+			            devicetype_to_name(di.deviceType), di.serialNo, std::wstring{ di.devicePath });
 			#endif
 			continue;
 		}
-		DWORD videoInputTypes[16] = { 0 };
-		if (MW_SUCCEEDED != MWGetVideoInputSourceArray(di.hChannel, videoInputTypes, &videoInputTypeCount)) {
+		DWORD videoInputTypes[16] = {0};
+		if (MW_SUCCEEDED != MWGetVideoInputSourceArray(di.hChannel, videoInputTypes, &videoInputTypeCount))
+		{
 			MWCloseChannel(di.hChannel);
 			#ifndef NO_QUILL
-			LOG_WARNING(mLogData.logger, "[{}] Unable to load supported video input types on {} device {} at path {}, ignoring", mLogData.prefix,
-				devicetype_to_name(di.deviceType), di.serialNo, std::wstring{ di.devicePath });
+			LOG_WARNING(mLogData.logger,
+			            "[{}] Unable to load supported video input types on {} device {} at path {}, ignoring",
+			            mLogData.prefix,
+			            devicetype_to_name(di.deviceType), di.serialNo, std::wstring{ di.devicePath });
 			#endif
 			continue;
 		}
-		boolean hdmiFound = false;
-		for (auto j = 0; j < videoInputTypeCount && !hdmiFound; j++) {
-			if (INPUT_TYPE(videoInputTypes[j]) == MWCAP_VIDEO_INPUT_TYPE_HDMI) {
+		bool hdmiFound = false;
+		for (auto j = 0; j < videoInputTypeCount && !hdmiFound; j++)
+		{
+			if (INPUT_TYPE(videoInputTypes[j]) == MWCAP_VIDEO_INPUT_TYPE_HDMI)
+			{
 				#ifndef NO_QUILL
-				LOG_WARNING(mLogData.logger, "[{}] Found HDMI input at position {} on {} device {} at path {}, ignoring", mLogData.prefix,
-					j, devicetype_to_name(di.deviceType), di.serialNo, std::wstring{ di.devicePath });
+				LOG_WARNING(mLogData.logger,
+				            "[{}] Found HDMI input at position {} on {} device {} at path {}, ignoring",
+				            mLogData.prefix,
+				            j, devicetype_to_name(di.deviceType), di.serialNo, std::wstring{ di.devicePath });
 				#endif
 				hdmiFound = true;
 			}
@@ -153,8 +149,10 @@ MagewellCaptureFilter::MagewellCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		{
 			MWCloseChannel(di.hChannel);
 			#ifndef NO_QUILL
-			LOG_WARNING(mLogData.logger, "[{}] Found device but no HDMI input available on {} device {} at path {}, ignoring", mLogData.prefix,
-				devicetype_to_name(di.deviceType), di.serialNo, std::wstring{ di.devicePath });
+			LOG_WARNING(mLogData.logger,
+			            "[{}] Found device but no HDMI input available on {} device {} at path {}, ignoring",
+			            mLogData.prefix,
+			            devicetype_to_name(di.deviceType), di.serialNo, std::wstring{ di.devicePath });
 			#endif
 			continue;
 		}
@@ -163,8 +161,9 @@ MagewellCaptureFilter::MagewellCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		if (diToUse == nullptr) // && di.devicePath == targetPath || targetPath == nullptr
 		{
 			#ifndef NO_QUILL
-			LOG_INFO(mLogData.logger, "[{}] Filter will use {} device {} at path {}", mLogData.prefix, devicetype_to_name(di.deviceType),
-				di.serialNo, std::wstring{ di.devicePath });
+			LOG_INFO(mLogData.logger, "[{}] Filter will use {} device {} at path {}", mLogData.prefix,
+			         devicetype_to_name(di.deviceType),
+			         di.serialNo, std::wstring{ di.devicePath });
 			#endif
 
 			diToUse = &di;
@@ -176,8 +175,9 @@ MagewellCaptureFilter::MagewellCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		else
 		{
 			#ifndef NO_QUILL
-			LOG_INFO(mLogData.logger, "[{}] Ignoring usable {} device {} at path {}", mLogData.prefix, devicetype_to_name(di.deviceType),
-				di.serialNo, std::wstring{ di.devicePath });
+			LOG_INFO(mLogData.logger, "[{}] Ignoring usable {} device {} at path {}", mLogData.prefix,
+			         devicetype_to_name(di.deviceType),
+			         di.serialNo, std::wstring{ di.devicePath });
 			#endif
 
 			MWCloseChannel(di.hChannel);
@@ -221,7 +221,9 @@ void MagewellCaptureFilter::OnVideoSignalLoaded(VIDEO_SIGNAL* vs)
 	mVideoInputStatus.inY = vs->signalStatus.cy;
 	mVideoInputStatus.inAspectX = vs->signalStatus.nAspectX;
 	mVideoInputStatus.inAspectY = vs->signalStatus.nAspectY;
-	mVideoInputStatus.inFps = vs->signalStatus.dwFrameDuration > 0 ? 10000000.0 / vs->signalStatus.dwFrameDuration : 0.0;
+	mVideoInputStatus.inFps = vs->signalStatus.dwFrameDuration > 0
+		                          ? static_cast<double>(dshowTicksPerSecond) / vs->signalStatus.dwFrameDuration
+		                          : 0.0;
 
 	switch (vs->signalStatus.state)
 	{
@@ -382,18 +384,21 @@ MagewellVideoCapturePin::VideoCapture::VideoCapture(MagewellVideoCapturePin* pin
 	pin(pin),
 	mLogData(pin->mLogData)
 {
-	mEvent = MWCreateVideoCapture(hChannel, pin->mVideoFormat.cx, pin->mVideoFormat.cy, pin->mVideoFormat.pixelStructure, 
-		pin->mVideoFormat.frameInterval, CaptureFrame, pin);
+	mEvent = MWCreateVideoCapture(hChannel, pin->mVideoFormat.cx, pin->mVideoFormat.cy,
+	                              pin->mVideoFormat.pixelStructure,
+	                              pin->mVideoFormat.frameInterval, CaptureFrame, pin);
 	#ifndef NO_QUILL
 	if (mEvent == nullptr)
 	{
-		LOG_ERROR(mLogData.logger, "[{}] MWCreateVideoCapture failed {}x{} {} {}", mLogData.prefix, 
-			pin->mVideoFormat.cx, pin->mVideoFormat.cy, pin->mVideoFormat.pixelStructureName, pin->mVideoFormat.frameInterval);
+		LOG_ERROR(mLogData.logger, "[{}] MWCreateVideoCapture failed {}x{} {} {}", mLogData.prefix,
+		          pin->mVideoFormat.cx, pin->mVideoFormat.cy, pin->mVideoFormat.pixelStructureName,
+		          pin->mVideoFormat.frameInterval);
 	}
 	else
 	{
 		LOG_INFO(mLogData.logger, "[{}] MWCreateVideoCapture succeeded {}x{} {} {}", mLogData.prefix,
-			pin->mVideoFormat.cx, pin->mVideoFormat.cy, pin->mVideoFormat.pixelStructureName, pin->mVideoFormat.frameInterval);
+		         pin->mVideoFormat.cx, pin->mVideoFormat.cy, pin->mVideoFormat.pixelStructureName,
+		         pin->mVideoFormat.frameInterval);
 	}
 	#endif
 }
@@ -430,7 +435,8 @@ MagewellVideoCapturePin::VideoCapture::~VideoCapture()
 //  MagewellVideoCapturePin::VideoFrameGrabber
 //////////////////////////////////////////////////////////////////////////
 MagewellVideoCapturePin::VideoFrameGrabber::VideoFrameGrabber(MagewellVideoCapturePin* pin,
-	HCHANNEL hChannel, DeviceType deviceType, IMediaSample* pms) :
+                                                              HCHANNEL hChannel, DeviceType deviceType,
+                                                              IMediaSample* pms) :
 	mLogData(pin->mLogData),
 	hChannel(hChannel),
 	deviceType(deviceType),
@@ -454,7 +460,7 @@ MagewellVideoCapturePin::VideoFrameGrabber::~VideoFrameGrabber()
 	{
 		#ifndef NO_QUILL
 		LOG_TRACE_L2(mLogData.logger, "[{}] Unpinning {} bytes, captured {} bytes", mLogData.prefix, pms->GetSize(),
-			pms->GetActualDataLength());
+		             pms->GetActualDataLength());
 		#endif
 
 		MWUnpinVideoBuffer(hChannel, pmsData);
@@ -475,18 +481,20 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 			if (pin->mLastMwResult != MW_SUCCEEDED)
 			{
 				#ifndef NO_QUILL
-				LOG_TRACE_L1(mLogData.logger, "[{}] Can't get VideoBufferInfo ({})", mLogData.prefix, static_cast<int>(pin->mLastMwResult));
+				LOG_TRACE_L1(mLogData.logger, "[{}] Can't get VideoBufferInfo ({})", mLogData.prefix,
+				             static_cast<int>(pin->mLastMwResult));
 				#endif
 
 				continue;
 			}
 
 			pin->mLastMwResult = MWGetVideoFrameInfo(hChannel, pin->mVideoSignal.bufferInfo.iNewestBuffered,
-				&pin->mVideoSignal.frameInfo);
+			                                         &pin->mVideoSignal.frameInfo);
 			if (pin->mLastMwResult != MW_SUCCEEDED)
 			{
 				#ifndef NO_QUILL
-				LOG_TRACE_L1(mLogData.logger, "[{}] Can't get VideoFrameInfo ({})", mLogData.prefix, static_cast<int>(pin->mLastMwResult));
+				LOG_TRACE_L1(mLogData.logger, "[{}] Can't get VideoFrameInfo ({})", mLogData.prefix,
+				             static_cast<int>(pin->mLastMwResult));
 				#endif
 
 				continue;
@@ -525,8 +533,10 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 			if (pin->mLastMwResult != MW_SUCCEEDED)
 			{
 				#ifndef NO_QUILL
-				LOG_WARNING(mLogData.logger, "[{}] Unexpected failed call to MWCaptureVideoFrameToVirtualAddressEx ({})", mLogData.prefix, 
-					static_cast<int>(pin->mLastMwResult));
+				LOG_WARNING(mLogData.logger,
+				            "[{}] Unexpected failed call to MWCaptureVideoFrameToVirtualAddressEx ({})",
+				            mLogData.prefix,
+				            static_cast<int>(pin->mLastMwResult));
 				#endif
 				break;
 			}
@@ -563,13 +573,14 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 				#ifndef NO_QUILL
 				if (pin->mLastMwResult != MW_SUCCEEDED)
 				{
-					LOG_TRACE_L1(mLogData.logger, "[{}] MWGetVideoCaptureStatus failed ({})", mLogData.prefix, static_cast<int>(pin->mLastMwResult));
+					LOG_TRACE_L1(mLogData.logger, "[{}] MWGetVideoCaptureStatus failed ({})", mLogData.prefix,
+					             static_cast<int>(pin->mLastMwResult));
 				}
 				#endif
 
 				hasFrame = pin->mVideoSignal.captureStatus.bFrameCompleted;
-
-			} while (pin->mLastMwResult == MW_SUCCEEDED && !hasFrame);
+			}
+			while (pin->mLastMwResult == MW_SUCCEEDED && !hasFrame);
 		}
 		else
 		{
@@ -580,7 +591,7 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 	}
 	if (hasFrame)
 	{
-		if (pin->mVideoFormat.pixelStructure == MWFOURCC_AYUV)
+		if (pin->mVideoFormat.pixelStructure == FOURCC_AYUV)
 		{
 			// endianness is wrong on a per pixel basis
 			BYTE* pixelStart = pmsData;
@@ -593,7 +604,6 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 			}
 		}
 
-		// TODO move to a base class
 		pin->GetReferenceTime(&pin->mFrameEndTime);
 		auto endTime = pin->mFrameEndTime - pin->mStreamStartTime;
 		auto startTime = endTime - pin->mVideoFormat.frameInterval;
@@ -603,7 +613,7 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 
 		#ifndef NO_QUILL
 		LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame {} at {}", mLogData.prefix,
-			pin->mFrameCounter, endTime);
+		             pin->mFrameCounter, endTime);
 		#endif
 
 		if (pin->mSendMediaType)
@@ -634,7 +644,7 @@ MagewellVideoCapturePin::MagewellVideoCapturePin(HRESULT* phr, MagewellCaptureFi
 		pParent,
 		pPreview ? "VideoPreview" : "VideoCapture",
 		pPreview ? L"Preview" : L"Capture",
-		pPreview ? "Preview" : "Capture"
+		pPreview ? "VideoPreview" : "VideoCapture"
 	),
 	mNotify(nullptr),
 	mCaptureEvent(nullptr),
@@ -684,7 +694,8 @@ MagewellVideoCapturePin::MagewellVideoCapturePin(HRESULT* phr, MagewellCaptureFi
 
 		#ifndef NO_QUILL
 		LOG_WARNING(
-			mLogData.logger, "[{}] Initialised video format {} x {} ({}:{}) @ {:.3f} Hz in {} bits ({} {} tf: {}) size {} bytes",
+			mLogData.logger,
+			"[{}] Initialised video format {} x {} ({}:{}) @ {:.3f} Hz in {} bits ({} {} tf: {}) size {} bytes",
 			mLogData.prefix,
 			mVideoFormat.cx, mVideoFormat.cy, mVideoFormat.aspectX, mVideoFormat.aspectY, mVideoFormat.fps,
 			mVideoFormat.bitDepth,
@@ -696,7 +707,7 @@ MagewellVideoCapturePin::MagewellVideoCapturePin(HRESULT* phr, MagewellCaptureFi
 	{
 		mVideoFormat.lineLength = FOURCC_CalcMinStride(mVideoFormat.pixelStructure, mVideoFormat.cx, 2);
 		mVideoFormat.imageSize = FOURCC_CalcImageSize(mVideoFormat.pixelStructure, mVideoFormat.cx, mVideoFormat.cy,
-			mVideoFormat.lineLength);
+		                                              mVideoFormat.lineLength);
 
 		#ifndef NO_QUILL
 		LOG_WARNING(
@@ -735,7 +746,8 @@ void MagewellVideoCapturePin::DoThreadDestroy()
 	}
 }
 
-void MagewellVideoCapturePin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL* videoSignal, USB_CAPTURE_FORMATS* captureFormats)
+void MagewellVideoCapturePin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL* videoSignal,
+                                         USB_CAPTURE_FORMATS* captureFormats)
 {
 	if (videoSignal->signalStatus.state == MWCAP_VIDEO_SIGNAL_LOCKED)
 	{
@@ -745,7 +757,7 @@ void MagewellVideoCapturePin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL
 		videoFormat->aspectY = videoSignal->signalStatus.nAspectY;
 		videoFormat->quantisation = static_cast<quantisation_range>(videoSignal->signalStatus.quantRange);
 		videoFormat->saturation = static_cast<saturation_range>(videoSignal->signalStatus.satRange);
-		videoFormat->fps = 10000000.0 / videoSignal->signalStatus.dwFrameDuration;
+		videoFormat->fps = static_cast<double>(dshowTicksPerSecond) / videoSignal->signalStatus.dwFrameDuration;
 		videoFormat->frameInterval = videoSignal->signalStatus.dwFrameDuration;
 		videoFormat->bitDepth = videoSignal->inputStatus.hdmiStatus.byBitDepth;
 		videoFormat->colourFormat = static_cast<colour_format>(videoSignal->signalStatus.colorFormat);
@@ -789,7 +801,8 @@ void MagewellVideoCapturePin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL
 	if (captureFormats->usb)
 	{
 		bool found = false;
-		for (int i = 0; i < captureFormats->fourccs.byCount && !found; i++) {
+		for (int i = 0; i < captureFormats->fourccs.byCount && !found; i++)
+		{
 			if (captureFormats->fourccs.adwFOURCCs[i] == videoFormat->pixelStructure)
 			{
 				found = true;
@@ -798,7 +811,7 @@ void MagewellVideoCapturePin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL
 		if (!found)
 		{
 			videoFormat->pixelStructure = captureFormats->fourccs.adwFOURCCs[0];
-			std::string captureFormatName{ static_cast<char>(videoFormat->pixelStructure & 0xFF) };
+			std::string captureFormatName{static_cast<char>(videoFormat->pixelStructure & 0xFF)};
 			captureFormatName += static_cast<char>(videoFormat->pixelStructure >> 8 & 0xFF);
 			captureFormatName += static_cast<char>(videoFormat->pixelStructure >> 16 & 0xFF);
 			captureFormatName += static_cast<char>(videoFormat->pixelStructure >> 24 & 0xFF);
@@ -806,7 +819,8 @@ void MagewellVideoCapturePin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL
 		}
 
 		found = false;
-		for (int i = 0; i < captureFormats->frameIntervals.byCount && !found; i++) {
+		for (int i = 0; i < captureFormats->frameIntervals.byCount && !found; i++)
+		{
 			if (abs(captureFormats->frameIntervals.adwIntervals[i] - videoFormat->frameInterval) < 100)
 			{
 				found = true;
@@ -814,12 +828,15 @@ void MagewellVideoCapturePin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL
 		}
 		if (!found)
 		{
-			videoFormat->frameInterval = captureFormats->frameIntervals.adwIntervals[captureFormats->frameIntervals.byDefault];
+			videoFormat->frameInterval = captureFormats->frameIntervals.adwIntervals[captureFormats->frameIntervals.
+				byDefault];
 		}
 
 		found = false;
-		for (int i = 0; i < captureFormats->frameSizes.byCount && !found; i++) {
-			if (captureFormats->frameSizes.aSizes[i].cx == videoFormat->cx && captureFormats->frameSizes.aSizes[i].cy == videoFormat->cy)
+		for (int i = 0; i < captureFormats->frameSizes.byCount && !found; i++)
+		{
+			if (captureFormats->frameSizes.aSizes[i].cx == videoFormat->cx && captureFormats->frameSizes.aSizes[i].cy ==
+				videoFormat->cy)
 			{
 				found = true;
 			}
@@ -832,88 +849,32 @@ void MagewellVideoCapturePin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL
 	}
 
 
-	videoFormat->bitCount = FOURCC_GetBpp(videoFormat->pixelStructure);
-	videoFormat->lineLength = FOURCC_CalcMinStride(videoFormat->pixelStructure, videoFormat->cx, 2);
-	videoFormat->imageSize = FOURCC_CalcImageSize(videoFormat->pixelStructure, videoFormat->cx, videoFormat->cy, videoFormat->lineLength);
+	videoFormat->bitCount = fourccBitCount[idx][videoFormat->pixelEncoding]; 
+	GetImageDimensions(videoFormat->pixelStructure, videoFormat->cx, videoFormat->cy, &videoFormat->lineLength, &videoFormat->imageSize);
 }
 
-// TODO MOVE TO A BASE CLASS
 void MagewellVideoCapturePin::LogHdrMetaIfPresent(VIDEO_FORMAT* newVideoFormat)
 {
+	#ifndef NO_QUILL
 	auto hdrIf = mVideoSignal.hdrInfo;
-	if (hdrIf.byEOTF || hdrIf.byMetadataDescriptorID 
-		|| hdrIf.display_primaries_lsb_x0 || hdrIf.display_primaries_lsb_x1 || hdrIf.display_primaries_lsb_x2 
+	if (hdrIf.byEOTF || hdrIf.byMetadataDescriptorID
+		|| hdrIf.display_primaries_lsb_x0 || hdrIf.display_primaries_lsb_x1 || hdrIf.display_primaries_lsb_x2
 		|| hdrIf.display_primaries_msb_x0 || hdrIf.display_primaries_msb_x1 || hdrIf.display_primaries_msb_x2
-		|| hdrIf.display_primaries_lsb_y0 || hdrIf.display_primaries_lsb_y1 || hdrIf.display_primaries_lsb_y2 
+		|| hdrIf.display_primaries_lsb_y0 || hdrIf.display_primaries_lsb_y1 || hdrIf.display_primaries_lsb_y2
 		|| hdrIf.display_primaries_msb_y0 || hdrIf.display_primaries_msb_y1 || hdrIf.display_primaries_msb_y2
 		|| hdrIf.white_point_msb_x || hdrIf.white_point_msb_y || hdrIf.white_point_lsb_x || hdrIf.white_point_lsb_y
 		|| hdrIf.max_display_mastering_lsb_luminance || hdrIf.max_display_mastering_msb_luminance
 		|| hdrIf.min_display_mastering_lsb_luminance || hdrIf.min_display_mastering_msb_luminance
-		|| hdrIf.maximum_content_light_level_lsb|| hdrIf.maximum_content_light_level_msb
+		|| hdrIf.maximum_content_light_level_lsb || hdrIf.maximum_content_light_level_msb
 		|| hdrIf.maximum_frame_average_light_level_lsb || hdrIf.maximum_frame_average_light_level_msb)
 	{
-		auto newMeta = newVideoFormat->hdrMeta;
-		auto oldMeta = mVideoFormat.hdrMeta;
-		if (newMeta.exists)
-		{
-			bool logPrimaries;
-			bool logWp;
-			bool logMax;
-			if (oldMeta.exists)
-			{
-				logPrimaries = newMeta.r_primary_x != oldMeta.r_primary_x || newMeta.r_primary_y != oldMeta.r_primary_y
-					|| newMeta.g_primary_x != oldMeta.g_primary_x || newMeta.g_primary_y != oldMeta.g_primary_y
-					|| newMeta.b_primary_x != oldMeta.b_primary_x || newMeta.b_primary_y != oldMeta.b_primary_y;
-				logWp = newMeta.whitepoint_x != oldMeta.whitepoint_x || newMeta.whitepoint_y != oldMeta.whitepoint_y;
-				logMax = newMeta.maxCLL != oldMeta.maxCLL || newMeta.minDML != oldMeta.minDML || newMeta.maxDML != oldMeta.maxDML || newMeta.maxFALL != oldMeta.maxFALL;
-				if (logPrimaries || logWp || logMax)
-				{
-					#ifndef NO_QUILL
-					LOG_INFO(mLogData.logger, "[{}] HDR metadata has changed", mLogData.prefix);
-					#endif
-				}
-			}
-			else
-			{
-				logPrimaries = true;
-				logWp = true;
-				logMax = true;
-				#ifndef NO_QUILL
-				LOG_INFO(mLogData.logger, "[{}] HDR metadata is now present", mLogData.prefix);
-				#endif
-			}
-
-			#ifndef NO_QUILL
-			if (logPrimaries)
-			{
-				LOG_INFO(mLogData.logger, "[{}] Primaries RGB {} x {} {} x {} {} x {}", mLogData.prefix,
-					newMeta.r_primary_x, newMeta.r_primary_y, newMeta.g_primary_x, newMeta.g_primary_y, newMeta.b_primary_x, newMeta.b_primary_y);
-			}
-			if (logWp)
-			{
-				LOG_INFO(mLogData.logger, "[{}] Whitepoint {} x {}", mLogData.prefix,
-					newMeta.whitepoint_x, newMeta.whitepoint_y);
-			}
-			if (logMax)
-			{
-				LOG_INFO(mLogData.logger, "[{}] DML/MaxCLL/MaxFALL {} / {} {} {}", mLogData.prefix,
-					newMeta.minDML, newMeta.maxDML, newMeta.maxCLL, newMeta.maxFALL);
-			}
-			#endif
-		}
-		else
-		{
-			#ifndef NO_QUILL
-			LOG_WARNING(mLogData.logger, "[{}] HDR InfoFrame parsing failure, values are present but no metadata exists", mLogData.prefix);
-			#endif
-		}
+		logHdrMeta(newVideoFormat->hdrMeta, mVideoFormat.hdrMeta, mLogData);
 	}
 	if (!newVideoFormat->hdrMeta.exists && mVideoFormat.hdrMeta.exists)
 	{
-		#ifndef NO_QUILL
 		LOG_TRACE_L1(mLogData.logger, "[{}] HDR metadata has been removed", mLogData.prefix);
-		#endif
 	}
+	#endif
 }
 
 HRESULT MagewellVideoCapturePin::LoadSignal(HCHANNEL* pChannel)
@@ -949,7 +910,9 @@ HRESULT MagewellVideoCapturePin::LoadSignal(HCHANNEL* pChannel)
 	if (retVal != S_OK)
 	{
 		#ifndef NO_QUILL
-		LOG_ERROR(mLogData.logger, "[{}] LoadSignal MWGetInputSpecificStatus is invalid, will display no/unsupported signal image", mLogData.prefix);
+		LOG_ERROR(mLogData.logger,
+		          "[{}] LoadSignal MWGetInputSpecificStatus is invalid, will display no/unsupported signal image",
+		          mLogData.prefix);
 		#endif
 
 		mVideoSignal.inputStatus.hdmiStatus.byBitDepth = 8;
@@ -971,8 +934,9 @@ HRESULT MagewellVideoCapturePin::LoadSignal(HCHANNEL* pChannel)
 				if (!mHasHdrInfoFrame)
 				{
 					#ifndef NO_QUILL
-					LOG_TRACE_L1(mLogData.logger, "[{}] HDR Infoframe is present tf: {} to {}", mLogData.prefix, mVideoSignal.hdrInfo.byEOTF,
-						pkt.hdrInfoFramePayload.byEOTF);
+					LOG_TRACE_L1(mLogData.logger, "[{}] HDR Infoframe is present tf: {} to {}", mLogData.prefix,
+					             mVideoSignal.hdrInfo.byEOTF,
+					             pkt.hdrInfoFramePayload.byEOTF);
 					#endif
 					mHasHdrInfoFrame = true;
 				}
@@ -982,7 +946,6 @@ HRESULT MagewellVideoCapturePin::LoadSignal(HCHANNEL* pChannel)
 		}
 		if (!readPacket)
 		{
-			
 			if (mHasHdrInfoFrame)
 			{
 				#ifndef NO_QUILL
@@ -1010,37 +973,20 @@ HRESULT MagewellVideoCapturePin::LoadSignal(HCHANNEL* pChannel)
 	return S_OK;
 }
 
-HRESULT MagewellVideoCapturePin::DoChangeMediaType(const CMediaType* pmt, const VIDEO_FORMAT* newVideoFormat)
+void MagewellVideoCapturePin::OnChangeMediaType()
 {
-	#ifndef NO_QUILL
-	LOG_WARNING(
-		mLogData.logger, "[{}] Proposing new video format {} x {} ({}:{}) @ {:.3f} Hz in {} bits ({} {} tf: {}) size {} bytes",
-		mLogData.prefix,
-		newVideoFormat->cx, newVideoFormat->cy, newVideoFormat->aspectX, newVideoFormat->aspectY, newVideoFormat->fps,
-		newVideoFormat->bitDepth,
-		newVideoFormat->pixelStructureName, newVideoFormat->colourFormatName, newVideoFormat->hdrMeta.transferFunction,
-		newVideoFormat->imageSize);
-	#endif
-
-	auto retVal = RenegotiateMediaType(pmt, newVideoFormat->imageSize, newVideoFormat->imageSize != mVideoFormat.imageSize);
-	if (retVal == S_OK)
+	mFilter->NotifyEvent(EC_VIDEO_SIZE_CHANGED, MAKELPARAM(mVideoFormat.cx, mVideoFormat.cy), 0);
+	if (mFilter->GetDeviceType() == USB)
 	{
-		mFilter->NotifyEvent(EC_VIDEO_SIZE_CHANGED, MAKELPARAM(newVideoFormat->cx, newVideoFormat->cy), 0);
-		if (mFilter->GetDeviceType() == USB)
+		delete mVideoCapture;
+		mVideoCapture = new VideoCapture(this, mFilter->GetChannelHandle());
+		if (mVideoFormat.imageSize > mVideoFormat.imageSize)
 		{
-			delete mVideoCapture;
-			mVideoCapture = new VideoCapture(this, mFilter->GetChannelHandle());
-			if (newVideoFormat->imageSize > mVideoFormat.imageSize)
-			{
-				CAutoLock lck(&mCaptureCritSec);
-				delete mCapturedFrame.data;
-				mCapturedFrame.data = new BYTE[newVideoFormat->imageSize];
-			}
+			CAutoLock lck(&mCaptureCritSec);
+			delete mCapturedFrame.data;
+			mCapturedFrame.data = new BYTE[mVideoFormat.imageSize];
 		}
-		mVideoFormat = *newVideoFormat;
 	}
-
-	return retVal;
 }
 
 void MagewellVideoCapturePin::CaptureFrame(BYTE* pbFrame, int cbFrame, UINT64 u64TimeStamp, void* pParam)
@@ -1052,7 +998,7 @@ void MagewellVideoCapturePin::CaptureFrame(BYTE* pbFrame, int cbFrame, UINT64 u6
 	pin->mCapturedFrame.ts = u64TimeStamp;
 	if (!SetEvent(pin->mNotifyEvent))
 	{
-		auto err  = GetLastError();
+		auto err = GetLastError();
 		#ifndef NO_QUILL
 		LOG_ERROR(pin->mLogData.logger, "[{}] Failed to notify on frame {:#08x}", pin->mLogData.prefix, err);
 		#endif
@@ -1061,7 +1007,7 @@ void MagewellVideoCapturePin::CaptureFrame(BYTE* pbFrame, int cbFrame, UINT64 u6
 
 // loops til we have a frame to process, dealing with any mediatype changes as we go and then grabs a buffer once it's time to go
 HRESULT MagewellVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFERENCE_TIME* pStartTime,
-	REFERENCE_TIME* pEndTime, DWORD dwFlags)
+                                                   REFERENCE_TIME* pEndTime, DWORD dwFlags)
 {
 	auto hasFrame = false;
 	auto retVal = S_FALSE;
@@ -1078,7 +1024,7 @@ HRESULT MagewellVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 
 			break;
 		}
-		if (mStreamStartTime == 0)
+		if (mStreamStartTime < 0)
 		{
 			#ifndef NO_QUILL
 			LOG_TRACE_L1(mLogData.logger, "[{}] Stream has not started, retry after backoff", mLogData.prefix);
@@ -1105,7 +1051,7 @@ HRESULT MagewellVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 		{
 			#ifndef NO_QUILL
 			LOG_TRACE_L2(mLogData.logger, "[{}] Signal is not locked ({})", mLogData.prefix,
-				static_cast<int>(mVideoSignal.signalStatus.state));
+			             static_cast<int>(mVideoSignal.signalStatus.state));
 			#endif
 
 			mHasSignal = false;
@@ -1142,8 +1088,9 @@ HRESULT MagewellVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 			if (FAILED(hr))
 			{
 				#ifndef NO_QUILL
-				LOG_ERROR(mLogData.logger, "[{}] VideoFormat changed but not able to reconnect! retry after backoff [Result: {:#08x}]",
-					mLogData.prefix, hr);
+				LOG_ERROR(mLogData.logger,
+				          "[{}] VideoFormat changed but not able to reconnect! retry after backoff [Result: {:#08x}]",
+				          mLogData.prefix, hr);
 				#endif
 
 				// TODO show OSD to say we need to change
@@ -1177,9 +1124,11 @@ HRESULT MagewellVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 			{
 				// wait til we see a BUFFERING notification
 				mLastMwResult = MWGetNotifyStatus(hChannel, mNotify, &mStatusBits);
-				if (mLastMwResult != MW_SUCCEEDED) {
+				if (mLastMwResult != MW_SUCCEEDED)
+				{
 					#ifndef NO_QUILL
-					LOG_TRACE_L1(mLogData.logger, "[{}] MWGetNotifyStatus failed {}", mLogData.prefix, static_cast<int>(mLastMwResult));
+					LOG_TRACE_L1(mLogData.logger, "[{}] MWGetNotifyStatus failed {}", mLogData.prefix,
+					             static_cast<int>(mLastMwResult));
 					#endif
 
 					BACKOFF;
@@ -1198,7 +1147,8 @@ HRESULT MagewellVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 				if (mStatusBits & MWCAP_NOTIFY_VIDEO_INPUT_SOURCE_CHANGE)
 				{
 					#ifndef NO_QUILL
-					LOG_TRACE_L1(mLogData.logger, "[{}] Video input source change, retry after backoff", mLogData.prefix);
+					LOG_TRACE_L1(mLogData.logger, "[{}] Video input source change, retry after backoff",
+					             mLogData.prefix);
 					#endif
 
 					BACKOFF;
@@ -1227,30 +1177,35 @@ HRESULT MagewellVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 
 			if (hasFrame)
 			{
-				retVal = MagewellVideoCapturePin::GetDeliveryBuffer(ppSample, pStartTime, pEndTime, dwFlags);
+				retVal = VideoCapturePin::GetDeliveryBuffer(ppSample, pStartTime, pEndTime, dwFlags);
 				if (!SUCCEEDED(retVal))
 				{
 					hasFrame = false;
 					#ifndef NO_QUILL
-					LOG_WARNING(mLogData.logger, "[{}] Video frame buffered but unable to get delivery buffer, retry after backoff", mLogData.prefix);
+					LOG_WARNING(mLogData.logger,
+					            "[{}] Video frame buffered but unable to get delivery buffer, retry after backoff",
+					            mLogData.prefix);
 					#endif
 				}
 			}
 
-			if (!hasFrame) SHORT_BACKOFF;
+			if (!hasFrame)
+				SHORT_BACKOFF;
 		}
 		else
 		{
 			if (!mHasSignal && dwRet == STATUS_TIMEOUT)
 			{
 				#ifndef NO_QUILL
-				LOG_TRACE_L1(mLogData.logger, "[{}] Timeout and no signal, get delivery buffer for no signal image", mLogData.prefix);
+				LOG_TRACE_L1(mLogData.logger, "[{}] Timeout and no signal, get delivery buffer for no signal image",
+				             mLogData.prefix);
 				#endif
-				retVal = MagewellVideoCapturePin::GetDeliveryBuffer(ppSample, pStartTime, pEndTime, dwFlags);
+				retVal = VideoCapturePin::GetDeliveryBuffer(ppSample, pStartTime, pEndTime, dwFlags);
 				if (!SUCCEEDED(retVal))
 				{
 					#ifndef NO_QUILL
-					LOG_WARNING(mLogData.logger, "[{}] Unable to get delivery buffer, retry after backoff", mLogData.prefix);
+					LOG_WARNING(mLogData.logger, "[{}] Unable to get delivery buffer, retry after backoff",
+					            mLogData.prefix);
 					#endif
 					SHORT_BACKOFF;
 				}
@@ -1262,7 +1217,8 @@ HRESULT MagewellVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 			else
 			{
 				#ifndef NO_QUILL
-				LOG_TRACE_L1(mLogData.logger, "[{}] Wait for frame unexpected response ({:#08x})", mLogData.prefix, dwRet);
+				LOG_TRACE_L1(mLogData.logger, "[{}] Wait for frame unexpected response ({:#08x})", mLogData.prefix,
+				             dwRet);
 				#endif
 			}
 		}
@@ -1305,7 +1261,8 @@ HRESULT MagewellVideoCapturePin::OnThreadCreate()
 		if (mLastMwResult != MW_SUCCEEDED)
 		{
 			LOG_ERROR(mLogData.logger, "[{}] Unable to MWStartVideoCapture", mLogData.prefix);
-		} else
+		}
+		else
 		{
 			LOG_INFO(mLogData.logger, "[{}] MWStartVideoCapture started", mLogData.prefix);
 		}
@@ -1313,9 +1270,9 @@ HRESULT MagewellVideoCapturePin::OnThreadCreate()
 
 		// register for signal change events & video buffering 
 		mNotify = MWRegisterNotify(hChannel, mNotifyEvent,
-			MWCAP_NOTIFY_VIDEO_SIGNAL_CHANGE | 
-			MWCAP_NOTIFY_VIDEO_FRAME_BUFFERING |
-			MWCAP_NOTIFY_VIDEO_INPUT_SOURCE_CHANGE);
+		                           MWCAP_NOTIFY_VIDEO_SIGNAL_CHANGE |
+		                           MWCAP_NOTIFY_VIDEO_FRAME_BUFFERING |
+		                           MWCAP_NOTIFY_VIDEO_INPUT_SOURCE_CHANGE);
 		if (!mNotify)
 		{
 			#ifndef NO_QUILL
@@ -1355,12 +1312,12 @@ MagewellAudioCapturePin::AudioCapture::AudioCapture(MagewellAudioCapturePin* pin
 	mLogData(pin->mLogData)
 {
 	mEvent = MWCreateAudioCapture(hChannel, MWCAP_AUDIO_CAPTURE_NODE_EMBEDDED_CAPTURE, pin->mAudioFormat.fs,
-		pin->mAudioFormat.bitDepth, pin->mAudioFormat.inputChannelCount, CaptureFrame, pin);
+	                              pin->mAudioFormat.bitDepth, pin->mAudioFormat.inputChannelCount, CaptureFrame, pin);
 	if (mEvent == nullptr)
 	{
 		#ifndef NO_QUILL
 		LOG_ERROR(mLogData.logger, "[{}] MWCreateAudioCapture failed {} Hz {} bits {} channels", mLogData.prefix,
-			pin->mAudioFormat.fs, pin->mAudioFormat.bitDepth, pin->mAudioFormat.inputChannelCount);
+		          pin->mAudioFormat.fs, pin->mAudioFormat.bitDepth, pin->mAudioFormat.inputChannelCount);
 		#endif
 	}
 }
@@ -1408,7 +1365,8 @@ MagewellAudioCapturePin::MagewellAudioCapturePin(HRESULT* phr, MagewellCaptureFi
 	mCaptureEvent(nullptr),
 	mNotifyEvent(CreateEvent(nullptr, FALSE, FALSE, nullptr)),
 	mLastMwResult(),
-	mDataBurstBuffer(bitstreamBufferSize) // initialise to a reasonable default size that is not wastefully large but also is unlikely to need to be expanded very often
+	mDataBurstBuffer(bitstreamBufferSize)
+// initialise to a reasonable default size that is not wastefully large but also is unlikely to need to be expanded very often
 {
 	mCapturedFrame.data = new BYTE[maxFrameLengthInBytes];
 	mCapturedFrame.length = maxFrameLengthInBytes;
@@ -1448,8 +1406,9 @@ MagewellAudioCapturePin::MagewellAudioCapturePin(HRESULT* phr, MagewellCaptureFi
 	}
 
 	#ifndef NO_QUILL
-	LOG_WARNING(mLogData.logger, "[{}] Audio Status Fs: {} Bits: {} Channels: {} Codec: {}", mLogData.prefix, mAudioFormat.fs,
-		mAudioFormat.bitDepth, mAudioFormat.outputChannelCount, codecNames[mAudioFormat.codec]);
+	LOG_WARNING(mLogData.logger, "[{}] Audio Status Fs: {} Bits: {} Channels: {} Codec: {}", mLogData.prefix,
+	            mAudioFormat.fs,
+	            mAudioFormat.bitDepth, mAudioFormat.outputChannelCount, codecNames[mAudioFormat.codec]);
 	#endif
 
 	#if defined RECORD_ENCODED || defined RECORD_RAW
@@ -1549,7 +1508,7 @@ void MagewellAudioCapturePin::LoadFormat(AUDIO_FORMAT* audioFormat, const AUDIO_
 	audioFormat->bitDepth = audioIn.signalStatus.cBitsPerSample;
 	audioFormat->bitDepthInBytes = audioFormat->bitDepth / 8;
 	audioFormat->codec = audioIn.signalStatus.bLPCM ? PCM : BITSTREAM;
-	audioFormat->sampleInterval = 10000000.0 / audioFormat->fs;
+	audioFormat->sampleInterval = static_cast<double>(dshowTicksPerSecond) / audioFormat->fs;
 	audioFormat->channelAllocation = audioIn.audioInfo.byChannelAllocation;
 	audioFormat->channelValidityMask = audioIn.signalStatus.wChannelValid;
 
@@ -2480,10 +2439,11 @@ HRESULT MagewellAudioCapturePin::LoadSignal(HCHANNEL* hChannel)
 			LOG_ERROR(mLogData.logger, "[{}] MWGetInputSpecificStatus is invalid", mLogData.prefix);
 			#endif
 		}
-		else if (status.dwVideoInputType != MWCAP_VIDEO_INPUT_TYPE_HDMI) 
+		else if (status.dwVideoInputType != MWCAP_VIDEO_INPUT_TYPE_HDMI)
 		{
 			#ifndef NO_QUILL
-			LOG_ERROR(mLogData.logger, "[{}] Video input type is not HDMI {}", mLogData.prefix, status.dwVideoInputType);
+			LOG_ERROR(mLogData.logger, "[{}] Video input type is not HDMI {}", mLogData.prefix,
+			          status.dwVideoInputType);
 			#endif
 		}
 		else if (MW_SUCCEEDED != MWGetHDMIInfoFrameValidFlag(*hChannel, &tPdwValidFlag))
@@ -2519,7 +2479,7 @@ HRESULT MagewellAudioCapturePin::LoadSignal(HCHANNEL* hChannel)
 	{
 		#ifndef NO_QUILL
 		LOG_TRACE_L1(mLogData.logger, "[{}] No valid audio channels detected {}", mLogData.prefix,
-			mAudioSignal.signalStatus.wChannelValid);
+		             mAudioSignal.signalStatus.wChannelValid);
 		#endif
 		return S_NO_CHANNELS;
 	}
@@ -2564,7 +2524,8 @@ HRESULT MagewellAudioCapturePin::FillBuffer(IMediaSample* pms)
 	if (mAudioFormat.codec != PCM)
 	{
 		#ifndef NO_QUILL
-		LOG_TRACE_L3(mLogData.logger, "[{}] Sending {} {} bytes", mLogData.prefix, mDataBurstPayloadSize, codecNames[mAudioFormat.codec]);
+		LOG_TRACE_L3(mLogData.logger, "[{}] Sending {} {} bytes", mLogData.prefix, mDataBurstPayloadSize,
+		             codecNames[mAudioFormat.codec]);
 		#endif
 
 		for (auto i = 0; i < mDataBurstPayloadSize; i++)
@@ -2607,21 +2568,22 @@ HRESULT MagewellAudioCapturePin::FillBuffer(IMediaSample* pms)
 
 			for (auto sampleIdx = 0; sampleIdx < MWCAP_AUDIO_SAMPLES_PER_FRAME; sampleIdx++)
 			{
-				auto inByteStartIdxL = sampleIdx * MWCAP_AUDIO_MAX_NUM_CHANNELS;    // scroll to the sample block
-				inByteStartIdxL += pairIdx;										        // scroll to the left channel slot
-				inByteStartIdxL *= maxBitDepthInBytes;									// convert from slot index to byte index
+				auto inByteStartIdxL = sampleIdx * MWCAP_AUDIO_MAX_NUM_CHANNELS; // scroll to the sample block
+				inByteStartIdxL += pairIdx; // scroll to the left channel slot
+				inByteStartIdxL *= maxBitDepthInBytes; // convert from slot index to byte index
 
-				auto inByteStartIdxR = sampleIdx * MWCAP_AUDIO_MAX_NUM_CHANNELS;    // scroll to the sample block
-				inByteStartIdxR += pairIdx + MWCAP_AUDIO_MAX_NUM_CHANNELS / 2;	        // scroll to the left channel slot then jump to the matching right channel
-				inByteStartIdxR *= maxBitDepthInBytes;									// convert from slot index to byte index
+				auto inByteStartIdxR = sampleIdx * MWCAP_AUDIO_MAX_NUM_CHANNELS; // scroll to the sample block
+				inByteStartIdxR += pairIdx + MWCAP_AUDIO_MAX_NUM_CHANNELS / 2;
+				// scroll to the left channel slot then jump to the matching right channel
+				inByteStartIdxR *= maxBitDepthInBytes; // convert from slot index to byte index
 
-				auto outByteStartIdxL = sampleIdx * mAudioFormat.outputChannelCount;// scroll to the sample block
-				outByteStartIdxL += (outputChannelIdxL + outputOffsetL);                // jump to the output channel slot
-				outByteStartIdxL *= mAudioFormat.bitDepthInBytes;                       // convert from slot index to byte index
+				auto outByteStartIdxL = sampleIdx * mAudioFormat.outputChannelCount; // scroll to the sample block
+				outByteStartIdxL += (outputChannelIdxL + outputOffsetL); // jump to the output channel slot
+				outByteStartIdxL *= mAudioFormat.bitDepthInBytes; // convert from slot index to byte index
 
-				auto outByteStartIdxR = sampleIdx * mAudioFormat.outputChannelCount;// scroll to the sample block
-				outByteStartIdxR += (outputChannelIdxR + outputOffsetR);                // jump to the output channel slot
-				outByteStartIdxR *= mAudioFormat.bitDepthInBytes;                       // convert from slot index to byte index
+				auto outByteStartIdxR = sampleIdx * mAudioFormat.outputChannelCount; // scroll to the sample block
+				outByteStartIdxR += (outputChannelIdxR + outputOffsetR); // jump to the output channel slot
+				outByteStartIdxR *= mAudioFormat.bitDepthInBytes; // convert from slot index to byte index
 
 				if (mAudioFormat.lfeChannelIndex == channelIdxL && mustRescaleLfe)
 				{
@@ -2660,7 +2622,9 @@ HRESULT MagewellAudioCapturePin::FillBuffer(IMediaSample* pms)
 							else
 							{
 								#ifndef NO_QUILL
-								LOG_ERROR(mLogData.logger, "[{}] Skipping L byte {} when sample should only be {} bytes long", mLogData.prefix, outIdx, sampleSize);
+								LOG_ERROR(mLogData.logger,
+								          "[{}] Skipping L byte {} when sample should only be {} bytes long",
+								          mLogData.prefix, outIdx, sampleSize);
 								#endif
 							}
 						}
@@ -2676,9 +2640,10 @@ HRESULT MagewellAudioCapturePin::FillBuffer(IMediaSample* pms)
 							else
 							{
 								#ifndef NO_QUILL
-								LOG_ERROR(mLogData.logger, "[{}] Skipping R byte {} when sample should only be {} bytes long", mLogData.prefix, outIdx, sampleSize);
+								LOG_ERROR(mLogData.logger,
+								          "[{}] Skipping R byte {} when sample should only be {} bytes long",
+								          mLogData.prefix, outIdx, sampleSize);
 								#endif
-
 							}
 						}
 					}
@@ -2702,13 +2667,19 @@ HRESULT MagewellAudioCapturePin::FillBuffer(IMediaSample* pms)
 	#ifndef NO_QUILL
 	if (bytesCaptured != sampleSize)
 	{
-		LOG_WARNING(mLogData.logger, "[{}] Audio frame {} : samples {} time {} delta {} size {} bytes buf {} bytes (since {}? {})", mLogData.prefix,
-			mFrameCounter, samplesCaptured, endTime, sincePrev, bytesCaptured, sampleSize, codecNames[mAudioFormat.codec], mSinceCodecChange);
+		LOG_WARNING(mLogData.logger,
+		            "[{}] Audio frame {} : samples {} time {} delta {} size {} bytes buf {} bytes (since {}? {})",
+		            mLogData.prefix,
+		            mFrameCounter, samplesCaptured, endTime, sincePrev, bytesCaptured, sampleSize,
+		            codecNames[mAudioFormat.codec], mSinceCodecChange);
 	}
 	else
 	{
-		LOG_TRACE_L2(mLogData.logger, "[{}] Audio frame {} : samples {} time {} delta {} size {} bytes buf {} bytes (since {}? {})", mLogData.prefix,
-			mFrameCounter, samplesCaptured, endTime, sincePrev, bytesCaptured, sampleSize, codecNames[mAudioFormat.codec], mSinceCodecChange);
+		LOG_TRACE_L2(mLogData.logger,
+		             "[{}] Audio frame {} : samples {} time {} delta {} size {} bytes buf {} bytes (since {}? {})",
+		             mLogData.prefix,
+		             mFrameCounter, samplesCaptured, endTime, sincePrev, bytesCaptured, sampleSize,
+		             codecNames[mAudioFormat.codec], mSinceCodecChange);
 	}
 	#endif
 
@@ -2752,19 +2723,21 @@ HRESULT MagewellAudioCapturePin::OnThreadCreate()
 		if (mLastMwResult != MW_SUCCEEDED)
 		{
 			#ifndef NO_QUILL
-			LOG_ERROR(mLogData.logger, "[{}] MagewellAudioCapturePin::OnThreadCreate Unable to MWStartAudioCapture", mLogData.prefix);
+			LOG_ERROR(mLogData.logger, "[{}] MagewellAudioCapturePin::OnThreadCreate Unable to MWStartAudioCapture",
+			          mLogData.prefix);
 			#endif
 			// TODO throw
 		}
 
 		// register for signal change events & audio buffered
 		mNotify = MWRegisterNotify(hChannel, mNotifyEvent,
-			MWCAP_NOTIFY_AUDIO_INPUT_SOURCE_CHANGE | MWCAP_NOTIFY_AUDIO_SIGNAL_CHANGE |
-			MWCAP_NOTIFY_AUDIO_FRAME_BUFFERED);
+		                           MWCAP_NOTIFY_AUDIO_INPUT_SOURCE_CHANGE | MWCAP_NOTIFY_AUDIO_SIGNAL_CHANGE |
+		                           MWCAP_NOTIFY_AUDIO_FRAME_BUFFERED);
 		if (!mNotify)
 		{
 			#ifndef NO_QUILL
-			LOG_ERROR(mLogData.logger, "[{}] MagewellAudioCapturePin::OnThreadCreate Unable to MWRegistryNotify", mLogData.prefix);
+			LOG_ERROR(mLogData.logger, "[{}] MagewellAudioCapturePin::OnThreadCreate Unable to MWRegistryNotify",
+			          mLogData.prefix);
 			#endif
 			// TODO throw
 		}
@@ -2780,8 +2753,10 @@ HRESULT MagewellAudioCapturePin::OnThreadCreate()
 HRESULT MagewellAudioCapturePin::DoChangeMediaType(const CMediaType* pmt, const AUDIO_FORMAT* newAudioFormat)
 {
 	#ifndef NO_QUILL
-	LOG_WARNING(mLogData.logger, "[{}] Proposing new audio format Fs: {} Bits: {} Channels: {} Codec: {}", mLogData.prefix,
-		newAudioFormat->fs, newAudioFormat->bitDepth, newAudioFormat->outputChannelCount, codecNames[newAudioFormat->codec]);
+	LOG_WARNING(mLogData.logger, "[{}] Proposing new audio format Fs: {} Bits: {} Channels: {} Codec: {}",
+	            mLogData.prefix,
+	            newAudioFormat->fs, newAudioFormat->bitDepth, newAudioFormat->outputChannelCount,
+	            codecNames[newAudioFormat->codec]);
 	#endif
 	long newSize = MWCAP_AUDIO_SAMPLES_PER_FRAME * newAudioFormat->bitDepthInBytes * newAudioFormat->outputChannelCount;
 	if (newAudioFormat->codec != PCM)
@@ -2825,7 +2800,8 @@ bool MagewellAudioCapturePin::ProposeBuffers(ALLOCATOR_PROPERTIES* pProperties)
 {
 	if (mAudioFormat.codec == PCM)
 	{
-		pProperties->cbBuffer = MWCAP_AUDIO_SAMPLES_PER_FRAME * mAudioFormat.bitDepthInBytes * mAudioFormat.outputChannelCount;
+		pProperties->cbBuffer = MWCAP_AUDIO_SAMPLES_PER_FRAME * mAudioFormat.bitDepthInBytes * mAudioFormat.
+			outputChannelCount;
 	}
 	else
 	{
@@ -2841,7 +2817,7 @@ bool MagewellAudioCapturePin::ProposeBuffers(ALLOCATOR_PROPERTIES* pProperties)
 
 // loops til we have a frame to process, dealing with any mediatype changes as we go and then grabs a buffer once it's time to go
 HRESULT MagewellAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFERENCE_TIME* pStartTime,
-	REFERENCE_TIME* pEndTime, DWORD dwFlags)
+                                                   REFERENCE_TIME* pEndTime, DWORD dwFlags)
 {
 	auto hChannel = mFilter->GetChannelHandle();
 	auto proDevice = mFilter->GetDeviceType() == PRO;
@@ -2861,7 +2837,7 @@ HRESULT MagewellAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 			break;
 		}
 
-		if (mStreamStartTime == 0)
+		if (mStreamStartTime < 0)
 		{
 			#ifndef NO_QUILL
 			LOG_TRACE_L1(mLogData.logger, "[{}] Stream has not started, retry after backoff", mLogData.prefix);
@@ -2903,8 +2879,8 @@ HRESULT MagewellAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 		if (mAudioSignal.audioInfo.byChannelAllocation > 0x31)
 		{
 			#ifndef NO_QUILL
-			LOG_WARNING(mLogData.logger, "[{}] Reported channel allocation is {}, retry after backoff", mLogData.prefix, 
-				mAudioSignal.audioInfo.byChannelAllocation);
+			LOG_WARNING(mLogData.logger, "[{}] Reported channel allocation is {}, retry after backoff", mLogData.prefix,
+			            mAudioSignal.audioInfo.byChannelAllocation);
 			#endif
 
 			if (mSinceCodecChange > 0)
@@ -2950,7 +2926,9 @@ HRESULT MagewellAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 		{
 			// TODO magewell SDK bug means audio is always reported as PCM, until fixed allow 6 frames of audio to pass through before declaring it definitely PCM
 			// 12 frames is 7680 bytes of 2 channel audio & 30720 of 8 channel which should be more than enough to be sure
-			mBitstreamDetectionWindowLength = std::lround(bitstreamDetectionWindowSecs / (static_cast<double>(MWCAP_AUDIO_SAMPLES_PER_FRAME) / newAudioFormat.fs));
+			mBitstreamDetectionWindowLength = std::lround(
+				bitstreamDetectionWindowSecs / (static_cast<double>(MWCAP_AUDIO_SAMPLES_PER_FRAME) / newAudioFormat.
+					fs));
 			if (mDetectedCodec != PCM)
 			{
 				newAudioFormat.codec = mDetectedCodec;
@@ -2979,7 +2957,8 @@ HRESULT MagewellAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 				if (mStatusBits & MWCAP_NOTIFY_AUDIO_INPUT_SOURCE_CHANGE)
 				{
 					#ifndef NO_QUILL
-					LOG_TRACE_L1(mLogData.logger, "[{}] Audio input source change, retry after backoff", mLogData.prefix);
+					LOG_TRACE_L1(mLogData.logger, "[{}] Audio input source change, retry after backoff",
+					             mLogData.prefix);
 					#endif
 
 					if (mSinceCodecChange > 0)
@@ -3009,14 +2988,17 @@ HRESULT MagewellAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 						if (mDataBurstSize > 0)
 						{
 							#ifndef NO_QUILL
-							LOG_WARNING(mLogData.logger, "[{}] Audio frame buffered but capture failed ({}), possible packet corruption after {} bytes", mLogData.prefix,
-								static_cast<int>(mLastMwResult), mDataBurstRead);
+							LOG_WARNING(mLogData.logger,
+							            "[{}] Audio frame buffered but capture failed ({}), possible packet corruption after {} bytes",
+							            mLogData.prefix,
+							            static_cast<int>(mLastMwResult), mDataBurstRead);
 							#endif
 						}
 						else
 						{
 							#ifndef NO_QUILL
-							LOG_WARNING(mLogData.logger, "[{}] Audio frame buffered but capture failed ({}), retrying", mLogData.prefix, static_cast<int>(mLastMwResult));
+							LOG_WARNING(mLogData.logger, "[{}] Audio frame buffered but capture failed ({}), retrying",
+							            mLogData.prefix, static_cast<int>(mLastMwResult));
 							#endif
 						}
 						continue;
@@ -3057,19 +3039,24 @@ HRESULT MagewellAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 				#ifndef NO_QUILL
 				if (!mProbeOnTimer && newAudioFormat.codec == PCM)
 				{
-					LOG_TRACE_L2(mLogData.logger, "[{}] Bitstream probe in frame {} - {} {} Hz (since: {} len: {} burst: {})", mLogData.prefix, mFrameCounter,
-						codecNames[newAudioFormat.codec], newAudioFormat.fs, mSinceLast, mBitstreamDetectionWindowLength, mDataBurstSize);
+					LOG_TRACE_L2(mLogData.logger,
+					             "[{}] Bitstream probe in frame {} - {} {} Hz (since: {} len: {} burst: {})",
+					             mLogData.prefix, mFrameCounter,
+					             codecNames[newAudioFormat.codec], newAudioFormat.fs, mSinceLast,
+					             mBitstreamDetectionWindowLength, mDataBurstSize);
 				}
 				#endif
 
 				CopyToBitstreamBuffer(mFrameBuffer);
 
-				uint16_t bufferSize = mAudioFormat.bitDepthInBytes * MWCAP_AUDIO_SAMPLES_PER_FRAME * mAudioFormat.inputChannelCount;
+				uint16_t bufferSize = mAudioFormat.bitDepthInBytes * MWCAP_AUDIO_SAMPLES_PER_FRAME * mAudioFormat.
+					inputChannelCount;
 				auto res = ParseBitstreamBuffer(bufferSize, &detectedCodec);
 				if (S_OK == res || S_PARTIAL_DATABURST == res)
 				{
 					#ifndef NO_QUILL
-					LOG_TRACE_L2(mLogData.logger, "[{}] Detected bitstream in frame {} {} (res: {:#08x})", mLogData.prefix, mFrameCounter, codecNames[mDetectedCodec], res);
+					LOG_TRACE_L2(mLogData.logger, "[{}] Detected bitstream in frame {} {} (res: {:#08x})",
+					             mLogData.prefix, mFrameCounter, codecNames[mDetectedCodec], res);
 					#endif
 					mProbeOnTimer = false;
 					if (mDetectedCodec == *detectedCodec)
@@ -3085,7 +3072,9 @@ HRESULT MagewellAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 					if (mDataBurstPayloadSize > 0)
 					{
 						#ifndef NO_QUILL
-						LOG_TRACE_L3(mLogData.logger, "[{}] Bitstream databurst complete, collected {} bytes from {} frames", mLogData.prefix, mDataBurstPayloadSize, ++mDataBurstFrameCount);
+						LOG_TRACE_L3(mLogData.logger,
+						             "[{}] Bitstream databurst complete, collected {} bytes from {} frames",
+						             mLogData.prefix, mDataBurstPayloadSize, ++mDataBurstFrameCount);
 						#endif
 						newAudioFormat.dataBurstSize = mDataBurstPayloadSize;
 						mDataBurstFrameCount = 0;
@@ -3111,7 +3100,9 @@ HRESULT MagewellAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 						#ifndef NO_QUILL
 						if (mSinceLast == mBitstreamDetectionWindowLength)
 						{
-							LOG_TRACE_L1(mLogData.logger, "[{}] Probe complete after {} frames, not bitstream (timer? {})", mLogData.prefix, mSinceLast, mProbeOnTimer);
+							LOG_TRACE_L1(mLogData.logger,
+							             "[{}] Probe complete after {} frames, not bitstream (timer? {})",
+							             mLogData.prefix, mSinceLast, mProbeOnTimer);
 						}
 						#endif
 						mProbeOnTimer = false;
@@ -3128,7 +3119,8 @@ HRESULT MagewellAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 			if (mSinceLast >= probeTrigger)
 			{
 				#ifndef NO_QUILL
-				LOG_TRACE_L1(mLogData.logger, "[{}] Triggering bitstream probe after {} frames", mLogData.prefix, mSinceLast);
+				LOG_TRACE_L1(mLogData.logger, "[{}] Triggering bitstream probe after {} frames", mLogData.prefix,
+				             mSinceLast);
 				#endif
 				mProbeOnTimer = true;
 				mSinceLast = 0;
@@ -3157,7 +3149,9 @@ HRESULT MagewellAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 				if (FAILED(hr))
 				{
 					#ifndef NO_QUILL
-					LOG_WARNING(mLogData.logger, "[{}] AudioFormat changed but not able to reconnect ({:#08x}) retry after backoff", mLogData.prefix, hr);
+					LOG_WARNING(mLogData.logger,
+					            "[{}] AudioFormat changed but not able to reconnect ({:#08x}) retry after backoff",
+					            mLogData.prefix, hr);
 					#endif
 
 					// TODO communicate that we need to change somehow
@@ -3171,7 +3165,7 @@ HRESULT MagewellAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 
 			if (newAudioFormat.codec == PCM || mDataBurstPayloadSize > 0)
 			{
-				retVal = MagewellAudioCapturePin::GetDeliveryBuffer(ppSample, pStartTime, pEndTime, dwFlags);
+				retVal = AudioCapturePin::GetDeliveryBuffer(ppSample, pStartTime, pEndTime, dwFlags);
 				if (SUCCEEDED(retVal))
 				{
 					hasFrame = true;
@@ -3180,13 +3174,16 @@ HRESULT MagewellAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 				{
 					mSinceCodecChange = 0;
 					#ifndef NO_QUILL
-					LOG_WARNING(mLogData.logger, "[{}] Audio frame buffered but unable to get delivery buffer, retry after backoff", mLogData.prefix);
+					LOG_WARNING(mLogData.logger,
+					            "[{}] Audio frame buffered but unable to get delivery buffer, retry after backoff",
+					            mLogData.prefix);
 					#endif
 				}
 			}
 		}
 
-		if (!hasFrame) SHORT_BACKOFF;
+		if (!hasFrame)
+			SHORT_BACKOFF;
 	}
 	return retVal;
 }
@@ -3201,9 +3198,12 @@ void MagewellAudioCapturePin::CopyToBitstreamBuffer(BYTE* buf)
 		for (auto sampleIdx = 0; sampleIdx < MWCAP_AUDIO_SAMPLES_PER_FRAME; sampleIdx++)
 		{
 			int inStartL = (sampleIdx * MWCAP_AUDIO_MAX_NUM_CHANNELS + pairIdx) * maxBitDepthInBytes;
-			int inStartR = (sampleIdx * MWCAP_AUDIO_MAX_NUM_CHANNELS + pairIdx + MWCAP_AUDIO_MAX_NUM_CHANNELS / 2) * maxBitDepthInBytes;
-			int outStart = (sampleIdx * mAudioFormat.inputChannelCount + pairIdx * mAudioFormat.inputChannelCount) * mAudioFormat.bitDepthInBytes;
-			for (int byteIdx = 0; byteIdx < mAudioFormat.bitDepthInBytes; ++byteIdx) {
+			int inStartR = (sampleIdx * MWCAP_AUDIO_MAX_NUM_CHANNELS + pairIdx + MWCAP_AUDIO_MAX_NUM_CHANNELS / 2) *
+				maxBitDepthInBytes;
+			int outStart = (sampleIdx * mAudioFormat.inputChannelCount + pairIdx * mAudioFormat.inputChannelCount) *
+				mAudioFormat.bitDepthInBytes;
+			for (int byteIdx = 0; byteIdx < mAudioFormat.bitDepthInBytes; ++byteIdx)
+			{
 				auto outL = outStart + byteIdx;
 				auto outR = outStart + mAudioFormat.bitDepthInBytes + byteIdx;
 				auto inL = inStartL + maxBitDepthInBytes - byteIdx - 1;
@@ -3241,8 +3241,9 @@ HRESULT MagewellAudioCapturePin::ParseBitstreamBuffer(uint16_t bufSize, enum Cod
 			uint16_t remainingInBuffer = bufSize - bytesRead;
 			auto toCopy = std::min(remainingInBurst, remainingInBuffer);
 			#ifndef NO_QUILL
-			LOG_TRACE_L3(mLogData.logger, "[{}] Copying {} bytes of databurst from {}-{} to {}-{}", mLogData.prefix, toCopy,
-				bytesRead, bytesRead + toCopy - 1, mDataBurstRead, mDataBurstRead + toCopy - 1);
+			LOG_TRACE_L3(mLogData.logger, "[{}] Copying {} bytes of databurst from {}-{} to {}-{}", mLogData.prefix,
+			             toCopy,
+			             bytesRead, bytesRead + toCopy - 1, mDataBurstRead, mDataBurstRead + toCopy - 1);
 			#endif
 			for (auto i = 0; i < toCopy; i++)
 			{
@@ -3287,7 +3288,8 @@ HRESULT MagewellAudioCapturePin::ParseBitstreamBuffer(uint16_t bufSize, enum Cod
 					bytesRead++;
 					#ifndef NO_QUILL
 					if (!foundPause)
-						LOG_TRACE_L2(mLogData.logger, "[{}] Found PaPb at position {}-{} ({} since last)", mLogData.prefix, bytesRead - 4, bytesRead, mBytesSincePaPb);
+						LOG_TRACE_L2(mLogData.logger, "[{}] Found PaPb at position {}-{} ({} since last)", mLogData.prefix,
+					             bytesRead - 4, bytesRead, mBytesSincePaPb);
 					#endif
 					mBytesSincePaPb = 4;
 					maybeBitstream = false;
@@ -3325,17 +3327,17 @@ HRESULT MagewellAudioCapturePin::ParseBitstreamBuffer(uint16_t bufSize, enum Cod
 
 		if (mPcPdBytesRead != 4)
 		{
-
 			#ifndef NO_QUILL
 			if (!foundPause && mPcPdBytesRead != 0)
-				LOG_TRACE_L3(mLogData.logger, "[{}] Found PcPd at position {} but only {} bytes available", mLogData.prefix, bytesRead - bytesToCopy, bytesToCopy);
+				LOG_TRACE_L3(mLogData.logger, "[{}] Found PcPd at position {} but only {} bytes available", mLogData.prefix,
+			             bytesRead - bytesToCopy, bytesToCopy);
 			#endif
 			continue;
 		}
 
 		mDataBurstSize = ((static_cast<uint16_t>(mPcPdBuffer[2]) << 8) + static_cast<uint16_t>(mPcPdBuffer[3]));
 		auto dt = static_cast<uint8_t>(mPcPdBuffer[1] & 0x7f);
-		GetCodecFromIEC61937Preamble(IEC61937DataType{ dt }, &mDataBurstSize, *codec);
+		GetCodecFromIEC61937Preamble(IEC61937DataType{dt}, &mDataBurstSize, *codec);
 
 		// ignore PAUSE_OR_NULL, start search again
 		if (**codec == PAUSE_OR_NULL)
@@ -3344,7 +3346,8 @@ HRESULT MagewellAudioCapturePin::ParseBitstreamBuffer(uint16_t bufSize, enum Cod
 			if (!foundPause)
 			{
 				foundPause = true;
-				LOG_TRACE_L2(mLogData.logger, "[{}] Found PAUSE_OR_NULL ({}) with burst size {}, start skipping", mLogData.prefix, dt, mDataBurstSize);
+				LOG_TRACE_L2(mLogData.logger, "[{}] Found PAUSE_OR_NULL ({}) with burst size {}, start skipping",
+				             mLogData.prefix, dt, mDataBurstSize);
 			}
 			#endif
 			mPaPbBytesRead = mPcPdBytesRead = 0;
@@ -3371,15 +3374,23 @@ HRESULT MagewellAudioCapturePin::ParseBitstreamBuffer(uint16_t bufSize, enum Cod
 
 		mPaPbBytesRead = mPcPdBytesRead = 0;
 		#ifndef NO_QUILL
-		LOG_TRACE_L2(mLogData.logger, "[{}] Found codec {} with burst size {}", mLogData.prefix, codecNames[static_cast<int>(**codec)], mDataBurstSize);
+		LOG_TRACE_L2(mLogData.logger, "[{}] Found codec {} with burst size {}", mLogData.prefix,
+		             codecNames[static_cast<int>(**codec)], mDataBurstSize);
 		#endif
 	}
-	return partialDataBurst ? S_PARTIAL_DATABURST : maybeBitstream ? S_POSSIBLE_BITSTREAM : copiedBytes ? S_OK : S_FALSE;
+	return partialDataBurst
+		       ? S_PARTIAL_DATABURST
+		       : maybeBitstream
+		       ? S_POSSIBLE_BITSTREAM
+		       : copiedBytes
+		       ? S_OK
+		       : S_FALSE;
 }
 
 // identifies codecs that are known/expected to be carried via HDMI in an AV setup
 // from IEC 61937-2 Table 2
-HRESULT MagewellAudioCapturePin::GetCodecFromIEC61937Preamble(const IEC61937DataType dataType, uint16_t* burstSize, Codec* codec)
+HRESULT MagewellAudioCapturePin::GetCodecFromIEC61937Preamble(const IEC61937DataType dataType, uint16_t* burstSize,
+                                                              Codec* codec)
 {
 	switch (dataType & 0xff)
 	{
@@ -3409,7 +3420,8 @@ HRESULT MagewellAudioCapturePin::GetCodecFromIEC61937Preamble(const IEC61937Data
 	default:
 		*codec = PAUSE_OR_NULL;
 		#ifndef NO_QUILL
-		LOG_WARNING(mLogData.logger, "[{}] Unknown IEC61937 datatype {} will be treated as PAUSE", mLogData.prefix, dataType & 0xff);
+		LOG_WARNING(mLogData.logger, "[{}] Unknown IEC61937 datatype {} will be treated as PAUSE", mLogData.prefix,
+		            dataType & 0xff);
 		#endif
 		break;
 	}

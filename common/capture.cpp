@@ -47,7 +47,7 @@ CaptureFilter::CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID 
 
 	// to a file suffixed with the startdate/time
 	auto fileSink = CustomFrontend::create_or_get_sink<quill::FileSink>(
-		(std::filesystem::temp_directory_path() / "magewell_capture.log").string(),
+		(std::filesystem::temp_directory_path() / (pLogPrefix + "_capture.log")).string(),
 		[]()
 		{
 			quill::FileSinkConfig cfg;
@@ -55,32 +55,32 @@ CaptureFilter::CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID 
 			cfg.set_filename_append_option(quill::FilenameAppendOption::StartDateTime);
 			return cfg;
 		}(),
-			quill::FileEventNotifier{});
-	mLogData.logger = 
+		quill::FileEventNotifier{});
+	mLogData.logger =
 		CustomFrontend::create_or_get_logger("filter",
-			std::move(fileSink),
-			quill::PatternFormatterOptions{
-				"%(time) [%(thread_id)] %(short_source_location:<28) "
-				"LOG_%(log_level:<9) %(logger:<12) %(message)",
-				"%H:%M:%S.%Qns",
-				quill::Timezone::GmtTime
-			});
+		                                     std::move(fileSink),
+		                                     quill::PatternFormatterOptions{
+			                                     "%(time) [%(thread_id)] %(short_source_location:<28) "
+			                                     "LOG_%(log_level:<9) %(logger:<12) %(message)",
+			                                     "%H:%M:%S.%Qns",
+			                                     quill::Timezone::GmtTime
+		                                     });
 
 	// printing absolutely everything we may ever log
 	mLogData.logger->set_log_level(MIN_LOG_LEVEL);
 	#endif // !NO_QUILL
 
-	mLogData.prefix = std::move(pLogPrefix);
+	mLogData.prefix = pLogPrefix + "CaptureFilter";
 }
 
 STDMETHODIMP CaptureFilter::NonDelegatingQueryInterface(REFIID riid, void** ppv)
 {
 	CheckPointer(ppv, E_POINTER)
 
-		if (riid == _uuidof(IReferenceClock))
-		{
-			return GetInterface(static_cast<IReferenceClock*>(this), ppv);
-		}
+	if (riid == _uuidof(IReferenceClock))
+	{
+		return GetInterface(static_cast<IReferenceClock*>(this), ppv);
+	}
 	if (riid == _uuidof(IAMFilterMiscFlags))
 	{
 		return GetInterface(static_cast<IAMFilterMiscFlags*>(this), ppv);
@@ -111,13 +111,13 @@ HRESULT CaptureFilter::GetTime(REFERENCE_TIME* pTime)
 }
 
 HRESULT CaptureFilter::AdviseTime(REFERENCE_TIME baseTime, REFERENCE_TIME streamTime, HEVENT hEvent,
-	DWORD_PTR* pdwAdviseCookie)
+                                  DWORD_PTR* pdwAdviseCookie)
 {
 	return mClock->AdviseTime(baseTime, streamTime, hEvent, pdwAdviseCookie);
 }
 
 HRESULT CaptureFilter::AdvisePeriodic(REFERENCE_TIME startTime, REFERENCE_TIME periodTime,
-	HSEMAPHORE hSemaphore, DWORD_PTR* pdwAdviseCookie)
+                                      HSEMAPHORE hSemaphore, DWORD_PTR* pdwAdviseCookie)
 {
 	return mClock->AdvisePeriodic(startTime, periodTime, hSemaphore, pdwAdviseCookie);
 }
@@ -143,8 +143,15 @@ STDMETHODIMP CaptureFilter::SetSyncSource(IReferenceClock* pClock)
 	CBaseFilter::SetSyncSource(pClock);
 	for (auto i = 0; i < m_iPins; i++)
 	{
-		auto stream = dynamic_cast<IMediaFilter*>(m_paStreams[i]);
-		stream->SetSyncSource(pClock);
+		auto stream = dynamic_cast<CBaseStreamControl*>(m_paStreams[i]);
+		if (stream != nullptr)
+			stream->SetSyncSource(pClock);
+		else
+		{
+			#ifndef NO_QUILL
+			LOG_ERROR(mLogData.logger, "[{}] pin {} is not a CBaseStreamControl!", mLogData.prefix, i);
+			#endif
+		}
 	}
 	return NOERROR;
 }
@@ -211,7 +218,7 @@ HRESULT CaptureFilter::SetCallback(ISignalInfoCB* cb)
 STDMETHODIMP CaptureFilter::GetPages(CAUUID* pPages)
 {
 	CheckPointer(pPages, E_POINTER)
-		pPages->cElems = 1;
+	pPages->cElems = 1;
 	pPages->pElems = static_cast<GUID*>(CoTaskMemAlloc(sizeof(GUID) * pPages->cElems));
 	if (pPages->pElems == nullptr)
 	{
@@ -224,7 +231,7 @@ STDMETHODIMP CaptureFilter::GetPages(CAUUID* pPages)
 STDMETHODIMP CaptureFilter::CreatePage(const GUID& guid, IPropertyPage** ppPage)
 {
 	CheckPointer(ppPage, E_POINTER)
-		HRESULT hr = S_OK;
+	HRESULT hr = S_OK;
 
 	if (*ppPage != nullptr)
 	{
@@ -241,7 +248,7 @@ STDMETHODIMP CaptureFilter::CreatePage(const GUID& guid, IPropertyPage** ppPage)
 		(*ppPage)->AddRef();
 		return S_OK;
 	}
-	delete* ppPage;
+	delete*ppPage;
 	ppPage = nullptr;
 	return E_FAIL;
 }
@@ -379,7 +386,10 @@ void CaptureFilter::OnAudioFormatLoaded(AUDIO_FORMAT* af)
 	mAudioOutputStatus.audioOutCodec = codecNames[af->codec];
 	mAudioOutputStatus.audioOutFs = af->fs;
 	constexpr double epsilon = 1e-6;
-	mAudioOutputStatus.audioOutLfeOffset = std::abs(af->lfeLevelAdjustment - unity) <= epsilon * std::abs(af->lfeLevelAdjustment) ? 0 : -10;
+	mAudioOutputStatus.audioOutLfeOffset = std::abs(af->lfeLevelAdjustment - unity) <= epsilon * std::abs(
+		                                       af->lfeLevelAdjustment)
+		                                       ? 0
+		                                       : -10;
 	if (af->lfeChannelIndex == not_present)
 	{
 		mAudioOutputStatus.audioOutLfeChannelIndex = -1;
@@ -461,14 +471,15 @@ HRESULT CapturePin::OnThreadStartPlay()
 	REFERENCE_TIME rt;
 	GetReferenceTime(&rt);
 
-	if (mStreamStartTime == 0)
+	if (mStreamStartTime < 0)
 	{
-		LOG_WARNING(mLogData.logger, "[{}] Pin worker thread starting at {} but stream not started yet", mLogData.prefix, rt);
+		LOG_WARNING(mLogData.logger, "[{}] Pin worker thread starting at {} but stream not started yet",
+		            mLogData.prefix, rt);
 	}
 	else
 	{
 		LOG_WARNING(mLogData.logger, "[{}] Pin worker thread starting at {}, stream started at {}", mLogData.prefix, rt,
-			mStreamStartTime);
+		            mStreamStartTime);
 	}
 	#endif
 	return S_OK;
@@ -478,10 +489,10 @@ STDMETHODIMP CapturePin::NonDelegatingQueryInterface(REFIID riid, void** ppv)
 {
 	CheckPointer(ppv, E_POINTER)
 
-		if (riid == _uuidof(IAMStreamConfig))
-		{
-			return GetInterface(static_cast<IAMStreamConfig*>(this), ppv);
-		}
+	if (riid == _uuidof(IAMStreamConfig))
+	{
+		return GetInterface(static_cast<IAMStreamConfig*>(this), ppv);
+	}
 	if (riid == _uuidof(IKsPropertySet))
 	{
 		return GetInterface(static_cast<IKsPropertySet*>(this), ppv);
@@ -499,7 +510,8 @@ STDMETHODIMP CapturePin::NonDelegatingQueryInterface(REFIID riid, void** ppv)
 
 // largely a copy of CSourceStream but with logging replaced (as DbgLog to file seems to never ever work)
 // and with better error handling to avoid visible freezes with no option but to restart
-HRESULT CapturePin::DoBufferProcessingLoop(void) {
+HRESULT CapturePin::DoBufferProcessingLoop(void)
+{
 	#ifndef NO_QUILL
 	LOG_INFO(mLogData.logger, "[{}] Entering DoBufferProcessingLoop", mLogData.prefix);
 	#endif
@@ -508,16 +520,18 @@ HRESULT CapturePin::DoBufferProcessingLoop(void) {
 
 	OnThreadStartPlay();
 
-	do {
-		while (!CheckRequest(&com)) {
-
+	do
+	{
+		while (!CheckRequest(&com))
+		{
 			IMediaSample* pSample;
 
 			HRESULT hrBuf = GetDeliveryBuffer(&pSample, nullptr, nullptr, 0);
 			if (FAILED(hrBuf) || hrBuf == S_FALSE)
 			{
 				#ifndef NO_QUILL
-				LOG_WARNING(mLogData.logger, "[{}] Failed to GetDeliveryBuffer ({:#08x}), retrying", mLogData.prefix, hrBuf);
+				LOG_WARNING(mLogData.logger, "[{}] Failed to GetDeliveryBuffer ({:#08x}), retrying", mLogData.prefix,
+				            hrBuf);
 				#endif
 				SHORT_BACKOFF;
 				continue;
@@ -533,12 +547,13 @@ HRESULT CapturePin::DoBufferProcessingLoop(void) {
 				if (hr != S_OK)
 				{
 					#ifndef NO_QUILL
-					LOG_WARNING(mLogData.logger, "[{}] Failed to deliver sample downstream ({:#08x}), process loop will exit", mLogData.prefix, hr);
+					LOG_WARNING(mLogData.logger,
+					            "[{}] Failed to deliver sample downstream ({:#08x}), process loop will exit",
+					            mLogData.prefix, hr);
 					#endif
 
 					return S_OK;
 				}
-
 			}
 			else if (hr == S_FALSE)
 			{
@@ -550,7 +565,8 @@ HRESULT CapturePin::DoBufferProcessingLoop(void) {
 			else
 			{
 				#ifndef NO_QUILL
-				LOG_WARNING(mLogData.logger, "[{}] FillBuffer failed ({:#08x}), sending EOS and EC_ERRORABORT", mLogData.prefix, hr);
+				LOG_WARNING(mLogData.logger, "[{}] FillBuffer failed ({:#08x}), sending EOS and EC_ERRORABORT",
+				            mLogData.prefix, hr);
 				#endif
 
 				pSample->Release();
@@ -567,14 +583,16 @@ HRESULT CapturePin::DoBufferProcessingLoop(void) {
 		if (com == CMD_RUN || com == CMD_PAUSE)
 		{
 			#ifndef NO_QUILL
-			LOG_INFO(mLogData.logger, "[{}] DoBufferProcessingLoop Replying to CMD {}", mLogData.prefix, static_cast<int>(com));
+			LOG_INFO(mLogData.logger, "[{}] DoBufferProcessingLoop Replying to CMD {}", mLogData.prefix,
+			         static_cast<int>(com));
 			#endif
 			Reply(NOERROR);
 		}
 		else if (com != CMD_STOP)
 		{
 			#ifndef NO_QUILL
-			LOG_ERROR(mLogData.logger, "[{}] DoBufferProcessingLoop Replying to UNEXPECTED CMD {}", mLogData.prefix, static_cast<int>(com));
+			LOG_ERROR(mLogData.logger, "[{}] DoBufferProcessingLoop Replying to UNEXPECTED CMD {}", mLogData.prefix,
+			          static_cast<int>(com));
 			#endif
 			Reply(static_cast<DWORD>(E_UNEXPECTED));
 		}
@@ -584,7 +602,8 @@ HRESULT CapturePin::DoBufferProcessingLoop(void) {
 			LOG_INFO(mLogData.logger, "[{}] DoBufferProcessingLoop CMD_STOP will exit", mLogData.prefix);
 			#endif
 		}
-	} while (com != CMD_STOP);
+	}
+	while (com != CMD_STOP);
 
 	#ifndef NO_QUILL
 	LOG_INFO(mLogData.logger, "[{}] Exiting DoBufferProcessingLoop", mLogData.prefix);
@@ -669,14 +688,14 @@ HRESULT CapturePin::SetMediaType(const CMediaType* pmt)
 HRESULT CapturePin::DecideBufferSize(IMemAllocator* pIMemAlloc, ALLOCATOR_PROPERTIES* pProperties)
 {
 	CheckPointer(pIMemAlloc, E_POINTER)
-		CheckPointer(pProperties, E_POINTER)
-		CAutoLock cAutoLock(m_pFilter->pStateLock());
+	CheckPointer(pProperties, E_POINTER)
+	CAutoLock cAutoLock(m_pFilter->pStateLock());
 	HRESULT hr = NOERROR;
 	auto acceptedUpstreamBufferCount = ProposeBuffers(pProperties);
 
 	#ifndef NO_QUILL
 	LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::DecideBufferSize size: {} count: {} (from upstream? {})",
-		mLogData.prefix, pProperties->cbBuffer, pProperties->cBuffers, acceptedUpstreamBufferCount);
+	             mLogData.prefix, pProperties->cbBuffer, pProperties->cBuffers, acceptedUpstreamBufferCount);
 	#endif
 
 	ALLOCATOR_PROPERTIES actual;
@@ -685,8 +704,9 @@ HRESULT CapturePin::DecideBufferSize(IMemAllocator* pIMemAlloc, ALLOCATOR_PROPER
 	if (FAILED(hr))
 	{
 		#ifndef NO_QUILL
-		LOG_WARNING(mLogData.logger, "[{}] CapturePin::DecideBufferSize failed to SetProperties result {:#08x}", mLogData.prefix,
-			hr);
+		LOG_WARNING(mLogData.logger, "[{}] CapturePin::DecideBufferSize failed to SetProperties result {:#08x}",
+		            mLogData.prefix,
+		            hr);
 		#endif
 
 		return hr;
@@ -695,7 +715,7 @@ HRESULT CapturePin::DecideBufferSize(IMemAllocator* pIMemAlloc, ALLOCATOR_PROPER
 	{
 		#ifndef NO_QUILL
 		LOG_WARNING(mLogData.logger, "[{}] CapturePin::DecideBufferSize actual buffer is {} not {}", mLogData.prefix,
-			actual.cbBuffer, pProperties->cbBuffer);
+		            actual.cbBuffer, pProperties->cbBuffer);
 		#endif
 
 		return E_FAIL;
@@ -708,7 +728,7 @@ HRESULT CapturePin::DecideBufferSize(IMemAllocator* pIMemAlloc, ALLOCATOR_PROPER
 // CapturePin -> IKsPropertySet
 //////////////////////////////////////////////////////////////////////////
 HRESULT CapturePin::Set(REFGUID guidPropSet, DWORD dwID, void* pInstanceData,
-	DWORD cbInstanceData, void* pPropData, DWORD cbPropData)
+                        DWORD cbInstanceData, void* pPropData, DWORD cbPropData)
 {
 	// Set: Cannot set any properties.
 	return E_NOTIMPL;
@@ -761,7 +781,8 @@ receiveconnection:
 	if (SUCCEEDED(hr))
 	{
 		#ifndef NO_QUILL
-		LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::RenegotiateMediaType ReceiveConnection accepted", mLogData.prefix);
+		LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::RenegotiateMediaType ReceiveConnection accepted",
+		             mLogData.prefix);
 		#endif
 
 		hr = SetMediaType(pmt);
@@ -776,7 +797,7 @@ receiveconnection:
 		{
 			#ifndef NO_QUILL
 			LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::NegotiateMediaType Buffers outstanding, retrying in 10ms..",
-				mLogData.prefix);
+			             mLogData.prefix);
 			#endif
 
 			BACKOFF;
@@ -808,7 +829,8 @@ receiveconnection:
 			if (!renegotiateOnQueryAccept)
 			{
 				#ifndef NO_QUILL
-				LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::NegotiateMediaType - No buffer change", mLogData.prefix);
+				LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::NegotiateMediaType - No buffer change",
+				             mLogData.prefix);
 				#endif
 
 				retVal = S_OK;
@@ -829,8 +851,9 @@ receiveconnection:
 						if (checkProps.cbBuffer == props.cbBuffer && checkProps.cBuffers == props.cBuffers)
 						{
 							#ifndef NO_QUILL
-							LOG_TRACE_L1(mLogData.logger, "[{}] Updated allocator to {} bytes {} buffers", mLogData.prefix,
-								props.cbBuffer, props.cBuffers);
+							LOG_TRACE_L1(mLogData.logger, "[{}] Updated allocator to {} bytes {} buffers",
+							             mLogData.prefix,
+							             props.cbBuffer, props.cBuffers);
 							#endif
 							retVal = S_OK;
 						}
@@ -840,23 +863,26 @@ receiveconnection:
 							LOG_WARNING(
 								mLogData.logger,
 								"[{}] Allocator accepted update to {} bytes {} buffers but is {} bytes {} buffers",
-								mLogData.prefix, props.cbBuffer, props.cBuffers, checkProps.cbBuffer, checkProps.cBuffers);
+								mLogData.prefix, props.cbBuffer, props.cBuffers, checkProps.cbBuffer,
+								checkProps.cBuffers);
 							#endif
 						}
 					}
 					else
 					{
 						#ifndef NO_QUILL
-						LOG_WARNING(mLogData.logger, "[{}] Allocator did not accept update to {} bytes {} buffers [{:#08x}]",
-							mLogData.prefix, props.cbBuffer, props.cBuffers, hr);
+						LOG_WARNING(mLogData.logger,
+						            "[{}] Allocator did not accept update to {} bytes {} buffers [{:#08x}]",
+						            mLogData.prefix, props.cbBuffer, props.cBuffers, hr);
 						#endif
 					}
 				}
 				else
 				{
 					#ifndef NO_QUILL
-					LOG_WARNING(mLogData.logger, "[{}] Allocator did not commit update to {} bytes {} buffers [{:#08x}]",
-						mLogData.prefix, props.cbBuffer, props.cBuffers, hr);
+					LOG_WARNING(mLogData.logger,
+					            "[{}] Allocator did not commit update to {} bytes {} buffers [{:#08x}]",
+					            mLogData.prefix, props.cbBuffer, props.cBuffers, hr);
 					#endif
 				}
 			}
@@ -866,7 +892,8 @@ receiveconnection:
 	{
 		#ifndef NO_QUILL
 		LOG_WARNING(
-			mLogData.logger, "[{}] CapturePin::NegotiateMediaType Receive Connection failed (hr: {:#08x}); QueryAccept: {:#08x}",
+			mLogData.logger,
+			"[{}] CapturePin::NegotiateMediaType Receive Connection failed (hr: {:#08x}); QueryAccept: {:#08x}",
 			mLogData.prefix, hr, hrQA);
 		#endif
 	}
@@ -908,7 +935,7 @@ void VideoCapturePin::VideoFormatToMediaType(CMediaType* pmt, VIDEO_FORMAT* vide
 	SetRectEmpty(&(pvi->rcTarget)); // no particular destination rectangle
 	pvi->dwBitRate = static_cast<DWORD>(videoFormat->bitDepth * videoFormat->imageSize * 8 * videoFormat->fps);
 	pvi->dwBitErrorRate = 0;
-	pvi->AvgTimePerFrame = static_cast<DWORD>(static_cast<double>(10000000LL) / videoFormat->fps);
+	pvi->AvgTimePerFrame = static_cast<DWORD>(static_cast<double>(dshowTicksPerSecond) / videoFormat->fps);
 	pvi->dwInterlaceFlags = 0;
 	pvi->dwPictAspectRatioX = videoFormat->aspectX;
 	pvi->dwPictAspectRatioY = videoFormat->aspectY;
@@ -922,12 +949,12 @@ void VideoCapturePin::VideoFormatToMediaType(CMediaType* pmt, VIDEO_FORMAT* vide
 	auto colorimetry = reinterpret_cast<DXVA_ExtendedFormat*>(&(pvi->dwControlFlags));
 	// 1 = REC.709, 4 = BT.2020
 	colorimetry->VideoTransferMatrix = videoFormat->colourFormat == YUV2020
-		? static_cast<DXVA_VideoTransferMatrix>(4)
-		: DXVA_VideoTransferMatrix_BT709;
+		                                   ? static_cast<DXVA_VideoTransferMatrix>(4)
+		                                   : DXVA_VideoTransferMatrix_BT709;
 	// 1 = REC.709, 9 = BT.2020
 	colorimetry->VideoPrimaries = videoFormat->colourFormat == YUV2020
-		? static_cast<DXVA_VideoPrimaries>(9)
-		: DXVA_VideoPrimaries_BT709;
+		                              ? static_cast<DXVA_VideoPrimaries>(9)
+		                              : DXVA_VideoPrimaries_BT709;
 	// 4 = REC.709, 15 = SMPTE ST 2084 (PQ)
 	colorimetry->VideoTransferFunction = static_cast<DXVA_VideoTransferFunction>(videoFormat->hdrMeta.transferFunction);
 	// 0 = unknown, 1 = 0-255, 2 = 16-235
@@ -935,15 +962,15 @@ void VideoCapturePin::VideoFormatToMediaType(CMediaType* pmt, VIDEO_FORMAT* vide
 
 	#ifndef NO_QUILL
 	LOG_TRACE_L3(mLogData.logger, "[{}] DXVA_ExtendedFormat {} {} {} {}", mLogData.prefix,
-		static_cast<int>(colorimetry->VideoTransferMatrix),
-		static_cast<int>(colorimetry->VideoPrimaries), static_cast<int>(colorimetry->VideoTransferFunction),
-		static_cast<int>(colorimetry->NominalRange));
+	             static_cast<int>(colorimetry->VideoTransferMatrix),
+	             static_cast<int>(colorimetry->VideoPrimaries), static_cast<int>(colorimetry->VideoTransferFunction),
+	             static_cast<int>(colorimetry->NominalRange));
 	#endif
 
 	pvi->dwControlFlags += AMCONTROL_USED;
 	pvi->dwControlFlags += AMCONTROL_COLORINFO_PRESENT;
 
-	auto isRgb = videoFormat->pixelEncoding == RGB_444;
+	auto isRgb = videoFormat->pixelEncoding == RGB_444 && videoFormat->pixelStructure != FOURCC_R210;
 	pvi->bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
 	pvi->bmiHeader.biWidth = videoFormat->cx;
 	pvi->bmiHeader.biHeight = isRgb ? -(videoFormat->cy) : videoFormat->cy; // RGB on windows is upside down
@@ -969,9 +996,9 @@ bool VideoCapturePin::ShouldChangeMediaType(VIDEO_FORMAT* newVideoFormat)
 		reconnect = true;
 
 		#ifndef NO_QUILL
-		LOG_INFO(mLogData.logger, "[{}] Video dimension change {}x{} to {}x{}", 
-			mLogData.prefix, mVideoFormat.cx, mVideoFormat.cy,
-			newVideoFormat->cx, newVideoFormat->cy);
+		LOG_INFO(mLogData.logger, "[{}] Video dimension change {}x{} to {}x{}",
+		         mLogData.prefix, mVideoFormat.cx, mVideoFormat.cy,
+		         newVideoFormat->cx, newVideoFormat->cy);
 		#endif
 	}
 	if (newVideoFormat->aspectX != mVideoFormat.aspectX || newVideoFormat->aspectY != mVideoFormat.aspectY)
@@ -979,9 +1006,9 @@ bool VideoCapturePin::ShouldChangeMediaType(VIDEO_FORMAT* newVideoFormat)
 		reconnect = true;
 
 		#ifndef NO_QUILL
-		LOG_INFO(mLogData.logger, "[{}] Video AR change {}x{} to {}x{}", 
-			mLogData.prefix, mVideoFormat.aspectX, mVideoFormat.aspectY,
-			newVideoFormat->aspectX, newVideoFormat->aspectY);
+		LOG_INFO(mLogData.logger, "[{}] Video AR change {}x{} to {}x{}",
+		         mLogData.prefix, mVideoFormat.aspectX, mVideoFormat.aspectY,
+		         newVideoFormat->aspectX, newVideoFormat->aspectY);
 		#endif
 	}
 	if (abs(newVideoFormat->frameInterval - mVideoFormat.frameInterval) >= 100)
@@ -989,8 +1016,8 @@ bool VideoCapturePin::ShouldChangeMediaType(VIDEO_FORMAT* newVideoFormat)
 		reconnect = true;
 
 		#ifndef NO_QUILL
-		LOG_INFO(mLogData.logger, "[{}] Video FPS change {:.3f} to {:.3f}", 
-			mLogData.prefix, mVideoFormat.fps, newVideoFormat->fps);
+		LOG_INFO(mLogData.logger, "[{}] Video FPS change {:.3f} to {:.3f}",
+		         mLogData.prefix, mVideoFormat.fps, newVideoFormat->fps);
 		#endif
 	}
 	if (mVideoFormat.bitDepth != newVideoFormat->bitDepth)
@@ -998,8 +1025,8 @@ bool VideoCapturePin::ShouldChangeMediaType(VIDEO_FORMAT* newVideoFormat)
 		reconnect = true;
 
 		#ifndef NO_QUILL
-		LOG_INFO(mLogData.logger, "[{}] Video bit depth change {} to {}", 
-			mLogData.prefix, mVideoFormat.bitDepth, newVideoFormat->bitDepth);
+		LOG_INFO(mLogData.logger, "[{}] Video bit depth change {} to {}",
+		         mLogData.prefix, mVideoFormat.bitDepth, newVideoFormat->bitDepth);
 		#endif
 	}
 	if (mVideoFormat.pixelEncoding != newVideoFormat->pixelEncoding)
@@ -1007,10 +1034,10 @@ bool VideoCapturePin::ShouldChangeMediaType(VIDEO_FORMAT* newVideoFormat)
 		reconnect = true;
 
 		#ifndef NO_QUILL
-		LOG_INFO(mLogData.logger, "[{}] Video pixel encoding change {} to {}", 
-			mLogData.prefix,
-			static_cast<int>(mVideoFormat.pixelEncoding),
-			static_cast<int>(newVideoFormat->pixelEncoding));
+		LOG_INFO(mLogData.logger, "[{}] Video pixel encoding change {} to {}",
+		         mLogData.prefix,
+		         static_cast<int>(mVideoFormat.pixelEncoding),
+		         static_cast<int>(newVideoFormat->pixelEncoding));
 		#endif
 	}
 	if (mVideoFormat.colourFormat != newVideoFormat->colourFormat)
@@ -1018,19 +1045,20 @@ bool VideoCapturePin::ShouldChangeMediaType(VIDEO_FORMAT* newVideoFormat)
 		reconnect = true;
 
 		#ifndef NO_QUILL
-		LOG_INFO(mLogData.logger, "[{}] Video colour format change {} to {}", 
-			mLogData.prefix, mVideoFormat.colourFormatName, newVideoFormat->colourFormatName);
+		LOG_INFO(mLogData.logger, "[{}] Video colour format change {} to {}",
+		         mLogData.prefix, mVideoFormat.colourFormatName, newVideoFormat->colourFormatName);
 		#endif
 	}
-	if (mVideoFormat.quantisation != newVideoFormat->quantisation || mVideoFormat.saturation != newVideoFormat->saturation)
+	if (mVideoFormat.quantisation != newVideoFormat->quantisation || mVideoFormat.saturation != newVideoFormat->
+		saturation)
 	{
 		reconnect = true;
 
 		#ifndef NO_QUILL
-		LOG_INFO(mLogData.logger, "[{}] Video colorimetry change quant {} to {} sat {} to {}", 
-			mLogData.prefix,
-			static_cast<int>(mVideoFormat.quantisation), static_cast<int>(newVideoFormat->quantisation),
-			static_cast<int>(mVideoFormat.saturation), static_cast<int>(newVideoFormat->saturation)
+		LOG_INFO(mLogData.logger, "[{}] Video colorimetry change quant {} to {} sat {} to {}",
+		         mLogData.prefix,
+		         static_cast<int>(mVideoFormat.quantisation), static_cast<int>(newVideoFormat->quantisation),
+		         static_cast<int>(mVideoFormat.saturation), static_cast<int>(newVideoFormat->saturation)
 		);
 		#endif
 	}
@@ -1040,14 +1068,48 @@ bool VideoCapturePin::ShouldChangeMediaType(VIDEO_FORMAT* newVideoFormat)
 		reconnect = true;
 
 		#ifndef NO_QUILL
-		auto formatFrom = mVideoFormat.hdrMeta.transferFunction == 0 ? "?" : mVideoFormat.hdrMeta.transferFunction == 4 ? "REC.709" : "SMPTE ST 2084 (PQ)";
-		auto formatTo = incomingTransferFunction == 0 ? "?" : incomingTransferFunction == 4 ? "REC.709" : "SMPTE ST 2084 (PQ)";
-		LOG_INFO(mLogData.logger, "[{}] Video transfer function change {} ({}) to {} ({})", 
-			mLogData.prefix, formatFrom, mVideoFormat.hdrMeta.transferFunction, formatTo, incomingTransferFunction);
+		auto formatFrom = mVideoFormat.hdrMeta.transferFunction == 0
+			                  ? "?"
+			                  : mVideoFormat.hdrMeta.transferFunction == 4
+			                  ? "REC.709"
+			                  : "SMPTE ST 2084 (PQ)";
+		auto formatTo = incomingTransferFunction == 0
+			                ? "?"
+			                : incomingTransferFunction == 4
+			                ? "REC.709"
+			                : "SMPTE ST 2084 (PQ)";
+		LOG_INFO(mLogData.logger, "[{}] Video transfer function change {} ({}) to {} ({})",
+		         mLogData.prefix, formatFrom, mVideoFormat.hdrMeta.transferFunction, formatTo,
+		         incomingTransferFunction);
 		#endif
 	}
 
 	return reconnect;
+}
+
+HRESULT VideoCapturePin::DoChangeMediaType(const CMediaType* pmt, const VIDEO_FORMAT* newVideoFormat)
+{
+	#ifndef NO_QUILL
+	LOG_WARNING(
+		mLogData.logger,
+		"[{}] Proposing new video format {} x {} ({}:{}) @ {:.3f} Hz in {} bits ({} {} tf: {}) size {} bytes",
+		mLogData.prefix,
+		newVideoFormat->cx, newVideoFormat->cy, newVideoFormat->aspectX, newVideoFormat->aspectY, newVideoFormat->fps,
+		newVideoFormat->bitDepth,
+		newVideoFormat->pixelStructureName, newVideoFormat->colourFormatName, newVideoFormat->hdrMeta.transferFunction,
+		newVideoFormat->imageSize);
+	#endif
+
+	auto retVal = RenegotiateMediaType(pmt, newVideoFormat->imageSize,
+		newVideoFormat->imageSize != mVideoFormat.imageSize);
+	if (retVal == S_OK)
+	{
+		mVideoFormat = *newVideoFormat;
+		OnChangeMediaType();
+	}
+
+	return retVal;
+
 }
 
 HRESULT VideoCapturePin::GetMediaType(CMediaType* pmt)
@@ -1254,7 +1316,7 @@ void AudioCapturePin::AudioFormatToMediaType(CMediaType* pmt, AUDIO_FORMAT* audi
 		{
 		case AC3:
 			pmt->subtype = MEDIASUBTYPE_DOLBY_AC3;
-			wf->Format.nChannels = 2;						// 1 IEC 60958 Line.
+			wf->Format.nChannels = 2; // 1 IEC 60958 Line.
 			wf->dwChannelMask = KSAUDIO_SPEAKER_5POINT1;
 			wf->SubFormat = KSDATAFORMAT_SUBTYPE_IEC61937_DOLBY_DIGITAL;
 			wf_iec61937.dwEncodedChannelCount = 6;
@@ -1262,7 +1324,7 @@ void AudioCapturePin::AudioFormatToMediaType(CMediaType* pmt, AUDIO_FORMAT* audi
 			break;
 		case EAC3:
 			pmt->subtype = MEDIASUBTYPE_DOLBY_DDPLUS;
-			wf->Format.nChannels = 2;						// 1 IEC 60958 Line.
+			wf->Format.nChannels = 2; // 1 IEC 60958 Line.
 			wf->dwChannelMask = KSAUDIO_SPEAKER_5POINT1;
 			wf->SubFormat = KSDATAFORMAT_SUBTYPE_IEC61937_DOLBY_DIGITAL_PLUS;
 			wf_iec61937.dwEncodedChannelCount = 6;
@@ -1270,7 +1332,7 @@ void AudioCapturePin::AudioFormatToMediaType(CMediaType* pmt, AUDIO_FORMAT* audi
 			break;
 		case DTS:
 			pmt->subtype = MEDIASUBTYPE_DTS;
-			wf->Format.nChannels = 2;						// 1 IEC 60958 Lines.
+			wf->Format.nChannels = 2; // 1 IEC 60958 Lines.
 			wf->dwChannelMask = KSAUDIO_SPEAKER_5POINT1;
 			wf->SubFormat = KSDATAFORMAT_SUBTYPE_IEC61937_DTS;
 			wf_iec61937.dwEncodedChannelCount = 6;
@@ -1278,7 +1340,7 @@ void AudioCapturePin::AudioFormatToMediaType(CMediaType* pmt, AUDIO_FORMAT* audi
 			break;
 		case DTSHD:
 			pmt->subtype = MEDIASUBTYPE_DTS_HD;
-			wf->Format.nChannels = 8;						// 4 IEC 60958 Lines.
+			wf->Format.nChannels = 8; // 4 IEC 60958 Lines.
 			wf->dwChannelMask = KSAUDIO_SPEAKER_7POINT1;
 			wf->SubFormat = KSDATAFORMAT_SUBTYPE_IEC61937_DTS_HD;
 			wf_iec61937.dwEncodedChannelCount = 8;
@@ -1286,7 +1348,7 @@ void AudioCapturePin::AudioFormatToMediaType(CMediaType* pmt, AUDIO_FORMAT* audi
 			break;
 		case TRUEHD:
 			pmt->subtype = MEDIASUBTYPE_DOLBY_TRUEHD;
-			wf->Format.nChannels = 8;						// 4 IEC 60958 Lines.
+			wf->Format.nChannels = 8; // 4 IEC 60958 Lines.
 			wf->dwChannelMask = KSAUDIO_SPEAKER_7POINT1;
 			wf->SubFormat = KSDATAFORMAT_SUBTYPE_IEC61937_DOLBY_MLP;
 			wf_iec61937.dwEncodedChannelCount = 8;
@@ -1320,8 +1382,9 @@ bool AudioCapturePin::ShouldChangeMediaType(AUDIO_FORMAT* newAudioFormat)
 		reconnect = true;
 
 		#ifndef NO_QUILL
-		LOG_INFO(mLogData.logger, "[{}] Input channel count change {} to {}", mLogData.prefix, mAudioFormat.inputChannelCount,
-			newAudioFormat->inputChannelCount);
+		LOG_INFO(mLogData.logger, "[{}] Input channel count change {} to {}", mLogData.prefix,
+		         mAudioFormat.inputChannelCount,
+		         newAudioFormat->inputChannelCount);
 		#endif
 	}
 	if (mAudioFormat.outputChannelCount != newAudioFormat->outputChannelCount)
@@ -1329,8 +1392,9 @@ bool AudioCapturePin::ShouldChangeMediaType(AUDIO_FORMAT* newAudioFormat)
 		reconnect = true;
 
 		#ifndef NO_QUILL
-		LOG_INFO(mLogData.logger, "[{}] Output channel count change {} to {}", mLogData.prefix, mAudioFormat.outputChannelCount,
-			newAudioFormat->outputChannelCount);
+		LOG_INFO(mLogData.logger, "[{}] Output channel count change {} to {}", mLogData.prefix,
+		         mAudioFormat.outputChannelCount,
+		         newAudioFormat->outputChannelCount);
 		#endif
 	}
 	if (mAudioFormat.bitDepthInBytes != newAudioFormat->bitDepthInBytes)
@@ -1339,7 +1403,7 @@ bool AudioCapturePin::ShouldChangeMediaType(AUDIO_FORMAT* newAudioFormat)
 
 		#ifndef NO_QUILL
 		LOG_INFO(mLogData.logger, "[{}] Bit depth change {} to {}", mLogData.prefix, mAudioFormat.bitDepthInBytes,
-			newAudioFormat->bitDepthInBytes);
+		         newAudioFormat->bitDepthInBytes);
 		#endif
 	}
 	if (mAudioFormat.fs != newAudioFormat->fs)
@@ -1355,23 +1419,27 @@ bool AudioCapturePin::ShouldChangeMediaType(AUDIO_FORMAT* newAudioFormat)
 		reconnect = true;
 
 		#ifndef NO_QUILL
-		LOG_INFO(mLogData.logger, "[{}] Codec change {} to {}", mLogData.prefix, codecNames[mAudioFormat.codec], codecNames[newAudioFormat->codec]);
+		LOG_INFO(mLogData.logger, "[{}] Codec change {} to {}", mLogData.prefix, codecNames[mAudioFormat.codec],
+		         codecNames[newAudioFormat->codec]);
 		#endif
 	}
 	if (mAudioFormat.channelAllocation != newAudioFormat->channelAllocation)
 	{
 		reconnect = true;
 		#ifndef NO_QUILL
-		LOG_INFO(mLogData.logger, "[{}] Channel allocation change {} to {}", mLogData.prefix, mAudioFormat.channelAllocation,
-			newAudioFormat->channelAllocation);
+		LOG_INFO(mLogData.logger, "[{}] Channel allocation change {} to {}", mLogData.prefix,
+		         mAudioFormat.channelAllocation,
+		         newAudioFormat->channelAllocation);
 		#endif
 	}
-	if (mAudioFormat.codec != PCM && newAudioFormat->codec != PCM && mAudioFormat.dataBurstSize != newAudioFormat->dataBurstSize)
+	if (mAudioFormat.codec != PCM && newAudioFormat->codec != PCM && mAudioFormat.dataBurstSize != newAudioFormat->
+		dataBurstSize)
 	{
 		reconnect = true;
 		#ifndef NO_QUILL
-		LOG_INFO(mLogData.logger, "[{}] Bitstream databurst change {} to {}", mLogData.prefix, mAudioFormat.dataBurstSize,
-			newAudioFormat->dataBurstSize);
+		LOG_INFO(mLogData.logger, "[{}] Bitstream databurst change {} to {}", mLogData.prefix,
+		         mAudioFormat.dataBurstSize,
+		         newAudioFormat->dataBurstSize);
 		#endif
 	}
 	return reconnect;

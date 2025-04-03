@@ -31,8 +31,8 @@
 #endif /* __RPCNDR_H_VERSION__ */
 
 
-#ifndef __DeckLinkAPI_h__
-#define __DeckLinkAPI_h__
+#ifndef __DeckLinkAPI_h_h__
+#define __DeckLinkAPI_h_h__
 
 #if defined(_MSC_VER) && (_MSC_VER >= 1020)
 #pragma once

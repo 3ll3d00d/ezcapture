@@ -24,7 +24,7 @@
 #include "bmcapture.h"
 #include "signalinfo.h"
 
-#define CreateComObject(clsid, iid, var) CoCreateInstance( clsid, NULL, CLSCTX_INPROC_SERVER, iid, (void **)&var);
+#define CreateComObject(clsid, iid, var) CoCreateInstance( clsid, NULL, CLSCTX_INPROC_SERVER, iid, (void **)&(var));
 
 #if CAPTURE_NAME_SUFFIX == 1
 #define FILTER_NAME L"Blackmagic Capture (Trace)"
@@ -105,8 +105,7 @@ CFactoryTemplate g_Templates[] = {
     {
         FILTER_NAME,
         &CLSID_BMCAPTURE_FILTER,
-        // FIXFIX BlackmagicCaptureFilter::CreateInstance,
-        CSignalInfoProp::CreateInstance,
+        BlackmagicCaptureFilter::CreateInstance,
         nullptr,
         &sMIPSetup
     },

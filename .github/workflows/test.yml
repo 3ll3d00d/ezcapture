@@ -1,0 +1,42 @@
+name: MSBuild
+
+on:
+  push:
+    branches:
+        - 'feature/*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [ Debug, Release, ReleaseTrace, ReleaseWarn ]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v1.0.2
+
+    - name: Setup vcpkg for mwcapture
+      uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgJsonGlob: 'mwcapture/vcpkg.json'
+        vcpkgConfigurationJsonGlob: 'mwcapture/vcpkg-configuration.json'
+        
+    - name: Setup vcpkg for mwcapture-test
+      uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgJsonGlob: 'mwcapture-test/vcpkg.json'      
+        vcpkgConfigurationJsonGlob: 'mwcapture-test/vcpkg-configuration.json'
+
+    - name: vcpkg integrate 
+      run: vcpkg integrate install
+      
+    - name: Build
+      working-directory: ${{ env.GITHUB_WORKSPACE }}
+      run: msbuild /t:Rebuild /p:Configuration=${{ matrix.configuration }} 

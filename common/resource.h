@@ -1,6 +1,6 @@
 //{{NO_DEPENDENCIES}}
 // Microsoft Visual C++ generated include file.
-// Used by mwcapture.rc
+// Used by ezcapture.rc
 //
 #define IDS_TITLE                       101
 #define IDD_PROPPAGE_SIGNAL_INFO        107

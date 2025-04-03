@@ -16,8 +16,12 @@
 #include <LibMWCapture/MWHDMIPackets.h>
 #include "domain.h"
 
+constexpr auto chromaticity_scale_factor = 0.00002;
+constexpr auto high_luminance_scale_factor = 1.0;
+constexpr auto low_luminance_scale_factor = 0.0001;
+
 // utility functions
-inline void LoadHdrMeta(HDR_META* meta, HDMI_HDR_INFOFRAME_PAYLOAD* frame)
+inline void LoadHdrMeta(HDR_META* meta, const HDMI_HDR_INFOFRAME_PAYLOAD* frame)
 {
 	auto hdrIn = *frame;
 	auto hdrOut = meta;
@@ -62,30 +66,27 @@ inline void LoadHdrMeta(HDR_META* meta, HDMI_HDR_INFOFRAME_PAYLOAD* frame)
 		auto b_idx = 3 - g_idx - r_idx;
 		if (b_idx != g_idx && b_idx != r_idx)
 		{
-			hdrOut->r_primary_x = primaries_x[r_idx];
-			hdrOut->r_primary_y = primaries_y[r_idx];
-			hdrOut->g_primary_x = primaries_x[g_idx];
-			hdrOut->g_primary_y = primaries_y[g_idx];
-			hdrOut->b_primary_x = primaries_x[b_idx];
-			hdrOut->b_primary_y = primaries_y[b_idx];
+			hdrOut->r_primary_x = primaries_x[r_idx] * chromaticity_scale_factor;
+			hdrOut->r_primary_y = primaries_y[r_idx] * chromaticity_scale_factor;
+			hdrOut->g_primary_x = primaries_x[g_idx] * chromaticity_scale_factor;
+			hdrOut->g_primary_y = primaries_y[g_idx] * chromaticity_scale_factor;
+			hdrOut->b_primary_x = primaries_x[b_idx] * chromaticity_scale_factor;
+			hdrOut->b_primary_y = primaries_y[b_idx] * chromaticity_scale_factor;
 		}
 	}
 
-	hdrOut->whitepoint_x = hdrIn.white_point_lsb_x + (hdrIn.white_point_msb_x << 8);
-	hdrOut->whitepoint_y = hdrIn.white_point_lsb_y + (hdrIn.white_point_msb_y << 8);
+	hdrOut->whitepoint_x = (hdrIn.white_point_lsb_x + (hdrIn.white_point_msb_x << 8)) * chromaticity_scale_factor;
+	hdrOut->whitepoint_y = (hdrIn.white_point_lsb_y + (hdrIn.white_point_msb_y << 8)) * chromaticity_scale_factor;
 
-	hdrOut->maxDML = hdrIn.max_display_mastering_lsb_luminance + (hdrIn.max_display_mastering_msb_luminance << 8);
-	hdrOut->minDML = hdrIn.min_display_mastering_lsb_luminance + (hdrIn.min_display_mastering_msb_luminance << 8);
+	hdrOut->maxDML = (hdrIn.max_display_mastering_lsb_luminance + (hdrIn.max_display_mastering_msb_luminance << 8)) *
+		high_luminance_scale_factor;
+	hdrOut->minDML = (hdrIn.min_display_mastering_lsb_luminance + (hdrIn.min_display_mastering_msb_luminance << 8)) *
+		low_luminance_scale_factor;
 
 	hdrOut->maxCLL = hdrIn.maximum_content_light_level_lsb + (hdrIn.maximum_content_light_level_msb << 8);
 	hdrOut->maxFALL = hdrIn.maximum_frame_average_light_level_lsb + (hdrIn.maximum_frame_average_light_level_msb << 8);
 
 	hdrOut->transferFunction = hdrIn.byEOTF == 0x2 ? 15 : 4;
 
-	hdrOut->exists = hdrOut->r_primary_x && hdrOut->r_primary_y
-		&& hdrOut->g_primary_x && hdrOut->g_primary_y
-		&& hdrOut->b_primary_x && hdrOut->b_primary_y
-		&& hdrOut->whitepoint_x && hdrOut->whitepoint_y
-		&& hdrOut->minDML && hdrOut->maxDML
-		&& hdrOut->maxCLL && hdrOut->maxFALL;
+	hdrOut->exists = hdrMetaExists(hdrOut);
 }

@@ -15,21 +15,21 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="dllmain.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="bmcapture.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
+    <Midl Include="..\bmsdk\include\DeckLinkAPI.idl">
+      <Filter>Header Files</Filter>
+    </Midl>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="bmcapture.h">
+    <ClInclude Include="..\bmsdk\include\DeckLinkAPIVersion.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DeckLinkAPI_h.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="bmcapture.def">
+    <ClCompile Include="DeckLinkAPI_i.c">
       <Filter>Source Files</Filter>
-    </None>
+    </ClCompile>
   </ItemGroup>
 </Project>
