@@ -60,3 +60,19 @@ TEST(HDR, CanParseHDRInfoFrame) {
     EXPECT_EQ(o.minDML, 50);
     EXPECT_EQ(o.maxDML, 3999);
 }
+
+TEST(DIMS, CanCalcImageDims)
+{
+
+    for (int i = 0; i < 3; ++i)
+    {
+        for (int j = 0; j < 4; ++j)
+        {
+            DWORD img, line;
+            GetImageDimensions(fourcc[i][j], 3840, 2160, &line, &img);
+
+            EXPECT_EQ(line, FOURCC_CalcMinStride(fourcc[i][j], 3840, 2));
+            EXPECT_EQ(img, FOURCC_CalcImageSize(fourcc[i][j], 3840, 2160, line));
+        }
+    }
+}

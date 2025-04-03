@@ -25,12 +25,12 @@
 
 #define CreateComObject(clsid, iid, var) CoCreateInstance( clsid, NULL, CLSCTX_INPROC_SERVER, iid, (void **)&var);
 
-#if MWCAPTURE_NAME_SUFFIX == 1
+#if CAPTURE_NAME_SUFFIX == 1
 #define FILTER_NAME L"Magewell Pro Capture (Trace)"
  // {9E53337D-9E32-40B4-AD39-B8525CDECD45}
 DEFINE_GUID(CLSID_MWCAPTURE_FILTER,
     0x9e53337d, 0x9e32, 0x40b4, 0xad, 0x39, 0xb8, 0x52, 0x5c, 0xde, 0xcd, 0x45);
-#elif MWCAPTURE_NAME_SUFFIX == 2
+#elif CAPTURE_NAME_SUFFIX == 2
 #define FILTER_NAME L"Magewell Pro Capture (Warn)"
  // {87A31069-9A13-40D6-9C84-5499D8A44519}
 DEFINE_GUID(CLSID_MWCAPTURE_FILTER,

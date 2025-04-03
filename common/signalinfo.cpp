@@ -65,7 +65,7 @@ HRESULT CSignalInfoProp::OnActivate()
 	}
 	ASSERT(mSignalInfo != nullptr);
 
-	auto version = L"v" MW_VERSION_STR;
+	auto version = L"v" EZ_VERSION_STR;
 	SendDlgItemMessage(m_Dlg, IDC_SIGNAL_STATUS_FOOTER, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(version));
 	return mSignalInfo->Reload();
 }
