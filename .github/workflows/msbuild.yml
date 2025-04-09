@@ -44,6 +44,12 @@ jobs:
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v1.0.2
 
+    - name: Setup vcpkg for common
+      uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgJsonGlob: 'common/vcpkg.json'      
+        vcpkgConfigurationJsonGlob: 'common/vcpkg-configuration.json'
+
     - name: Setup vcpkg for mwcapture
       uses: lukka/run-vcpkg@v11
       with:
@@ -56,6 +62,12 @@ jobs:
         vcpkgJsonGlob: 'mwcapture-test/vcpkg.json'      
         vcpkgConfigurationJsonGlob: 'mwcapture-test/vcpkg-configuration.json'
 
+    - name: Setup vcpkg for bmcapture
+      uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgJsonGlob: 'bmcapture/vcpkg.json'
+        vcpkgConfigurationJsonGlob: 'bmcapture/vcpkg-configuration.json'
+        
     - name: vcpkg integrate 
       run: vcpkg integrate install
       
@@ -69,26 +81,34 @@ jobs:
       run: |
         if [[ ${{ matrix.configuration }} == "Debug" ]]
         then
-          ZIP_NAME="mwcapture-${{ github.ref_name }}-debug-trace-logging.zip"
-          (cd x64/${{ matrix.configuration }}; 7z a ../../${ZIP_NAME} mwcapture.exp)
+          MW_ZIP_NAME="mwcapture-${{ github.ref_name }}-debug-trace-logging.zip"
+          (cd x64/${{ matrix.configuration }}; 7z a ../../${MW_ZIP_NAME} mwcapture.exp)
+          BM_ZIP_NAME="bmcapture-${{ github.ref_name }}-debug-trace-logging.zip"
+          (cd x64/${{ matrix.configuration }}; 7z a ../../${MW_ZIP_NAME} bmcapture.exp)
         elif [[ ${{ matrix.configuration }} == "Release" ]]
         then
-          ZIP_NAME="mwcapture-${{ github.ref_name }}.zip"
+          MW_ZIP_NAME="mwcapture-${{ github.ref_name }}.zip"
+          BM_ZIP_NAME="bmcapture-${{ github.ref_name }}.zip"
         elif [[ ${{ matrix.configuration }} == "ReleaseTrace" ]]
         then
-          ZIP_NAME="mwcapture-${{ github.ref_name }}-release-trace-logging.zip"
+          MW_ZIP_NAME="mwcapture-${{ github.ref_name }}-release-trace-logging.zip"
+          BM_ZIP_NAME="bmcapture-${{ github.ref_name }}-release-trace-logging.zip"
         elif [[ ${{ matrix.configuration }} == "ReleaseWarn" ]]
         then
-          ZIP_NAME="mwcapture-${{ github.ref_name }}-release-warn-logging.zip"
+          MW_ZIP_NAME="mwcapture-${{ github.ref_name }}-release-warn-logging.zip"
+          BM_ZIP_NAME="bmcapture-${{ github.ref_name }}-release-warn-logging.zip"
         fi
-        7z a ${ZIP_NAME} COPYING
-        (cd x64/${{ matrix.configuration }}; 7z a ../../${ZIP_NAME} mwcapture.ax)
-        (cd mwsdk; 7z a ../${ZIP_NAME} RedistLicense.rtf)
-        (cd mwsdk; 7z a ../${ZIP_NAME} MWCaptureRT.exe)
-        echo "binary_path=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
+        7z a ${MW_ZIP_NAME} COPYING 
+        7z a ${BM_ZIP_NAME} COPYING 
+        (cd x64/${{ matrix.configuration }}; 7z a ../../${MW_ZIP_NAME} mwcapture.ax; 7z a ../../${BM_ZIP_NAME} bmcapture.ax)
+        (cd mwsdk; 7z a ../${MW_ZIP_NAME} RedistLicense.rtf)
+        (cd mwsdk; 7z a ../${MW_ZIP_NAME} MWCaptureRT.exe)
+        echo "mw_binary_path=${MW_ZIP_NAME}" >> "$GITHUB_OUTPUT"
+        echo "bm_binary_path=${BM_ZIP_NAME}" >> "$GITHUB_OUTPUT"
 
     - name: Upload asset
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        gh release upload ${{ github.ref_name }} ${{ steps.create_dist.outputs.binary_path }}
+        gh release upload ${{ github.ref_name }} ${{ steps.create_dist.outputs.mw_binary_path }}
+        gh release upload ${{ github.ref_name }} ${{ steps.create_dist.outputs.bm_binary_path }}
