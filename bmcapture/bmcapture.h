@@ -119,10 +119,11 @@ private:
 class VideoFrame
 {
 public:
-	VideoFrame(VIDEO_FORMAT format, int64_t time, long rowSize, uint64_t index,
+	VideoFrame(VIDEO_FORMAT format, int64_t time, int64_t duration, long rowSize, uint64_t index,
 	           const CComQIPtr<IDeckLinkVideoBuffer>& buffer) :
 		mFormat(std::move(format)),
 		mFrameTime(time),
+		mFrameDuration(duration),
 		mFrameIndex(index),
 		mBuffer(buffer)
 	{
@@ -134,6 +135,7 @@ public:
 	VideoFrame(const VideoFrame& vf):
 		mFormat(vf.mFormat),
 		mFrameTime(vf.mFrameTime),
+		mFrameDuration(vf.mFrameDuration),
 		mFrameIndex(vf.mFrameIndex),
 		mBuffer(vf.mBuffer),
 		mLength(vf.mLength)
@@ -153,6 +155,8 @@ public:
 
 	int64_t GetFrameTime() const { return mFrameTime; }
 
+	int64_t GetFrameDuration() const { return mFrameDuration; }
+
 	VIDEO_FORMAT GetVideoFormat() const { return mFormat; }
 
 	long GetLength() const { return mLength; }
@@ -160,6 +164,7 @@ public:
 private:
 	VIDEO_FORMAT mFormat{};
 	int64_t mFrameTime{0};
+	int64_t mFrameDuration{0};
 	uint64_t mFrameIndex{0};
 	long mLength{0};
 	CComQIPtr<IDeckLinkVideoBuffer> mBuffer;
@@ -283,13 +288,14 @@ private:
 	uint8_t mRunningPins{0};
 	VIDEO_SIGNAL mVideoSignal{};
 	VIDEO_FORMAT mVideoFormat{};
+
 	int64_t mPreviousVideoFrameTime{invalidFrameTime};
-	uint64_t mCapturedVideoFrameCount{0};
+	uint64_t mCurrentVideoFrameIndex{0};
 	std::shared_ptr<VideoFrame> mVideoFrame;
 	HANDLE mVideoFrameEvent;
 
 	int64_t mPreviousAudioFrameTime{invalidFrameTime};
-	uint64_t mCapturedAudioFrameCount{0};
+	uint64_t mCurrentAudioFrameIndex{0};
 	std::shared_ptr<AudioFrame> mAudioFrame;
 	HANDLE mAudioFrameEvent;
 };

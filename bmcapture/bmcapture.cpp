@@ -42,7 +42,8 @@
 
 // audio is limited to 48kHz and an audio packet is only delivered with a video frame
 // lowest fps is 23.976 so the max no of samples should be 48000/(24000/1001) = 2002
-constexpr uint16_t maxSamplesPerFrame = 2048;
+// but there can be backlogs so allow for a few frames for safety
+constexpr uint16_t maxSamplesPerFrame = 8192;
 
 //////////////////////////////////////////////////////////////////////////
 // BlackmagicCaptureFilter
@@ -585,11 +586,19 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 		IDeckLinkVideoFrame* frameToProcess = videoFrame;
 
 		int64_t frameTime = 0;
-		auto result = videoFrame->GetHardwareReferenceTimestamp(dshowTicksPerSecond, &frameTime, nullptr);
-		if (!SUCCEEDED(result))
+		int64_t frameDuration = 0;
+		auto result = videoFrame->GetStreamTime(&frameTime, &frameDuration, dshowTicksPerSecond);
+		if (SUCCEEDED(result))
 		{
 			#ifndef NO_QUILL
-			LOG_ERROR(mLogData.logger, "[{}] Discarding video frame, unable to get reference tiemstamp {:#08x}",
+			LOG_TRACE_L3(mLogData.logger, "[{}] Captured video frame at {} (duration: {})", mLogData.prefix, frameTime,
+			             frameDuration);
+			#endif
+		}
+		else
+		{
+			#ifndef NO_QUILL
+			LOG_ERROR(mLogData.logger, "[{}] Discarding video frame, unable to get reference timestamp {:#08x}",
 			          mLogData.prefix, result);
 			#endif
 
@@ -633,25 +642,21 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			#endif
 		}
 
-		// detect discontinuity
-		if (mPreviousVideoFrameTime != invalidFrameTime)
+		if (mPreviousVideoFrameTime == invalidFrameTime)
 		{
-			const auto ticksPerFrame = std::round((1.0 / newVideoFormat.fps) * dshowTicksPerSecond);
-			const auto framesSinceLast = static_cast<int>(round(
-				static_cast<double>(frameTime - mPreviousVideoFrameTime) / ticksPerFrame));
-
-			mCapturedVideoFrameCount += framesSinceLast;
-			#ifndef NO_QUILL
-			if (auto missedFrames = std::max((framesSinceLast - 1), 0))
-			{
-				LOG_WARNING(mLogData.logger, "[{}] Video capture discontinuity detected, {} frames missed at frame {}",
-				            mLogData.prefix, missedFrames, mCapturedVideoFrameCount);
-			}
-			#endif
+			mCurrentVideoFrameIndex++;
 		}
 		else
 		{
-			mCapturedVideoFrameCount++;
+			const auto framesSinceLast = (frameTime - mPreviousVideoFrameTime) / frameDuration;
+			mCurrentVideoFrameIndex += framesSinceLast;
+			#ifndef NO_QUILL
+			if (auto missedFrames = std::max(framesSinceLast - 1, 0LL))
+			{
+				LOG_WARNING(mLogData.logger, "[{}] Video capture discontinuity detected, {} frames missed at frame {}",
+				            mLogData.prefix, missedFrames, mCurrentVideoFrameIndex);
+			}
+			#endif
 		}
 		mPreviousVideoFrameTime = frameTime;
 
@@ -856,8 +861,8 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			CAutoLock lock(&mFrameSec);
 			mVideoFormat = newVideoFormat;
 			CComQIPtr<IDeckLinkVideoBuffer> buf(frameToProcess);
-			mVideoFrame = std::make_shared<VideoFrame>(newVideoFormat, frameTime, frameToProcess->GetRowBytes(),
-			                                           mCapturedVideoFrameCount, buf);
+			mVideoFrame = std::make_shared<VideoFrame>(newVideoFormat, frameTime, frameDuration,
+			                                           frameToProcess->GetRowBytes(), mCurrentVideoFrameIndex, buf);
 		}
 
 		// signal listeners
@@ -873,18 +878,40 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 	if (audioPacket != nullptr)
 	{
 		void* audioData = nullptr;
-		audioPacket->GetBytes(&audioData);
+		auto result = audioPacket->GetBytes(&audioData);
+		if (!SUCCEEDED(result))
+		{
+			#ifndef NO_QUILL
+			LOG_WARNING(mLogData.logger, "[{}] Failed to get audioFrame bytes {:#08x})", mLogData.prefix, result);
+			#endif
 
-		BMDTimeValue frameTime;
-		audioPacket->GetPacketTime(&frameTime, dshowTicksPerSecond);
+			return E_FAIL;
+		}
+
+		int64_t frameTime;
+		result = audioPacket->GetPacketTime(&frameTime, dshowTicksPerSecond);
+		if (SUCCEEDED(result))
+		{
+			#ifndef NO_QUILL
+			LOG_TRACE_L3(mLogData.logger, "[{}] Captured audio frame at {}", mLogData.prefix, frameTime);
+			#endif
+		}
+		else
+		{
+			#ifndef NO_QUILL
+			LOG_WARNING(mLogData.logger, "[{}] Failed to get audioFrame bytes {:#08x})", mLogData.prefix, result);
+			#endif
+
+			return E_FAIL;
+		}
 
 		AUDIO_FORMAT newAudioFormat{};
 		newAudioFormat.inputChannelCount = mDeviceInfo.audioChannelCount;
 		newAudioFormat.outputChannelCount = mDeviceInfo.audioChannelCount;
 
 		{
-			auto audioFrameLength = audioPacket->GetSampleFrameCount() * mDeviceInfo.audioChannelCount * (audioBitDepth
-				/ 8);
+			auto audioByteDepth = audioBitDepth / 8;
+			auto audioFrameLength = audioPacket->GetSampleFrameCount() * mDeviceInfo.audioChannelCount * audioByteDepth;
 
 			CAutoLock lock(&mFrameSec);
 			mAudioFrame = std::make_shared<AudioFrame>(frameTime, audioData, audioFrameLength, newAudioFormat);
@@ -1210,10 +1237,10 @@ HRESULT BlackmagicVideoCapturePin::FillBuffer(IMediaSample* pms)
 {
 	auto retVal = S_OK;
 
-	auto endTime = mCurrentFrame->GetFrameTime() - mStreamStartTime;
-	auto startTime = endTime - mVideoFormat.frameInterval;
+	auto endTime = mCurrentFrame->GetFrameTime();
+	auto startTime = endTime - mCurrentFrame->GetFrameDuration();
 	pms->SetTime(&startTime, &endTime);
-	pms->SetSyncPoint(TRUE);
+	pms->SetSyncPoint(true);
 	auto gap = mCurrentFrame->GetFrameIndex() - mFrameCounter;
 	pms->SetDiscontinuity(gap != 1);
 
@@ -1230,8 +1257,8 @@ HRESULT BlackmagicVideoCapturePin::FillBuffer(IMediaSample* pms)
 	mCurrentFrame.reset();
 
 	#ifndef NO_QUILL
-	LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame {} at {}", mLogData.prefix,
-	             mFrameCounter, endTime);
+	LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame {} at {}-{}", mLogData.prefix,
+	             mFrameCounter, startTime, endTime);
 	#endif
 
 	if (mSendMediaType)

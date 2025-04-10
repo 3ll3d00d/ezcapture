@@ -346,7 +346,6 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="resource.h" />
     <ClInclude Include="bmcapture.h" />
   </ItemGroup>
   <ItemGroup>
