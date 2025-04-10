@@ -346,7 +346,11 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="resource.h" />
     <ClInclude Include="bmcapture.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="bmcapture.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -307,7 +307,6 @@
   <ItemGroup>
     <ClInclude Include="capture.h" />
     <ClInclude Include="domain.h" />
-    <ClInclude Include="resource.h" />
     <ClInclude Include="ISpecifyPropertyPages2.h" />
     <ClInclude Include="lavfilters_side_data.h" />
     <ClInclude Include="signalinfo.h" />
@@ -318,9 +317,6 @@
     <ProjectReference Include="..\directshow_baseclasses\directshow_baseclasses.vcxproj">
       <Project>{fbc2d6cb-389e-4316-a41f-38b098e27ae1}</Project>
     </ProjectReference>
-  </ItemGroup>
-  <ItemGroup>
-    <ResourceCompile Include="ezcapture.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

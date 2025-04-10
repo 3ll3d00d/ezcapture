@@ -189,21 +189,20 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 			continue;
 		}
 
-		#ifndef NO_QUILL
-		LOG_INFO(mLogData.logger, "Found device at idx {} : {}", idx, deviceName);
-		#endif
-
 		result = deckLink->QueryInterface(IID_IDeckLinkProfileAttributes,
 		                                  reinterpret_cast<void**>(&deckLinkAttributes));
 		if (result != S_OK)
 		{
 			#ifndef NO_QUILL
-			LOG_ERROR(mLogData.logger, "Ignoring device {} {}, unable to query for profile attributes", idx,
-			          deviceName);
+			LOG_ERROR(mLogData.logger, "[{}] Ignoring device {} {}, unable to query for profile attributes",
+			          mLogData.prefix, idx, deviceName);
 			#endif
 
 			continue;
 		}
+		#ifndef NO_QUILL
+		LOG_INFO(mLogData.logger, "[{}] Found device at index {} : {}", mLogData.prefix, idx, deviceName);
+		#endif
 
 		int64_t duplexMode;
 		if (deckLinkAttributes->GetInt(BMDDeckLinkDuplex, &duplexMode) == S_OK && duplexMode == bmdDuplexInactive)
@@ -523,24 +522,26 @@ HRESULT BlackmagicCaptureFilter::VideoInputFormatChanged(BMDVideoInputFormatChan
 			{
 				#ifndef NO_QUILL
 				LOG_WARNING(mLogData.logger, "[{}] Failed to pause streams on input format change ({:#08x})",
-					mLogData.prefix, result);
+				            mLogData.prefix, result);
 				#endif
 			}
 
 			result = mDeckLinkInput->EnableVideoInput(newDisplayMode->GetDisplayMode(), newSignal.pixelFormat,
-				bmdVideoInputEnableFormatDetection);
+			                                          bmdVideoInputEnableFormatDetection);
 			if (SUCCEEDED(result))
 			{
 				#ifndef NO_QUILL
-				LOG_WARNING(mLogData.logger, "[{}] Enabled video input on input format change (displayMode: {:#08x} pixelFormat: {:#08x})",
-					mLogData.prefix, static_cast<int>(newDisplayMode->GetDisplayMode()), static_cast<int>(newSignal.pixelFormat));
+				LOG_WARNING(mLogData.logger,
+				            "[{}] Enabled video input on input format change (displayMode: {:#08x} pixelFormat: {:#08x})",
+				            mLogData.prefix, static_cast<int>(newDisplayMode->GetDisplayMode()),
+				            static_cast<int>(newSignal.pixelFormat));
 				#endif
 			}
 			else
 			{
 				#ifndef NO_QUILL
 				LOG_WARNING(mLogData.logger, "[{}] Failed to enable video input on input format change ({:#08x})",
-					mLogData.prefix, result);
+				            mLogData.prefix, result);
 				#endif
 			}
 
@@ -549,7 +550,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFormatChanged(BMDVideoInputFormatChan
 			{
 				#ifndef NO_QUILL
 				LOG_WARNING(mLogData.logger, "[{}] Failed to flush streams on input format change ({:#08x})",
-					mLogData.prefix, result);
+				            mLogData.prefix, result);
 				#endif
 			}
 
@@ -558,7 +559,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFormatChanged(BMDVideoInputFormatChan
 			{
 				#ifndef NO_QUILL
 				LOG_WARNING(mLogData.logger, "[{}] Failed to start streams on input format change ({:#08x})",
-					mLogData.prefix, result);
+				            mLogData.prefix, result);
 				#endif
 			}
 			else
@@ -608,7 +609,8 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 		LoadFormat(&newVideoFormat, &mVideoSignal);
 
 		IDeckLinkVideoFrame* convertedFrame;
-		result = mDeckLinkFrameConverter->ConvertNewFrame(videoFrame, bmdFormat8BitBGRA, bmdColorspaceUnknown, nullptr, &convertedFrame);
+		result = mDeckLinkFrameConverter->ConvertNewFrame(videoFrame, bmdFormat8BitBGRA, bmdColorspaceUnknown, nullptr,
+		                                                  &convertedFrame);
 		if (SUCCEEDED(result))
 		{
 			#ifndef NO_QUILL
@@ -619,8 +621,8 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			newVideoFormat.bitCount = BITS_RGBA;
 			newVideoFormat.pixelStructure = FOURCC_RGBA;
 			newVideoFormat.pixelStructureName = "RGBA";
-			GetImageDimensions(newVideoFormat.pixelStructure, newVideoFormat.cx, newVideoFormat.cy, &newVideoFormat.lineLength,
-				&newVideoFormat.imageSize);
+			GetImageDimensions(newVideoFormat.pixelStructure, newVideoFormat.cx, newVideoFormat.cy,
+			                   &newVideoFormat.lineLength, &newVideoFormat.imageSize);
 
 			frameToProcess = convertedFrame;
 		}
@@ -881,7 +883,8 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 		newAudioFormat.outputChannelCount = mDeviceInfo.audioChannelCount;
 
 		{
-			auto audioFrameLength = audioPacket->GetSampleFrameCount() * mDeviceInfo.audioChannelCount * (audioBitDepth / 8);
+			auto audioFrameLength = audioPacket->GetSampleFrameCount() * mDeviceInfo.audioChannelCount * (audioBitDepth
+				/ 8);
 
 			CAutoLock lock(&mFrameSec);
 			mAudioFrame = std::make_shared<AudioFrame>(frameTime, audioData, audioFrameLength, newAudioFormat);

@@ -22,7 +22,6 @@
 #include <dvdmedia.h>
 #include <dllsetup.h>
 #include "bmcapture.h"
-#include "signalinfo.h"
 
 #define CreateComObject(clsid, iid, var) CoCreateInstance( clsid, NULL, CLSCTX_INPROC_SERVER, iid, (void **)&(var));
 
