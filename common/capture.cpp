@@ -422,14 +422,7 @@ void IAMTimeAware::SetStartTime(LONGLONG streamStartTime)
 //////////////////////////////////////////////////////////////////////////
 CapturePin::CapturePin(HRESULT* phr, CSource* pParent, LPCSTR pObjectName, LPCWSTR pPinName, std::string pLogPrefix) :
 	CSourceStream(pObjectName, phr, pParent, pPinName),
-	IAMTimeAware(pLogPrefix, "filter"),
-	mFrameCounter(0),
-	mPreview(false),
-	mLastSampleDiscarded(0),
-	mSendMediaType(0),
-	mFrameEndTime(0),
-	mHasSignal(false),
-	mLastSentHdrMetaAt(0LL)
+	IAMTimeAware(pLogPrefix, "filter")
 {
 	#ifndef NO_QUILL
 	mLogData.prefix = std::move(pLogPrefix);
@@ -439,8 +432,7 @@ CapturePin::CapturePin(HRESULT* phr, CSource* pParent, LPCSTR pObjectName, LPCWS
 
 HRESULT CapturePin::HandleStreamStateChange(IMediaSample* pms)
 {
-	// TODO override this if MediaType changed?
-	int iStreamState = CheckStreamState(pms);
+	const int iStreamState = CheckStreamState(pms);
 	if (iStreamState == STREAM_FLOWING)
 	{
 		if (mLastSampleDiscarded)
@@ -662,7 +654,7 @@ STDMETHODIMP CapturePin::SetFormat(AM_MEDIA_TYPE* pmt)
 	#ifndef NO_QUILL
 	LOG_WARNING(mLogData.logger, "[{}] CapturePin::SetFormat is not supported", mLogData.prefix);
 	#endif
-	// TODO try to support this?
+
 	return VFW_E_INVALIDMEDIATYPE;
 }
 

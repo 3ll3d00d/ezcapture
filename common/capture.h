@@ -321,16 +321,17 @@ protected:
 
 	log_data mLogData{};
 	CCritSec mCaptureCritSec;
-	LONGLONG mFrameCounter;
-	bool mPreview;
+	LONGLONG mFrameCounter{0};
+	bool mPreview{false};
 	WORD mSinceLast{0};
 
-	bool mLastSampleDiscarded;
-	bool mSendMediaType;
-	bool mHasSignal;
-	LONGLONG mLastSentHdrMetaAt;
+	bool mLastSampleDiscarded{false};
+	bool mSendMediaType{false};
+	bool mHasSignal{false};
+	LONGLONG mLastSentHdrMetaAt{0};
 	// per frame
-	LONGLONG mFrameEndTime;
+	LONGLONG mPreviousFrameTime{0};
+	LONGLONG mFrameEndTime{0};
 };
 
 /**

@@ -473,6 +473,7 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 	auto hasFrame = false;
 	auto proDevice = deviceType == PRO;
 	auto mustExit = false;
+	LONGLONG frameTime = 0LL;
 	while (!hasFrame && !mustExit)
 	{
 		if (proDevice)
@@ -568,6 +569,8 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 
 				if (skip) continue;
 
+				if (frameTime == 0LL) pin->GetReferenceTime(&frameTime);
+
 				pin->mLastMwResult = MWGetVideoCaptureStatus(hChannel, &pin->mVideoSignal.captureStatus);
 
 				#ifndef NO_QUILL
@@ -584,6 +587,7 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 		}
 		else
 		{
+			frameTime = pin->mCapturedFrame.ts;
 			CAutoLock lck(&pin->mCaptureCritSec);
 			memcpy(pmsData, pin->mCapturedFrame.data, pin->mCapturedFrame.length);
 			hasFrame = true;
@@ -604,7 +608,8 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 			}
 		}
 
-		pin->GetReferenceTime(&pin->mFrameEndTime);
+		pin->mPreviousFrameTime = pin->mFrameEndTime;
+		pin->mFrameEndTime = frameTime;
 		auto endTime = pin->mFrameEndTime - pin->mStreamStartTime;
 		auto startTime = endTime - pin->mVideoFormat.frameInterval;
 		pms->SetTime(&startTime, &endTime);
@@ -612,8 +617,8 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 		pin->mFrameCounter++;
 
 		#ifndef NO_QUILL
-		LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame {} at {}", mLogData.prefix,
-		             pin->mFrameCounter, endTime);
+		LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame {} at {} after {}", mLogData.prefix,
+		             pin->mFrameCounter, endTime, endTime - pin->mPreviousFrameTime);
 		#endif
 
 		if (pin->mSendMediaType)
@@ -2658,11 +2663,9 @@ HRESULT MagewellAudioCapturePin::FillBuffer(IMediaSample* pms)
 		#endif
 	}
 
-	auto lastEndTime = mFrameEndTime - mStreamStartTime;
-	mFilter->GetReferenceTime(&mFrameEndTime);
 	auto endTime = mFrameEndTime - mStreamStartTime;
 	auto startTime = endTime - static_cast<long>(mAudioFormat.sampleInterval * MWCAP_AUDIO_SAMPLES_PER_FRAME);
-	auto sincePrev = endTime - lastEndTime;
+	auto sincePrev = endTime - mPreviousFrameTime;
 
 	#ifndef NO_QUILL
 	if (bytesCaptured != sampleSize)
@@ -2726,7 +2729,6 @@ HRESULT MagewellAudioCapturePin::OnThreadCreate()
 			LOG_ERROR(mLogData.logger, "[{}] MagewellAudioCapturePin::OnThreadCreate Unable to MWStartAudioCapture",
 			          mLogData.prefix);
 			#endif
-			// TODO throw
 		}
 
 		// register for signal change events & audio buffered
@@ -2739,7 +2741,6 @@ HRESULT MagewellAudioCapturePin::OnThreadCreate()
 			LOG_ERROR(mLogData.logger, "[{}] MagewellAudioCapturePin::OnThreadCreate Unable to MWRegistryNotify",
 			          mLogData.prefix);
 			#endif
-			// TODO throw
 		}
 	}
 	else if (deviceType == USB)
@@ -2975,12 +2976,15 @@ HRESULT MagewellAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 					mLastMwResult = MWCaptureAudioFrame(hChannel, &mAudioSignal.frameInfo);
 					if (MW_SUCCEEDED == mLastMwResult)
 					{
+						frameCopied = true;
+						mPreviousFrameTime = mFrameEndTime;
+						GetReferenceTime(&mFrameEndTime);
+
 						#ifndef NO_QUILL
-						LOG_TRACE_L3(mLogData.logger, "[{}] Audio frame buffered and captured", mLogData.prefix);
+						LOG_TRACE_L3(mLogData.logger, "[{}] Audio frame buffered and captured at {}", mLogData.prefix, mFrameEndTime);
 						#endif
 
 						memcpy(mFrameBuffer, mAudioSignal.frameInfo.adwSamples, maxFrameLengthInBytes);
-						frameCopied = true;
 					}
 					else
 					{
@@ -3007,13 +3011,17 @@ HRESULT MagewellAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 			}
 			else
 			{
+				CAutoLock lck(&mCaptureCritSec);
+
+				frameCopied = true;
+				mPreviousFrameTime = mFrameEndTime;
+				GetReferenceTime(&mFrameEndTime);
+
 				#ifndef NO_QUILL
-				LOG_TRACE_L3(mLogData.logger, "[{}] Audio frame buffered and captured", mLogData.prefix);
+				LOG_TRACE_L3(mLogData.logger, "[{}] Audio frame buffered and captured at {}", mLogData.prefix, mFrameEndTime);
 				#endif
 
-				CAutoLock lck(&mCaptureCritSec);
 				memcpy(mFrameBuffer, mCapturedFrame.data, mCapturedFrame.length);
-				frameCopied = true;
 			}
 		}
 
