@@ -308,6 +308,7 @@
       </PrecompiledHeaderFile>
       <PrecompiledHeaderOutputFile />
       <AdditionalIncludeDirectories>.</AdditionalIncludeDirectories>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
     <Link>
       <SubSystem>
@@ -328,6 +329,7 @@
       </PrecompiledHeaderFile>
       <AdditionalIncludeDirectories>.</AdditionalIncludeDirectories>
       <PrecompiledHeaderOutputFile />
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
     <Link>
       <SubSystem>
@@ -351,6 +353,7 @@
       <AdditionalIncludeDirectories>.</AdditionalIncludeDirectories>
       <PrecompiledHeaderOutputFile>
       </PrecompiledHeaderOutputFile>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
     <Link>
       <SubSystem>
@@ -374,6 +377,7 @@
       <AdditionalIncludeDirectories>.</AdditionalIncludeDirectories>
       <PrecompiledHeaderOutputFile>
       </PrecompiledHeaderOutputFile>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
     <Link>
       <SubSystem>

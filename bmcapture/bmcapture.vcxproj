@@ -226,6 +226,7 @@
       <LanguageStandard_C>stdc17</LanguageStandard_C>
       <AdditionalIncludeDirectories>$(SolutionDir)directshow_baseclasses;$(SolutionDir)DeckLink;$(SolutionDir)common</AdditionalIncludeDirectories>
       <PrecompiledHeaderOutputFile />
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -253,6 +254,7 @@
       <LanguageStandard_C>stdc17</LanguageStandard_C>
       <AdditionalIncludeDirectories>$(SolutionDir)directshow_baseclasses;$(SolutionDir)DeckLink;$(SolutionDir)common</AdditionalIncludeDirectories>
       <PrecompiledHeaderOutputFile />
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -283,6 +285,7 @@
       <AdditionalIncludeDirectories>$(SolutionDir)directshow_baseclasses;$(SolutionDir)DeckLink;$(SolutionDir)common</AdditionalIncludeDirectories>
       <PrecompiledHeaderOutputFile>
       </PrecompiledHeaderOutputFile>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -313,6 +316,7 @@
       <AdditionalIncludeDirectories>$(SolutionDir)directshow_baseclasses;$(SolutionDir)DeckLink;$(SolutionDir)common</AdditionalIncludeDirectories>
       <PrecompiledHeaderOutputFile>
       </PrecompiledHeaderOutputFile>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
