@@ -73,9 +73,9 @@ struct VIDEO_SIGNAL
 {
 	BMDPixelFormat pixelFormat{bmdFormat10BitYUV};
 	BMDDisplayMode displayMode{bmdMode4K2160p2398};
-	std::string colourFormat{ "YUV" };
+	std::string colourFormat{"YUV"};
 	std::string displayModeName{"4K2160p23.98"};
-	uint8_t bitDepth{ 8 };
+	uint8_t bitDepth{8};
 	uint32_t frameDuration{1001};
 	uint16_t frameDurationScale{24000};
 	uint16_t cx{3840};
@@ -93,13 +93,16 @@ struct AUDIO_SIGNAL
 class AudioFrame
 {
 public:
-	AudioFrame(int64_t time, void* data, long len, AUDIO_FORMAT fmt) :
-		mFrameTime(time),
+	AudioFrame(int64_t captureTime, int64_t frameTime, void* data, long len, AUDIO_FORMAT fmt) :
+		mCaptureTime(captureTime),
+		mFrameTime(frameTime),
 		mData(data),
 		mLength(len),
 		mFormat(std::move(fmt))
 	{
 	}
+
+	int64_t GetCaptureTime() const { return mCaptureTime; }
 
 	int64_t GetFrameTime() const { return mFrameTime; }
 
@@ -110,6 +113,7 @@ public:
 	AUDIO_FORMAT GetFormat() const { return mFormat; }
 
 private:
+	int64_t mCaptureTime{0};
 	int64_t mFrameTime{0};
 	void* mData = nullptr;
 	long mLength{0};
@@ -119,10 +123,11 @@ private:
 class VideoFrame
 {
 public:
-	VideoFrame(VIDEO_FORMAT format, int64_t time, int64_t duration, long rowSize, uint64_t index,
+	VideoFrame(VIDEO_FORMAT format, int64_t captureTime, int64_t frameTime, int64_t duration, long rowSize, uint64_t index,
 	           const CComQIPtr<IDeckLinkVideoBuffer>& buffer) :
 		mFormat(std::move(format)),
-		mFrameTime(time),
+		mCaptureTime(captureTime),
+		mFrameTime(frameTime),
 		mFrameDuration(duration),
 		mFrameIndex(index),
 		mBuffer(buffer)
@@ -134,6 +139,7 @@ public:
 
 	VideoFrame(const VideoFrame& vf):
 		mFormat(vf.mFormat),
+		mCaptureTime(vf.mCaptureTime),
 		mFrameTime(vf.mFrameTime),
 		mFrameDuration(vf.mFrameDuration),
 		mFrameIndex(vf.mFrameIndex),
@@ -153,6 +159,8 @@ public:
 
 	uint64_t GetFrameIndex() const { return mFrameIndex; }
 
+	int64_t GetCaptureTime() const { return mCaptureTime; }
+
 	int64_t GetFrameTime() const { return mFrameTime; }
 
 	int64_t GetFrameDuration() const { return mFrameDuration; }
@@ -163,6 +171,7 @@ public:
 
 private:
 	VIDEO_FORMAT mFormat{};
+	int64_t mCaptureTime{0};
 	int64_t mFrameTime{0};
 	int64_t mFrameDuration{0};
 	uint64_t mFrameIndex{0};

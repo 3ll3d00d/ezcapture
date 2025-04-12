@@ -195,6 +195,12 @@ public:
     HRESULT FillBuffer(IMediaSample* pms) override;
     HRESULT OnThreadCreate(void) override;
 
+    void SnapCaptureTime()
+    {
+        GetReferenceTime(&mCaptureTime);
+        mFrameCounter++;
+    }
+
 protected:
     void DoThreadDestroy() override;
     void StopCapture();
@@ -248,6 +254,7 @@ protected:
     ULONGLONG mStatusBits = 0;
     HANDLE mNotifyEvent;
     MW_RESULT mLastMwResult;
+    int64_t mCaptureTime;
     // pro only
     HANDLE mCaptureEvent;
 

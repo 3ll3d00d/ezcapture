@@ -69,18 +69,22 @@ void BlackmagicCaptureFilter::LoadFormat(VIDEO_FORMAT* videoFormat, const VIDEO_
 		frameDuration);
 	videoFormat->frameInterval = videoSignal->frameDuration;
 	auto fourccIdx = 0;
+	// TODO implement conversions
 	switch (videoSignal->pixelFormat)
 	{
 	case bmdFormat8BitYUV:
+		// YUV2 -> YV16
 		videoFormat->bitDepth = 8;
 		videoFormat->pixelEncoding = YUV_422;
 		break;
 	case bmdFormat10BitYUV:
+		// V210 -> P210
 		videoFormat->bitDepth = 10;
 		videoFormat->pixelEncoding = YUV_422;
 		fourccIdx = 1;
 		break;
 	case bmdFormat10BitYUVA:
+		// unlikely to be encountered so convert to bmdFormat8BitARGB?
 		videoFormat->bitDepth = 10;
 		videoFormat->pixelEncoding = YUV_422;
 		fourccIdx = 1;
@@ -90,30 +94,36 @@ void BlackmagicCaptureFilter::LoadFormat(VIDEO_FORMAT* videoFormat, const VIDEO_
 		videoFormat->pixelEncoding = RGB_444;
 		break;
 	case bmdFormat8BitBGRA:
+		// unlikely to be encountered so convert to bmdFormat8BitARGB?
 		videoFormat->bitDepth = 8;
 		videoFormat->pixelEncoding = RGB_444;
 		break;
 	case bmdFormat10BitRGB:
+		// R210 -> RGB48?
 		videoFormat->bitDepth = 10;
 		videoFormat->pixelEncoding = RGB_444;
 		fourccIdx = -1;
 		break;
 	case bmdFormat12BitRGB:
+		// R12B ->  RGB48?
 		videoFormat->bitDepth = 12;
 		fourccIdx = 2;
 		videoFormat->pixelEncoding = RGB_444;
 		break;
 	case bmdFormat12BitRGBLE:
+		// R12L -> RGB48?
 		videoFormat->bitDepth = 12;
 		fourccIdx = 2;
 		videoFormat->pixelEncoding = RGB_444;
 		break;
 	case bmdFormat10BitRGBXLE:
+		// R10l -> RGB48?
 		videoFormat->bitDepth = 10;
 		fourccIdx = 1;
 		videoFormat->pixelEncoding = RGB_444;
 		break;
 	case bmdFormat10BitRGBX:
+		// R10b -> RGB48?
 		videoFormat->bitDepth = 10;
 		fourccIdx = 1;
 		videoFormat->pixelEncoding = RGB_444;
@@ -581,6 +591,9 @@ HRESULT BlackmagicCaptureFilter::VideoInputFormatChanged(BMDVideoInputFormatChan
 HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame* videoFrame,
                                                         IDeckLinkAudioInputPacket* audioPacket)
 {
+	REFERENCE_TIME now;
+	GetReferenceTime(&now);
+
 	if (videoFrame)
 	{
 		IDeckLinkVideoFrame* frameToProcess = videoFrame;
@@ -861,7 +874,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			CAutoLock lock(&mFrameSec);
 			mVideoFormat = newVideoFormat;
 			CComQIPtr<IDeckLinkVideoBuffer> buf(frameToProcess);
-			mVideoFrame = std::make_shared<VideoFrame>(newVideoFormat, frameTime, frameDuration,
+			mVideoFrame = std::make_shared<VideoFrame>(newVideoFormat, now, frameTime, frameDuration,
 			                                           frameToProcess->GetRowBytes(), mCurrentVideoFrameIndex, buf);
 		}
 
@@ -914,7 +927,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			auto audioFrameLength = audioPacket->GetSampleFrameCount() * mDeviceInfo.audioChannelCount * audioByteDepth;
 
 			CAutoLock lock(&mFrameSec);
-			mAudioFrame = std::make_shared<AudioFrame>(frameTime, audioData, audioFrameLength, newAudioFormat);
+			mAudioFrame = std::make_shared<AudioFrame>(now, frameTime, audioData, audioFrameLength, newAudioFormat);
 		}
 
 		// signal listeners
@@ -1240,6 +1253,9 @@ HRESULT BlackmagicVideoCapturePin::FillBuffer(IMediaSample* pms)
 	auto endTime = mCurrentFrame->GetFrameTime();
 	auto startTime = endTime - mCurrentFrame->GetFrameDuration();
 	pms->SetTime(&startTime, &endTime);
+	mPreviousFrameTime = mCurrentFrameTime;
+	mCurrentFrameTime = endTime;
+
 	pms->SetSyncPoint(true);
 	auto gap = mCurrentFrame->GetFrameIndex() - mFrameCounter;
 	pms->SetDiscontinuity(gap != 1);
@@ -1254,12 +1270,6 @@ HRESULT BlackmagicVideoCapturePin::FillBuffer(IMediaSample* pms)
 	memcpy(out, mCurrentFrame->GetData(), mCurrentFrame->GetLength());
 
 	mFrameCounter = mCurrentFrame->GetFrameIndex();
-	mCurrentFrame.reset();
-
-	#ifndef NO_QUILL
-	LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame {} at {}-{}", mLogData.prefix,
-	             mFrameCounter, startTime, endTime);
-	#endif
 
 	if (mSendMediaType)
 	{
@@ -1270,6 +1280,22 @@ HRESULT BlackmagicVideoCapturePin::FillBuffer(IMediaSample* pms)
 		mSendMediaType = FALSE;
 	}
 	AppendHdrSideDataIfNecessary(pms, endTime);
+
+	#ifndef NO_QUILL
+	REFERENCE_TIME now;
+	mFilter->GetReferenceTime(&now);
+
+	if (mFrameCounter == 1)
+	{
+		LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame H|f_idx,lat,ft_0,ft_1,ft_d,s_sz",
+			mLogData.prefix);
+	}
+	LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame D|{},{},{},{},{},{}", mLogData.prefix,
+	             mFrameCounter, now - mCurrentFrame->GetCaptureTime(), mPreviousFrameTime,
+	             mCurrentFrameTime, mCurrentFrameTime - mPreviousFrameTime, mCurrentFrame->GetLength());
+	#endif
+
+	mCurrentFrame.reset();
 
 	if (S_FALSE == HandleStreamStateChange(pms))
 	{
@@ -1344,7 +1370,6 @@ HRESULT BlackmagicAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, RE
 	// keep going til we have a frame to process
 	while (!hasFrame)
 	{
-		auto frameCopied = false;
 		if (CheckStreamState(nullptr) == STREAM_DISCARDING)
 		{
 			#ifndef NO_QUILL
@@ -1487,17 +1512,14 @@ HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
 	auto frameDuration = mAudioFormat.sampleInterval * sampleCount;
 	auto startTime = endTime - static_cast<int64_t>(frameDuration);
 
-	mCurrentFrame.reset();
-
-	#ifndef NO_QUILL
-	LOG_TRACE_L2(mLogData.logger, "[{}] Audio frame {} : time {} size {} bytes",
-	             mLogData.prefix, mFrameCounter, endTime, actualSize);
-	#endif
-
 	pms->SetTime(&startTime, &endTime);
 	pms->SetSyncPoint(true);
 	pms->SetDiscontinuity(false);
 	pms->SetActualDataLength(actualSize);
+
+	mPreviousFrameTime = mCurrentFrameTime;
+	mCurrentFrameTime = endTime;
+
 	if (mSendMediaType)
 	{
 		CMediaType cmt(m_mt);
@@ -1506,6 +1528,24 @@ HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
 		DeleteMediaType(sendMediaType);
 		mSendMediaType = FALSE;
 	}
+
+	#ifndef NO_QUILL
+	REFERENCE_TIME now;
+	mFilter->GetReferenceTime(&now);
+
+	if (mFrameCounter == 1)
+	{
+		LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame H|f_idx,lat,ft_0,ft_1,ft_d,s_sz,s_ct",
+			mLogData.prefix);
+	}
+	LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame D|{},{},{},{},{},{},{}", mLogData.prefix,
+		mFrameCounter, now - mCurrentFrame->GetCaptureTime(), mPreviousFrameTime,
+		mCurrentFrameTime, mCurrentFrameTime - mPreviousFrameTime, mCurrentFrame->GetLength(), 
+		sampleCount);
+	#endif
+
+	mCurrentFrame.reset();
+
 	if (S_FALSE == HandleStreamStateChange(pms))
 	{
 		retVal = S_FALSE;

@@ -331,7 +331,7 @@ protected:
 	LONGLONG mLastSentHdrMetaAt{0};
 	// per frame
 	LONGLONG mPreviousFrameTime{0};
-	LONGLONG mFrameEndTime{0};
+	LONGLONG mCurrentFrameTime{0};
 };
 
 /**

@@ -501,6 +501,8 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 				continue;
 			}
 
+			frameTime = pin->mVideoSignal.frameInfo.allFieldBufferedTimes[0];
+
 			pin->mLastMwResult = MWCaptureVideoFrameToVirtualAddressEx(
 				hChannel,
 				pin->mHasSignal ? pin->mVideoSignal.bufferInfo.iNewestBuffering : MWCAP_VIDEO_FRAME_ID_NEWEST_BUFFERING,
@@ -569,8 +571,6 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 
 				if (skip) continue;
 
-				if (frameTime == 0LL) pin->GetReferenceTime(&frameTime);
-
 				pin->mLastMwResult = MWGetVideoCaptureStatus(hChannel, &pin->mVideoSignal.captureStatus);
 
 				#ifndef NO_QUILL
@@ -584,6 +584,11 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 				hasFrame = pin->mVideoSignal.captureStatus.bFrameCompleted;
 			}
 			while (pin->mLastMwResult == MW_SUCCEEDED && !hasFrame);
+
+			if (hasFrame)
+			{
+				pin->SnapCaptureTime();
+			}
 		}
 		else
 		{
@@ -608,18 +613,15 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 			}
 		}
 
-		pin->mPreviousFrameTime = pin->mFrameEndTime;
-		pin->mFrameEndTime = frameTime;
-		auto endTime = pin->mFrameEndTime - pin->mStreamStartTime;
+		pin->mPreviousFrameTime = pin->mCurrentFrameTime;
+		pin->mCurrentFrameTime = frameTime;
+		auto endTime = pin->mCurrentFrameTime - pin->mStreamStartTime;
 		auto startTime = endTime - pin->mVideoFormat.frameInterval;
+		auto missedFrame = frameTime - pin->mPreviousFrameTime >= pin->mVideoFormat.frameInterval * 2;
+
 		pms->SetTime(&startTime, &endTime);
 		pms->SetSyncPoint(TRUE);
-		pin->mFrameCounter++;
-
-		#ifndef NO_QUILL
-		LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame {} at {} after {}", mLogData.prefix,
-		             pin->mFrameCounter, endTime, endTime - pin->mPreviousFrameTime);
-		#endif
+		pms->SetDiscontinuity(missedFrame);
 
 		if (pin->mSendMediaType)
 		{
@@ -630,6 +632,21 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 			pin->mSendMediaType = FALSE;
 		}
 		pin->AppendHdrSideDataIfNecessary(pms, endTime);
+
+		#ifndef NO_QUILL
+		REFERENCE_TIME now;
+		pin->GetReferenceTime(&now);
+
+		if (pin->mFrameCounter == 1)
+		{
+			LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame H|f_idx,lat,ft_0,ft_1,ft_d,s_sz,missed",
+				mLogData.prefix);
+		}
+		LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame D|{},{},{},{},{},{},{}", mLogData.prefix,
+		             pin->mFrameCounter, now - pin->mCaptureTime, pin->mPreviousFrameTime,
+		             pin->mCurrentFrameTime, pin->mCurrentFrameTime - pin->mPreviousFrameTime,
+		             pin->mVideoFormat.imageSize, missedFrame);
+		#endif
 	}
 	else
 	{
@@ -854,8 +871,9 @@ void MagewellVideoCapturePin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL
 	}
 
 
-	videoFormat->bitCount = fourccBitCount[idx][videoFormat->pixelEncoding]; 
-	GetImageDimensions(videoFormat->pixelStructure, videoFormat->cx, videoFormat->cy, &videoFormat->lineLength, &videoFormat->imageSize);
+	videoFormat->bitCount = fourccBitCount[idx][videoFormat->pixelEncoding];
+	GetImageDimensions(videoFormat->pixelStructure, videoFormat->cx, videoFormat->cy, &videoFormat->lineLength,
+	                   &videoFormat->imageSize);
 }
 
 void MagewellVideoCapturePin::LogHdrMetaIfPresent(VIDEO_FORMAT* newVideoFormat)
@@ -997,6 +1015,8 @@ void MagewellVideoCapturePin::OnChangeMediaType()
 void MagewellVideoCapturePin::CaptureFrame(BYTE* pbFrame, int cbFrame, UINT64 u64TimeStamp, void* pParam)
 {
 	MagewellVideoCapturePin* pin = static_cast<MagewellVideoCapturePin*>(pParam);
+	pin->SnapCaptureTime();
+
 	CAutoLock lck(&pin->mCaptureCritSec);
 	memcpy(pin->mCapturedFrame.data, pbFrame, cbFrame);
 	pin->mCapturedFrame.length = cbFrame;
@@ -1201,6 +1221,8 @@ HRESULT MagewellVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 		{
 			if (!mHasSignal && dwRet == STATUS_TIMEOUT)
 			{
+				SnapCaptureTime();
+
 				#ifndef NO_QUILL
 				LOG_TRACE_L1(mLogData.logger, "[{}] Timeout and no signal, get delivery buffer for no signal image",
 				             mLogData.prefix);
@@ -2663,27 +2685,21 @@ HRESULT MagewellAudioCapturePin::FillBuffer(IMediaSample* pms)
 		#endif
 	}
 
-	auto endTime = mFrameEndTime - mStreamStartTime;
+	auto endTime = mCurrentFrameTime - mStreamStartTime;
 	auto startTime = endTime - static_cast<long>(mAudioFormat.sampleInterval * MWCAP_AUDIO_SAMPLES_PER_FRAME);
-	auto sincePrev = endTime - mPreviousFrameTime;
 
 	#ifndef NO_QUILL
-	if (bytesCaptured != sampleSize)
+	REFERENCE_TIME now;
+	mFilter->GetReferenceTime(&now);
+	if (mFrameCounter == 1)
 	{
-		LOG_WARNING(mLogData.logger,
-		            "[{}] Audio frame {} : samples {} time {} delta {} size {} bytes buf {} bytes (since {}? {})",
-		            mLogData.prefix,
-		            mFrameCounter, samplesCaptured, endTime, sincePrev, bytesCaptured, sampleSize,
-		            codecNames[mAudioFormat.codec], mSinceCodecChange);
+		LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame H|f_idx,lat,ft_0,ft_1,ft_d,s_sz,s_ct",
+			mLogData.prefix);
 	}
-	else
-	{
-		LOG_TRACE_L2(mLogData.logger,
-		             "[{}] Audio frame {} : samples {} time {} delta {} size {} bytes buf {} bytes (since {}? {})",
-		             mLogData.prefix,
-		             mFrameCounter, samplesCaptured, endTime, sincePrev, bytesCaptured, sampleSize,
-		             codecNames[mAudioFormat.codec], mSinceCodecChange);
-	}
+	LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame ({} since {}) D|{},{},{},{},{},{},{}", 
+				 mLogData.prefix, codecNames[mAudioFormat.codec], mSinceCodecChange,
+	             mFrameCounter, now - mCurrentFrameTime, mPreviousFrameTime, mCurrentFrameTime,
+	             mCurrentFrameTime - mPreviousFrameTime, bytesCaptured, samplesCaptured);
 	#endif
 
 	pms->SetTime(&startTime, &endTime);
@@ -2977,11 +2993,12 @@ HRESULT MagewellAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 					if (MW_SUCCEEDED == mLastMwResult)
 					{
 						frameCopied = true;
-						mPreviousFrameTime = mFrameEndTime;
-						GetReferenceTime(&mFrameEndTime);
+						mPreviousFrameTime = mCurrentFrameTime;
+						GetReferenceTime(&mCurrentFrameTime);
 
 						#ifndef NO_QUILL
-						LOG_TRACE_L3(mLogData.logger, "[{}] Audio frame buffered and captured at {}", mLogData.prefix, mFrameEndTime);
+						LOG_TRACE_L3(mLogData.logger, "[{}] Audio frame buffered and captured at {}", mLogData.prefix,
+						             mCurrentFrameTime);
 						#endif
 
 						memcpy(mFrameBuffer, mAudioSignal.frameInfo.adwSamples, maxFrameLengthInBytes);
@@ -3014,11 +3031,12 @@ HRESULT MagewellAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 				CAutoLock lck(&mCaptureCritSec);
 
 				frameCopied = true;
-				mPreviousFrameTime = mFrameEndTime;
-				GetReferenceTime(&mFrameEndTime);
+				mPreviousFrameTime = mCurrentFrameTime;
+				GetReferenceTime(&mCurrentFrameTime);
 
 				#ifndef NO_QUILL
-				LOG_TRACE_L3(mLogData.logger, "[{}] Audio frame buffered and captured at {}", mLogData.prefix, mFrameEndTime);
+				LOG_TRACE_L3(mLogData.logger, "[{}] Audio frame buffered and captured at {}", mLogData.prefix,
+				             mCurrentFrameTime);
 				#endif
 
 				memcpy(mFrameBuffer, mCapturedFrame.data, mCapturedFrame.length);
