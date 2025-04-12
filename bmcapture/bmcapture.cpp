@@ -1287,12 +1287,14 @@ HRESULT BlackmagicVideoCapturePin::FillBuffer(IMediaSample* pms)
 
 	if (mFrameCounter == 1)
 	{
-		LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame H|f_idx,lat,ft_0,ft_1,ft_d,s_sz",
-			mLogData.prefix);
+		LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame H|f_idx,lat,ft_0,ft_1,ft_d,ft_o,dur,s_sz,missed",
+		             mLogData.prefix);
 	}
+	auto frameInterval = mCurrentFrameTime - mPreviousFrameTime;
 	LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame D|{},{},{},{},{},{}", mLogData.prefix,
 	             mFrameCounter, now - mCurrentFrame->GetCaptureTime(), mPreviousFrameTime,
-	             mCurrentFrameTime, mCurrentFrameTime - mPreviousFrameTime, mCurrentFrame->GetLength());
+	             mCurrentFrameTime, frameInterval, frameInterval - mCurrentFrame->GetFrameDuration(),
+	             mCurrentFrame->GetFrameDuration(), mCurrentFrame->GetLength(), gap!=1);
 	#endif
 
 	mCurrentFrame.reset();
@@ -1536,12 +1538,12 @@ HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
 	if (mFrameCounter == 1)
 	{
 		LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame H|f_idx,lat,ft_0,ft_1,ft_d,s_sz,s_ct",
-			mLogData.prefix);
+		             mLogData.prefix);
 	}
 	LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame D|{},{},{},{},{},{},{}", mLogData.prefix,
-		mFrameCounter, now - mCurrentFrame->GetCaptureTime(), mPreviousFrameTime,
-		mCurrentFrameTime, mCurrentFrameTime - mPreviousFrameTime, mCurrentFrame->GetLength(), 
-		sampleCount);
+	             mFrameCounter, now - mCurrentFrame->GetCaptureTime(), mPreviousFrameTime,
+	             mCurrentFrameTime, mCurrentFrameTime - mPreviousFrameTime, mCurrentFrame->GetLength(),
+	             sampleCount);
 	#endif
 
 	mCurrentFrame.reset();

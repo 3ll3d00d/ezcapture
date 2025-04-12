@@ -639,13 +639,14 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 
 		if (pin->mFrameCounter == 1)
 		{
-			LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame H|f_idx,lat,ft_0,ft_1,ft_d,s_sz,missed",
+			LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame H|f_idx,lat,ft_0,ft_1,ft_d,ft_o,dur,s_sz,missed",
 				mLogData.prefix);
 		}
-		LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame D|{},{},{},{},{},{},{}", mLogData.prefix,
+		auto frameInterval = pin->mCurrentFrameTime - pin->mPreviousFrameTime;
+		LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame D|{},{},{},{},{},{},{},{},{}", mLogData.prefix,
 		             pin->mFrameCounter, now - pin->mCaptureTime, pin->mPreviousFrameTime,
-		             pin->mCurrentFrameTime, pin->mCurrentFrameTime - pin->mPreviousFrameTime,
-		             pin->mVideoFormat.imageSize, missedFrame);
+		             pin->mCurrentFrameTime, frameInterval, frameInterval - pin->mVideoFormat.frameInterval,
+					 pin->mVideoFormat.frameInterval, pin->mVideoFormat.imageSize, missedFrame);
 		#endif
 	}
 	else
