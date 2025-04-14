@@ -224,6 +224,7 @@ void MagewellCaptureFilter::OnVideoSignalLoaded(VIDEO_SIGNAL* vs)
 	mVideoInputStatus.inFps = vs->signalStatus.dwFrameDuration > 0
 		                          ? static_cast<double>(dshowTicksPerSecond) / vs->signalStatus.dwFrameDuration
 		                          : 0.0;
+	mVideoInputStatus.inFrameDuration = vs->signalStatus.dwFrameDuration;
 
 	switch (vs->signalStatus.state)
 	{

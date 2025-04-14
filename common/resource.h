@@ -1,6 +1,6 @@
 //{{NO_DEPENDENCIES}}
 // Microsoft Visual C++ generated include file.
-// Used by ezcapture.rc
+// Used by C:\Users\matt\source\repos\3ll3d00d\mwcapture\mwcapture\mwcapture.rc
 //
 #define IDS_TITLE                       101
 #define IDD_PROPPAGE_SIGNAL_INFO        107
@@ -84,6 +84,8 @@
 #define IDC_HDR_MAX_FALL                1080
 #define IDC_DEVICE_ID_LABEL             1081
 #define IDC_DEVICE_ID                   1082
+#define IDC_IN_FRAME_DUR                1083
+#define IDC_IN_FRAME_DUR_LABEL          1084
 
 // Next default values for new objects
 // 

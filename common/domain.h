@@ -141,6 +141,7 @@ struct VIDEO_INPUT_STATUS
 	std::string inQuantisation;
 	std::string inSaturation;
 	double inFps;
+	uint64_t inFrameDuration{0};
 	int inBitDepth{0};
 	std::string inPixelLayout;
 	bool validSignal{false};

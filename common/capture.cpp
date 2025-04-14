@@ -947,7 +947,7 @@ void VideoCapturePin::VideoFormatToMediaType(CMediaType* pmt, VIDEO_FORMAT* vide
 	colorimetry->VideoPrimaries = videoFormat->colourFormat == YUV2020
 		                              ? static_cast<DXVA_VideoPrimaries>(9)
 		                              : DXVA_VideoPrimaries_BT709;
-	// 4 = REC.709, 15 = SMPTE ST 2084 (PQ)
+	// 4 = REC.709, 15 = SMPTE ST 2084 (PQ), 16 = HLG (JRVR only)
 	colorimetry->VideoTransferFunction = static_cast<DXVA_VideoTransferFunction>(videoFormat->hdrMeta.transferFunction);
 	// 0 = unknown, 1 = 0-255, 2 = 16-235
 	colorimetry->NominalRange = static_cast<DXVA_NominalRange>(videoFormat->quantisation);

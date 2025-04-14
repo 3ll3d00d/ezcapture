@@ -353,37 +353,6 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 					#endif
 				}
 
-				result = mDeckLinkNotification->Subscribe(bmdStatusChanged, this);
-				if (!SUCCEEDED(result))
-				{
-					#ifndef NO_QUILL
-					LOG_ERROR(mLogData.logger, "[{}] Unable to subscribe for status notifications [{:#08x}]",
-					          mLogData.prefix, result);
-					#endif
-				}
-
-				result = mDeckLinkInput->EnableVideoInput(bmdMode4K2160p2398, bmdFormat8BitYUV,
-				                                          bmdVideoInputEnableFormatDetection);
-				if (!SUCCEEDED(result))
-				{
-					#ifndef NO_QUILL
-					LOG_ERROR(mLogData.logger, "[{}] Unable to EnableVideoInput [{:#08x}]", mLogData.prefix, result);
-					#endif
-				}
-				if (mDeviceInfo.audioChannelCount > 0)
-				{
-					result = mDeckLinkInput->EnableAudioInput(bmdAudioSampleRate48kHz, audioBitDepth,
-					                                          mDeviceInfo.audioChannelCount);
-					// NOLINT(clang-diagnostic-shorten-64-to-32) values will only be 0/2/8/16
-					if (!SUCCEEDED(result))
-					{
-						#ifndef NO_QUILL
-						LOG_ERROR(mLogData.logger, "[{}] Unable to EnableAudioInput [{:#08x}]", mLogData.prefix,
-						          result);
-						#endif
-					}
-				}
-
 				result = mDeckLinkInput->SetCallback(this);
 				if (!SUCCEEDED(result))
 				{
@@ -438,10 +407,16 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		new BlackmagicAudioCapturePin(phr, this, false);
 		new BlackmagicAudioCapturePin(phr, this, true);
 	}
+
+	if (deckLinkIterator)
+		deckLinkIterator->Release();
 }
 
 BlackmagicCaptureFilter::~BlackmagicCaptureFilter()
 {
+	#ifndef NO_QUILL
+	LOG_INFO(mLogData.logger, "[{}] Tearing down filter", mLogData.prefix);
+	#endif
 	if (mDeckLinkNotification)
 	{
 		mDeckLinkNotification->Unsubscribe(bmdStatusChanged, this);
@@ -501,20 +476,22 @@ HRESULT BlackmagicCaptureFilter::VideoInputFormatChanged(BMDVideoInputFormatChan
 
 	if (notificationEvents & bmdVideoInputDisplayModeChanged)
 	{
+		newSignal.displayMode = newDisplayMode->GetDisplayMode();
+
+		BMDTimeValue frameDuration;
+		BMDTimeScale frameDurationScale;
+		newDisplayMode->GetFrameRate(&frameDuration, &frameDurationScale);
+
+		newSignal.frameDuration = static_cast<uint32_t>(frameDuration);
+		newSignal.frameDurationScale = static_cast<uint16_t>(frameDurationScale);
+		newSignal.cx = newDisplayMode->GetWidth(); // NOLINT(clang-diagnostic-implicit-int-conversion)
+		newSignal.cy = newDisplayMode->GetHeight(); // NOLINT(clang-diagnostic-implicit-int-conversion)
+
 		BSTR displayModeStr = nullptr;
 		if (newDisplayMode->GetName(&displayModeStr) == S_OK)
 		{
 			newSignal.displayModeName = BSTRToStdString(displayModeStr);
 			DeleteString(displayModeStr);
-
-			BMDTimeValue frameDuration;
-			BMDTimeScale frameDurationScale;
-			newDisplayMode->GetFrameRate(&frameDuration, &frameDurationScale);
-
-			newSignal.frameDuration = static_cast<uint32_t>(frameDuration);
-			newSignal.frameDurationScale = static_cast<uint16_t>(frameDurationScale);
-			newSignal.cx = newDisplayMode->GetWidth(); // NOLINT(clang-diagnostic-implicit-int-conversion)
-			newSignal.cy = newDisplayMode->GetHeight(); // NOLINT(clang-diagnostic-implicit-int-conversion)
 		}
 	}
 
@@ -537,7 +514,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFormatChanged(BMDVideoInputFormatChan
 				#endif
 			}
 
-			result = mDeckLinkInput->EnableVideoInput(newDisplayMode->GetDisplayMode(), newSignal.pixelFormat,
+			result = mDeckLinkInput->EnableVideoInput(newSignal.displayMode, newSignal.pixelFormat,
 			                                          bmdVideoInputEnableFormatDetection);
 			if (SUCCEEDED(result))
 			{
@@ -603,6 +580,15 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 		auto result = videoFrame->GetStreamTime(&frameTime, &frameDuration, dshowTicksPerSecond);
 		if (SUCCEEDED(result))
 		{
+			if ((videoFrame->GetFlags() & bmdFrameHasNoInputSource) != 0)
+			{
+				#ifndef NO_QUILL
+				LOG_TRACE_L2(mLogData.logger, "[{}] Signal is not locked at {}", mLogData.prefix, frameTime);
+				#endif
+
+				return E_FAIL;
+			}
+
 			#ifndef NO_QUILL
 			LOG_TRACE_L3(mLogData.logger, "[{}] Captured video frame at {} (duration: {})", mLogData.prefix, frameTime,
 			             frameDuration);
@@ -613,15 +599,6 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			#ifndef NO_QUILL
 			LOG_ERROR(mLogData.logger, "[{}] Discarding video frame, unable to get reference timestamp {:#08x}",
 			          mLogData.prefix, result);
-			#endif
-
-			return E_FAIL;
-		}
-
-		if ((videoFrame->GetFlags() & bmdFrameHasNoInputSource) != 0)
-		{
-			#ifndef NO_QUILL
-			LOG_TRACE_L2(mLogData.logger, "[{}] Signal is not locked at {}", mLogData.prefix, frameTime);
 			#endif
 
 			return E_FAIL;
@@ -718,6 +695,9 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 				break;
 			case 2:
 				hdr.transferFunction = 15;
+				break;
+			case 3:
+				hdr.transferFunction = 16;
 				break;
 			default:
 				hdr.transferFunction = 4;
@@ -996,6 +976,7 @@ void BlackmagicCaptureFilter::OnVideoSignalLoaded(VIDEO_SIGNAL* vs)
 	mVideoInputStatus.inAspectX = vs->aspectX;
 	mVideoInputStatus.inAspectY = vs->aspectY;
 	mVideoInputStatus.inFps = static_cast<double>(vs->frameDurationScale) / static_cast<double>(vs->frameDuration);
+	mVideoInputStatus.inFrameDuration = vs->frameDuration;
 	mVideoInputStatus.inBitDepth = vs->bitDepth;
 	// TODO No Signal | Unsupported Signal | Locking | Locked
 	mVideoInputStatus.signalStatus = vs->displayModeName;
@@ -1068,6 +1049,58 @@ HRESULT BlackmagicCaptureFilter::PinThreadCreated()
 		LOG_INFO(mLogData.logger, "[{}] First pin started, starting streams", mLogData.prefix);
 		#endif
 
+		result = mDeckLinkNotification->Subscribe(bmdStatusChanged, this);
+		if (SUCCEEDED(result))
+		{
+			#ifndef NO_QUILL
+			LOG_INFO(mLogData.logger, "[{}] Subscribed for status notifications", mLogData.prefix);
+			#endif
+		}
+		else
+		{
+			#ifndef NO_QUILL
+			LOG_ERROR(mLogData.logger, "[{}] Unable to subscribe for status notifications [{:#08x}]",
+			          mLogData.prefix, result);
+			#endif
+		}
+
+		result = mDeckLinkInput->EnableVideoInput(mVideoSignal.displayMode, mVideoSignal.pixelFormat,
+		                                          bmdVideoInputEnableFormatDetection);
+		if (SUCCEEDED(result))
+		{
+			#ifndef NO_QUILL
+			LOG_INFO(mLogData.logger, "[{}] Enabled Video Input in display mode {}", mLogData.prefix,
+			         mVideoSignal.displayModeName);
+			#endif
+		}
+		else
+		{
+			#ifndef NO_QUILL
+			LOG_ERROR(mLogData.logger, "[{}] Unable to EnableVideoInput [{:#08x}]", mLogData.prefix, result);
+			#endif
+		}
+
+		if (mDeviceInfo.audioChannelCount > 0)
+		{
+			result = mDeckLinkInput->EnableAudioInput(bmdAudioSampleRate48kHz, audioBitDepth,
+			                                          mDeviceInfo.audioChannelCount);
+			// NOLINT(clang-diagnostic-shorten-64-to-32) values will only be 0/2/8/16
+			if (SUCCEEDED(result))
+			{
+				#ifndef NO_QUILL
+				LOG_INFO(mLogData.logger, "[{}] Enabled Audio Input for {} channels", mLogData.prefix,
+				         mDeviceInfo.audioChannelCount);
+				#endif
+			}
+			else
+			{
+				#ifndef NO_QUILL
+				LOG_ERROR(mLogData.logger, "[{}] Unable to EnableAudioInput [{:#08x}]", mLogData.prefix,
+				          result);
+				#endif
+			}
+		}
+
 		result = mDeckLinkInput->StartStreams();
 		if (SUCCEEDED(result))
 		{
@@ -1115,6 +1148,53 @@ HRESULT BlackmagicCaptureFilter::PinThreadDestroyed()
 		{
 			#ifndef NO_QUILL
 			LOG_WARNING(mLogData.logger, "[{}] Unable to stop input streams (result {:#08x})", mLogData.prefix, result);
+			#endif
+		}
+
+		if (mDeviceInfo.audioChannelCount > 0)
+		{
+			result = mDeckLinkInput->DisableAudioInput();
+			if (SUCCEEDED(result))
+			{
+				#ifndef NO_QUILL
+				LOG_INFO(mLogData.logger, "[{}] Disabled Audio Input", mLogData.prefix);
+				#endif
+			}
+			else
+			{
+				#ifndef NO_QUILL
+				LOG_ERROR(mLogData.logger, "[{}] Unable to DisableAudioInput [{:#08x}]", mLogData.prefix,
+				          result);
+				#endif
+			}
+		}
+
+		result = mDeckLinkInput->DisableVideoInput();
+		if (SUCCEEDED(result))
+		{
+			#ifndef NO_QUILL
+			LOG_INFO(mLogData.logger, "[{}] Disabled Video Input", mLogData.prefix);
+			#endif
+		}
+		else
+		{
+			#ifndef NO_QUILL
+			LOG_ERROR(mLogData.logger, "[{}] Unable to DisableVideoInput [{:#08x}]", mLogData.prefix, result);
+			#endif
+		}
+
+		result = mDeckLinkNotification->Unsubscribe(bmdStatusChanged, this);
+		if (SUCCEEDED(result))
+		{
+			#ifndef NO_QUILL
+			LOG_INFO(mLogData.logger, "[{}] Unsubscribed from status notifications", mLogData.prefix);
+			#endif
+		}
+		else
+		{
+			#ifndef NO_QUILL
+			LOG_ERROR(mLogData.logger, "[{}] Unable to unsubscribe from status notifications [{:#08x}]",
+			          mLogData.prefix, result);
 			#endif
 		}
 	}

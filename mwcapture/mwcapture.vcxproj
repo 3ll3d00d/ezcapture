@@ -379,6 +379,7 @@
     </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="..\common\resource.h" />
     <ClInclude Include="mwcapture.h" />
     <ClInclude Include="util.h" />
   </ItemGroup>
