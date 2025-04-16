@@ -75,6 +75,7 @@ inline void logHdrMeta(HDR_META newMeta, HDR_META oldMeta, log_data log)
 		bool logPrimaries;
 		bool logWp;
 		bool logMax;
+		bool logTf;
 		if (oldMeta.exists)
 		{
 			logPrimaries =
@@ -91,7 +92,8 @@ inline void logHdrMeta(HDR_META newMeta, HDR_META oldMeta, log_data log)
 				|| diff(newMeta.minDML, oldMeta.minDML)
 				|| diff(newMeta.maxDML, oldMeta.maxDML)
 				|| newMeta.maxFALL != oldMeta.maxFALL;
-			if (logPrimaries || logWp || logMax)
+			logTf = diff(newMeta.transferFunction, oldMeta.transferFunction);
+			if (logPrimaries || logWp || logMax || logTf)
 			{
 				LOG_INFO(log.logger, "[{}] HDR metadata has changed", log.prefix);
 			}
@@ -101,6 +103,7 @@ inline void logHdrMeta(HDR_META newMeta, HDR_META oldMeta, log_data log)
 			logPrimaries = true;
 			logWp = true;
 			logMax = true;
+			logTf = true;
 			LOG_INFO(log.logger, "[{}] HDR metadata is now present", log.prefix);
 		}
 
@@ -120,6 +123,10 @@ inline void logHdrMeta(HDR_META newMeta, HDR_META oldMeta, log_data log)
 		{
 			LOG_INFO(log.logger, "[{}] DML/MaxCLL/MaxFALL {:.4f} / {:.4f} {} {}", log.prefix,
 				newMeta.minDML, newMeta.maxDML, newMeta.maxCLL, newMeta.maxFALL);
+		}
+		if (logTf)
+		{
+			LOG_INFO(log.logger, "[{}] Transfer Function {}", log.prefix, newMeta.transferFunction);
 		}
 	}
 	else

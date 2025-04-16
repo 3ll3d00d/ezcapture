@@ -281,6 +281,9 @@ void CaptureFilter::OnVideoFormatLoaded(VIDEO_FORMAT* vf)
 	case YUV2020C:
 		mVideoOutputStatus.outColourFormat = "YUV2020C";
 		break;
+	case P3D65:
+		mVideoOutputStatus.outColourFormat = "P3D65";
+		break;
 	}
 
 	switch (vf->quantisation)
@@ -338,6 +341,9 @@ void CaptureFilter::OnVideoFormatLoaded(VIDEO_FORMAT* vf)
 		break;
 	case 15:
 		mVideoOutputStatus.outTransferFunction = "SMPTE ST 2084 (PQ)";
+		break;
+	case 16:
+		mVideoOutputStatus.outTransferFunction = "HLG";
 		break;
 	default:
 		mVideoOutputStatus.outTransferFunction = "?";
@@ -1064,12 +1070,16 @@ bool VideoCapturePin::ShouldChangeMediaType(VIDEO_FORMAT* newVideoFormat)
 			                  ? "?"
 			                  : mVideoFormat.hdrMeta.transferFunction == 4
 			                  ? "REC.709"
-			                  : "SMPTE ST 2084 (PQ)";
+			                  : mVideoFormat.hdrMeta.transferFunction == 15
+			                  ? "SMPTE ST 2084 (PQ)"
+			                  : "HLG";
 		auto formatTo = incomingTransferFunction == 0
 			                ? "?"
 			                : incomingTransferFunction == 4
 			                ? "REC.709"
-			                : "SMPTE ST 2084 (PQ)";
+			                : incomingTransferFunction == 15
+			                ? "SMPTE ST 2084 (PQ)"
+			                : "HLG";
 		LOG_INFO(mLogData.logger, "[{}] Video transfer function change {} ({}) to {} ({})",
 		         mLogData.prefix, formatFrom, mVideoFormat.hdrMeta.transferFunction, formatTo,
 		         incomingTransferFunction);
@@ -1093,7 +1103,7 @@ HRESULT VideoCapturePin::DoChangeMediaType(const CMediaType* pmt, const VIDEO_FO
 	#endif
 
 	auto retVal = RenegotiateMediaType(pmt, newVideoFormat->imageSize,
-		newVideoFormat->imageSize != mVideoFormat.imageSize);
+	                                   newVideoFormat->imageSize != mVideoFormat.imageSize);
 	if (retVal == S_OK)
 	{
 		mVideoFormat = *newVideoFormat;
@@ -1101,7 +1111,6 @@ HRESULT VideoCapturePin::DoChangeMediaType(const CMediaType* pmt, const VIDEO_FO
 	}
 
 	return retVal;
-
 }
 
 HRESULT VideoCapturePin::GetMediaType(CMediaType* pmt)

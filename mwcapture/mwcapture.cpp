@@ -644,6 +644,11 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 				mLogData.prefix);
 		}
 		auto frameInterval = pin->mCurrentFrameTime - pin->mPreviousFrameTime;
+		auto sz = pms->GetSize();
+		if (pin->mVideoFormat.imageSize != sz)
+		{
+			LOG_TRACE_L3(mLogData.logger, "[{}] Video format size mismatch (format: {} buffer: {})", mLogData.prefix, pin->mVideoFormat.imageSize, sz);
+		}
 		LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame D|{},{},{},{},{},{},{},{},{}", mLogData.prefix,
 		             pin->mFrameCounter, now - pin->mCaptureTime, pin->mPreviousFrameTime,
 		             pin->mCurrentFrameTime, frameInterval, frameInterval - pin->mVideoFormat.frameInterval,
