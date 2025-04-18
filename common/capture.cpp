@@ -779,14 +779,21 @@ receiveconnection:
 	if (SUCCEEDED(hr))
 	{
 		#ifndef NO_QUILL
-		LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::RenegotiateMediaType ReceiveConnection accepted",
-		             mLogData.prefix);
+		LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::RenegotiateMediaType ReceiveConnection succeeded [{:#08x}]",
+		             mLogData.prefix, hr);
 		#endif
 
 		hr = SetMediaType(pmt);
 		if (SUCCEEDED(hr))
 		{
 			retVal = S_OK;
+		}
+		else
+		{
+			#ifndef NO_QUILL
+			LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::RenegotiateMediaType SetMediaType failed [{:#08x}]",
+			             mLogData.prefix, hr);
+			#endif
 		}
 	}
 	else if (hr == VFW_E_BUFFERS_OUTSTANDING && timeout != -1)
@@ -898,7 +905,9 @@ receiveconnection:
 	if (retVal == S_OK)
 	{
 		#ifndef NO_QUILL
-		LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::NegotiateMediaType succeeded", mLogData.prefix);
+		LOG_TRACE_L1(mLogData.logger,
+		             "[{}] CapturePin::NegotiateMediaType succeeded, sending new MediaType on next sample",
+		             mLogData.prefix);
 		#endif
 
 		mSendMediaType = TRUE;
@@ -968,7 +977,7 @@ void VideoCapturePin::VideoFormatToMediaType(CMediaType* pmt, VIDEO_FORMAT* vide
 	pvi->dwControlFlags += AMCONTROL_USED;
 	pvi->dwControlFlags += AMCONTROL_COLORINFO_PRESENT;
 
-	auto isRgb = videoFormat->pixelEncoding == RGB_444 && videoFormat->pixelStructure != FOURCC_R210;
+	auto isRgb = videoFormat->pixelEncoding == RGB_444;
 	pvi->bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
 	pvi->bmiHeader.biWidth = videoFormat->cx;
 	pvi->bmiHeader.biHeight = isRgb ? -(videoFormat->cy) : videoFormat->cy; // RGB on windows is upside down
@@ -1089,7 +1098,7 @@ bool VideoCapturePin::ShouldChangeMediaType(VIDEO_FORMAT* newVideoFormat)
 	return reconnect;
 }
 
-HRESULT VideoCapturePin::DoChangeMediaType(const CMediaType* pmt, const VIDEO_FORMAT* newVideoFormat)
+HRESULT VideoCapturePin::DoChangeMediaType(const CMediaType* pNewMt, const VIDEO_FORMAT* newVideoFormat)
 {
 	#ifndef NO_QUILL
 	LOG_WARNING(
@@ -1101,12 +1110,31 @@ HRESULT VideoCapturePin::DoChangeMediaType(const CMediaType* pmt, const VIDEO_FO
 		newVideoFormat->pixelStructureName, newVideoFormat->colourFormatName, newVideoFormat->hdrMeta.transferFunction,
 		newVideoFormat->imageSize);
 
-	auto header = reinterpret_cast<VIDEOINFOHEADER2*>(pmt->pbFormat);
-	LOG_TRACE_L3(mLogData.logger, "[{}] sz: {} {}", mLogData.prefix, pmt->GetSampleSize(),
-	             header->bmiHeader.biSizeImage);
+	if (mLogData.logger->should_log_statement(quill::LogLevel::TraceL3))
+	{
+		AM_MEDIA_TYPE currentMt;
+		if (SUCCEEDED(m_Connected->ConnectionMediaType(&currentMt)))
+		{
+			LOG_TRACE_L3(mLogData.logger, "[{}] MT,lSampleSize,biBitCount,biWidth,biHeight,biSizeImage", mLogData.prefix);
+
+			auto currentHeader = reinterpret_cast<VIDEOINFOHEADER2*>(currentMt.pbFormat);
+			auto currentBmi = currentHeader->bmiHeader;
+
+			LOG_TRACE_L3(mLogData.logger, "[{}] current,{},{},{},{},{}", mLogData.prefix, currentMt.lSampleSize,
+				currentBmi.biBitCount, currentBmi.biWidth, currentBmi.biHeight, currentBmi.biSizeImage);
+
+			auto newHeader = reinterpret_cast<VIDEOINFOHEADER2*>(pNewMt->pbFormat);
+			auto newBmi = newHeader->bmiHeader;
+
+			LOG_TRACE_L3(mLogData.logger, "[{}] proposed,{},{},{},{},{}", mLogData.prefix, pNewMt->lSampleSize,
+				newBmi.biBitCount, newBmi.biWidth, newBmi.biHeight, newBmi.biSizeImage);
+
+			FreeMediaType(currentMt);
+		}
+	}
 	#endif
 
-	auto retVal = RenegotiateMediaType(pmt, newVideoFormat->imageSize,
+	auto retVal = RenegotiateMediaType(pNewMt, newVideoFormat->imageSize,
 	                                   newVideoFormat->imageSize != mVideoFormat.imageSize);
 	if (retVal == S_OK)
 	{

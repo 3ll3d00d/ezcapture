@@ -71,7 +71,7 @@ struct DEVICE_INFO
 
 struct VIDEO_SIGNAL
 {
-	BMDPixelFormat pixelFormat{bmdFormat10BitYUV};
+	BMDPixelFormat pixelFormat{bmdFormat8BitARGB};
 	BMDDisplayMode displayMode{bmdMode4K2160p2398};
 	std::string colourFormat{"YUV"};
 	std::string displayModeName{"4K2160p23.98"};

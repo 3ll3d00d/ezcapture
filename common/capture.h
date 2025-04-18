@@ -362,7 +362,7 @@ protected:
 
 	void VideoFormatToMediaType(CMediaType* pmt, VIDEO_FORMAT* videoFormat) const;
 	bool ShouldChangeMediaType(VIDEO_FORMAT* newVideoFormat);
-	HRESULT DoChangeMediaType(const CMediaType* pmt, const VIDEO_FORMAT* newVideoFormat);
+	HRESULT DoChangeMediaType(const CMediaType* pNewMt, const VIDEO_FORMAT* newVideoFormat);
 
 	virtual void OnChangeMediaType()
 	{

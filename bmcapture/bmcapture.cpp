@@ -45,6 +45,7 @@
 // lowest fps is 23.976 so the max no of samples should be 48000/(24000/1001) = 2002
 // but there can be backlogs so allow for a few frames for safety
 constexpr uint16_t maxSamplesPerFrame = 8192;
+constexpr uint16_t minDisplayWidth = 4096;
 
 //////////////////////////////////////////////////////////////////////////
 // BlackmagicCaptureFilter
@@ -103,7 +104,6 @@ void BlackmagicCaptureFilter::LoadFormat(VIDEO_FORMAT* videoFormat, const VIDEO_
 		// R210 -> RGB48?
 		videoFormat->bitDepth = 10;
 		videoFormat->pixelEncoding = RGB_444;
-		fourccIdx = -1;
 		break;
 	case bmdFormat12BitRGB:
 		// R12B ->  RGB48?
@@ -392,18 +392,20 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 					auto dm = displayMode->GetDisplayMode();
 					if (dmWidth > width || std::isgreater(dmFps, fps))
 					{
-						if (width >= 10000)
+						if (width >= minDisplayWidth)
 						{
 							#ifndef NO_QUILL
-							LOG_INFO(mLogData.logger, "[{}] Ignoring superior DisplayMode [{:#08x}] with width {} fps {:.3f}",
-								mLogData.prefix, static_cast<int>(dm), dmWidth, dmFps);
+							LOG_INFO(mLogData.logger,
+							         "[{}] Ignoring superior DisplayMode [{:#08x}] with width {} fps {:.3f}",
+							         mLogData.prefix, static_cast<int>(dm), dmWidth, dmFps);
 							#endif
 						}
 						else
 						{
 							#ifndef NO_QUILL
-							LOG_INFO(mLogData.logger, "[{}] Found superior DisplayMode [{:#08x}] with width {} fps {:.3f}",
-								mLogData.prefix, static_cast<int>(dm), dmWidth, dmFps);
+							LOG_INFO(mLogData.logger,
+							         "[{}] Found superior DisplayMode [{:#08x}] with width {} fps {:.3f}",
+							         mLogData.prefix, static_cast<int>(dm), dmWidth, dmFps);
 							#endif
 
 							LoadSignalFromDisplayMode(&mVideoSignal, displayMode);
@@ -510,6 +512,16 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 
 	// video pin must have a default format in order to ensure a renderer is present in the graph
 	LoadFormat(&mVideoFormat, &mVideoSignal);
+
+	// compatibility bodge for renderers (madvr) that don't resize buffers correctly at all times
+	if (mVideoSignal.pixelFormat == bmdFormat8BitARGB)
+	{
+		mVideoFormat.bitCount = 32;
+		mVideoFormat.pixelStructure = FOURCC_RGBA;
+		mVideoFormat.pixelStructureName = "RGBA";
+		GetImageDimensions(mVideoFormat.pixelStructure, mVideoFormat.cx, mVideoFormat.cy,
+		                   &mVideoFormat.lineLength, &mVideoFormat.imageSize);
+	}
 
 	#ifndef NO_QUILL
 	LOG_WARNING(
@@ -721,7 +733,6 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 
 	if (videoFrame)
 	{
-
 		int64_t frameTime = 0;
 		int64_t frameDuration = 0;
 		auto result = videoFrame->GetStreamTime(&frameTime, &frameDuration, dshowTicksPerSecond);
@@ -974,16 +985,17 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 
 		// TODO replace with custom conversion to supported format rather than brute force everything to RGB
 		IDeckLinkVideoFrame* convertedFrame;
-		auto t1 =  std::chrono::high_resolution_clock::now();
+		auto t1 = std::chrono::high_resolution_clock::now();
 		result = mDeckLinkFrameConverter->ConvertNewFrame(videoFrame, bmdFormat8BitBGRA, bmdColorspaceUnknown, nullptr,
-			&convertedFrame);
-		auto t2 =  std::chrono::high_resolution_clock::now();
+		                                                  &convertedFrame);
+		auto t2 = std::chrono::high_resolution_clock::now();
 
 		if (S_OK == result)
 		{
 			std::chrono::duration<double, std::milli> conversionTime = t2 - t1;
 			#ifndef NO_QUILL
-			LOG_TRACE_L3(mLogData.logger, "[{}] Converted frame to BGRA in {:.3f} ms", mLogData.prefix, conversionTime.count());
+			LOG_TRACE_L3(mLogData.logger, "[{}] Converted frame to BGRA in {:.3f} ms", mLogData.prefix,
+			             conversionTime.count());
 			#endif
 
 			newVideoFormat.pixelEncoding = RGB_444;
@@ -992,7 +1004,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			newVideoFormat.bitDepth = 8;
 			newVideoFormat.pixelStructureName = "RGBA";
 			GetImageDimensions(newVideoFormat.pixelStructure, newVideoFormat.cx, newVideoFormat.cy,
-				&newVideoFormat.lineLength, &newVideoFormat.imageSize);
+			                   &newVideoFormat.lineLength, &newVideoFormat.imageSize);
 		}
 		else
 		{
