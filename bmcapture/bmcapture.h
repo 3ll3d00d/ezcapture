@@ -93,13 +93,54 @@ struct AUDIO_SIGNAL
 class AudioFrame
 {
 public:
-	AudioFrame(int64_t captureTime, int64_t frameTime, void* data, long len, AUDIO_FORMAT fmt) :
+	AudioFrame(log_data logData, int64_t captureTime, int64_t frameTime, void* data, long len, AUDIO_FORMAT fmt,
+	           uint64_t frameIndex, IDeckLinkAudioInputPacket* packet):
 		mCaptureTime(captureTime),
 		mFrameTime(frameTime),
 		mData(data),
 		mLength(len),
-		mFormat(std::move(fmt))
+		mFormat(std::move(fmt)),
+		mLogData(std::move(logData)),
+		mFrameIndex(frameIndex),
+		mPacket(packet)
 	{
+		auto ct = packet->AddRef();
+
+		#ifndef NO_QUILL
+		LOG_TRACE_L3(mLogData.logger, "[{}] AudioFrame Access (new) {} {}", mLogData.prefix, mFrameIndex, ct);
+		#endif
+	}
+
+	~AudioFrame()
+	{
+		auto ct = mPacket->Release();
+
+		#ifndef NO_QUILL
+		LOG_TRACE_L3(mLogData.logger, "[{}] AudioFrame Access (del) {} {}", mLogData.prefix, mFrameIndex, ct);
+		#endif
+	}
+
+	AudioFrame& operator=(const AudioFrame& rhs)
+	{
+		if (this == &rhs)
+			return *this;
+
+		mPacket = rhs.mPacket;
+		auto ct = mPacket->AddRef();
+
+		#ifndef NO_QUILL
+		LOG_TRACE_L3(mLogData.logger, "[{}] AudioFrame Access (assign) {} {}", mLogData.prefix, mFrameIndex, ct);
+		#endif
+
+		mLogData = rhs.mLogData;
+		mCaptureTime = rhs.mCaptureTime;
+		mFrameTime = rhs.mFrameTime;
+		mData = rhs.mData;
+		mLength = rhs.mLength;
+		mFormat = rhs.mFormat;
+		mFrameIndex = rhs.mFrameIndex;
+
+		return *this;
 	}
 
 	int64_t GetCaptureTime() const { return mCaptureTime; }
@@ -118,44 +159,52 @@ private:
 	void* mData = nullptr;
 	long mLength{0};
 	AUDIO_FORMAT mFormat{};
+	log_data mLogData;
+	uint64_t mFrameIndex{0};
+	IDeckLinkAudioInputPacket* mPacket;
 };
 
 class VideoFrame
 {
 public:
-	VideoFrame(VIDEO_FORMAT format, int64_t captureTime, int64_t frameTime, int64_t duration, long rowSize, uint64_t index,
-	           const CComQIPtr<IDeckLinkVideoBuffer>& buffer) :
+	VideoFrame(log_data logData, VIDEO_FORMAT format, int64_t captureTime, int64_t frameTime, int64_t duration,
+	           uint64_t index, IDeckLinkVideoFrame* frame) :
 		mFormat(std::move(format)),
 		mCaptureTime(captureTime),
 		mFrameTime(frameTime),
 		mFrameDuration(duration),
 		mFrameIndex(index),
-		mBuffer(buffer)
+		mLogData(std::move(logData))
 	{
-		mBuffer->StartAccess(bmdBufferAccessRead);
-		mBuffer->GetBytes(&mFrameData);
-		mLength = rowSize * mFormat.cy;
-	}
+		frame->QueryInterface(IID_IDeckLinkVideoBuffer, reinterpret_cast<void**>(&mBuffer));
+		#ifndef NO_QUILL
+		// hack to get current ref count
+		frame->AddRef();
+		auto ct = frame->Release();
+		LOG_TRACE_L3(mLogData.logger, "[{}] VideoFrame Access (new) {} {}", mLogData.prefix, index, ct);
+		#endif
 
-	VideoFrame(const VideoFrame& vf):
-		mFormat(vf.mFormat),
-		mCaptureTime(vf.mCaptureTime),
-		mFrameTime(vf.mFrameTime),
-		mFrameDuration(vf.mFrameDuration),
-		mFrameIndex(vf.mFrameIndex),
-		mBuffer(vf.mBuffer),
-		mLength(vf.mLength)
-	{
-		mBuffer->StartAccess(bmdBufferAccessRead);
-		mBuffer->GetBytes(&mFrameData);
+		mLength = frame->GetRowBytes() * mFormat.cy;
 	}
 
 	~VideoFrame()
 	{
-		mBuffer->EndAccess(bmdBufferAccessRead);
+		auto ct = mBuffer->Release();
+		#ifndef NO_QUILL
+		LOG_TRACE_L3(mLogData.logger, "[{}] VideoFrame Access (del) {} {}", mLogData.prefix, mFrameIndex, ct);
+		#endif
 	}
 
-	void* GetData() const { return mFrameData; }
+	void CopyData(BYTE* dst) const
+	{
+		mBuffer->StartAccess(bmdBufferAccessRead);
+
+		void* data;
+		mBuffer->GetBytes(&data);
+		memcpy(dst, data, mLength);
+
+		mBuffer->EndAccess(bmdBufferAccessRead);
+	}
 
 	uint64_t GetFrameIndex() const { return mFrameIndex; }
 
@@ -176,8 +225,8 @@ private:
 	int64_t mFrameDuration{0};
 	uint64_t mFrameIndex{0};
 	long mLength{0};
-	CComQIPtr<IDeckLinkVideoBuffer> mBuffer;
-	void* mFrameData = nullptr;
+	IDeckLinkVideoBuffer* mBuffer = nullptr;
+	log_data mLogData;
 };
 
 class BMReferenceClock final :

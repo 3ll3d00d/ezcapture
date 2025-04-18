@@ -63,16 +63,20 @@ TEST(HDR, CanParseHDRInfoFrame) {
 
 TEST(DIMS, CanCalcImageDims)
 {
+    DWORD img, line;
 
     for (int i = 0; i < 3; ++i)
     {
         for (int j = 0; j < 4; ++j)
         {
-            DWORD img, line;
             GetImageDimensions(fourcc[i][j], 3840, 2160, &line, &img);
 
             EXPECT_EQ(line, FOURCC_CalcMinStride(fourcc[i][j], 3840, 2));
             EXPECT_EQ(img, FOURCC_CalcImageSize(fourcc[i][j], 3840, 2160, line));
         }
     }
+
+    GetImageDimensions(FOURCC_RGBA, 3840, 2160, &line, &img);
+    EXPECT_EQ(line, FOURCC_CalcMinStride(FOURCC_RGBA, 3840, 2));
+    EXPECT_EQ(img, FOURCC_CalcImageSize(FOURCC_RGBA, 3840, 2160, line));
 }

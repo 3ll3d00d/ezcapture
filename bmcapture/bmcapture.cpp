@@ -28,6 +28,7 @@
 #include <cmath>
 // std::reverse
 #include <algorithm>
+#include <quill/LogMacros.h>
 
 #ifndef NO_QUILL
 #include "quill/Backend.h"
@@ -376,7 +377,6 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 				continue;
 			}
 
-			auto found = false;
 			long width = 0;
 			double fps = 0.0;
 			while (true)
@@ -392,22 +392,32 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 					auto dm = displayMode->GetDisplayMode();
 					if (dmWidth > width || std::isgreater(dmFps, fps))
 					{
-						#ifndef NO_QUILL
-						LOG_INFO(mLogData.logger, "[{}] Found superior DisplayMode [{:#08x}] with width {} fps {:.3f}",
-							mLogData.prefix, static_cast<int>(dm), dmWidth, dmFps);
-						#endif
+						if (width >= 10000)
+						{
+							#ifndef NO_QUILL
+							LOG_INFO(mLogData.logger, "[{}] Ignoring superior DisplayMode [{:#08x}] with width {} fps {:.3f}",
+								mLogData.prefix, static_cast<int>(dm), dmWidth, dmFps);
+							#endif
+						}
+						else
+						{
+							#ifndef NO_QUILL
+							LOG_INFO(mLogData.logger, "[{}] Found superior DisplayMode [{:#08x}] with width {} fps {:.3f}",
+								mLogData.prefix, static_cast<int>(dm), dmWidth, dmFps);
+							#endif
 
-						LoadSignalFromDisplayMode(&mVideoSignal, displayMode);
-
-						found = true;
+							LoadSignalFromDisplayMode(&mVideoSignal, displayMode);
+							width = dmWidth;
+							fps = dmFps;
+						}
 					}
 					else
 					{
 						#ifndef NO_QUILL
-						LOG_INFO(mLogData.logger, "[{}] Ignoring inferior DisplayMode [{:#08x}] with width {} fps {:.3f}",
-							mLogData.prefix, static_cast<int>(dm), dmWidth, dmFps);
+						LOG_INFO(mLogData.logger,
+						         "[{}] Ignoring inferior DisplayMode [{:#08x}] with width {} fps {:.3f}",
+						         mLogData.prefix, static_cast<int>(dm), dmWidth, dmFps);
 						#endif
-
 					}
 				}
 				else
@@ -416,11 +426,11 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 				}
 			}
 
-			if (!found)
+			if (width == 0)
 			{
 				#ifndef NO_QUILL
 				LOG_ERROR(mLogData.logger, "[{}] Unable to find a DisplayMode, ignoring device",
-					mLogData.prefix, result);
+				          mLogData.prefix, result);
 				#endif
 
 				mDeckLinkNotification = nullptr;
@@ -473,8 +483,8 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 
 	if (mDeckLink)
 	{
-		OnDeviceSelected();
-		OnVideoSignalLoaded(&mVideoSignal);
+		BlackmagicCaptureFilter::OnDeviceSelected();
+		BlackmagicCaptureFilter::OnVideoSignalLoaded(&mVideoSignal);
 	}
 	else
 	{
@@ -568,8 +578,9 @@ HRESULT BlackmagicCaptureFilter::VideoInputFormatChanged(BMDVideoInputFormatChan
 	if (notificationEvents & bmdVideoInputColorspaceChanged)
 	{
 		#ifndef NO_QUILL
-		LOG_TRACE_L1(mLogData.logger, "[{}] VideoInputFormatChanged::bmdVideoInputColorspaceChanged {}", mLogData.prefix,
-			detectedSignalFlags);
+		LOG_TRACE_L1(mLogData.logger, "[{}] VideoInputFormatChanged::bmdVideoInputColorspaceChanged {}",
+		             mLogData.prefix,
+		             detectedSignalFlags);
 		#endif
 
 		if (detectedSignalFlags & bmdDetectedVideoInputYCbCr422)
@@ -641,26 +652,26 @@ HRESULT BlackmagicCaptureFilter::VideoInputFormatChanged(BMDVideoInputFormatChan
 				{
 					#ifndef NO_QUILL
 					LOG_WARNING(mLogData.logger, "[{}] Failed to pause streams on input format change ({:#08x})",
-						mLogData.prefix, result);
+					            mLogData.prefix, result);
 					#endif
 				}
 
 				result = mDeckLinkInput->EnableVideoInput(newSignal.displayMode, newSignal.pixelFormat,
-					bmdVideoInputEnableFormatDetection);
+				                                          bmdVideoInputEnableFormatDetection);
 				if (S_OK == result)
 				{
 					#ifndef NO_QUILL
 					LOG_WARNING(mLogData.logger,
-						"[{}] Enabled video input on input format change (displayMode: {:#08x} pixelFormat: {:#08x})",
-						mLogData.prefix, static_cast<int>(newDisplayMode->GetDisplayMode()),
-						static_cast<int>(newSignal.pixelFormat));
+					            "[{}] Enabled video input on input format change (displayMode: {:#08x} pixelFormat: {:#08x})",
+					            mLogData.prefix, static_cast<int>(newDisplayMode->GetDisplayMode()),
+					            static_cast<int>(newSignal.pixelFormat));
 					#endif
 				}
 				else
 				{
 					#ifndef NO_QUILL
 					LOG_WARNING(mLogData.logger, "[{}] Failed to enable video input on input format change ({:#08x})",
-						mLogData.prefix, result);
+					            mLogData.prefix, result);
 					#endif
 				}
 
@@ -669,7 +680,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFormatChanged(BMDVideoInputFormatChan
 				if (S_OK != result)
 				{
 					LOG_WARNING(mLogData.logger, "[{}] Failed to flush streams on input format change ({:#08x})",
-						mLogData.prefix, result);
+					            mLogData.prefix, result);
 				}
 				else
 				{
@@ -682,7 +693,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFormatChanged(BMDVideoInputFormatChan
 				{
 					#ifndef NO_QUILL
 					LOG_WARNING(mLogData.logger, "[{}] Failed to start streams on input format change ({:#08x})",
-						mLogData.prefix, result);
+					            mLogData.prefix, result);
 					#endif
 				}
 				else
@@ -710,7 +721,6 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 
 	if (videoFrame)
 	{
-		IDeckLinkVideoFrame* frameToProcess = videoFrame;
 
 		int64_t frameTime = 0;
 		int64_t frameDuration = 0;
@@ -743,32 +753,6 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 
 		VIDEO_FORMAT newVideoFormat{};
 		LoadFormat(&newVideoFormat, &mVideoSignal);
-
-		IDeckLinkVideoFrame* convertedFrame;
-		result = mDeckLinkFrameConverter->ConvertNewFrame(videoFrame, bmdFormat8BitBGRA, bmdColorspaceUnknown, nullptr,
-		                                                  &convertedFrame);
-		if (S_OK == result)
-		{
-			#ifndef NO_QUILL
-			LOG_TRACE_L3(mLogData.logger, "[{}] Converted frame to BGRA", mLogData.prefix);
-			#endif
-
-			newVideoFormat.pixelEncoding = RGB_444;
-			newVideoFormat.bitCount = BITS_RGBA;
-			newVideoFormat.pixelStructure = FOURCC_RGBA;
-			newVideoFormat.bitDepth = 8;
-			newVideoFormat.pixelStructureName = "RGBA";
-			GetImageDimensions(newVideoFormat.pixelStructure, newVideoFormat.cx, newVideoFormat.cy,
-			                   &newVideoFormat.lineLength, &newVideoFormat.imageSize);
-
-			frameToProcess = convertedFrame;
-		}
-		else
-		{
-			#ifndef NO_QUILL
-			LOG_WARNING(mLogData.logger, "[{}] Failed to convert frame to BGRA {:#08x}", mLogData.prefix, result);
-			#endif
-		}
 
 		if (mPreviousVideoFrameTime == invalidFrameTime)
 		{
@@ -988,12 +972,42 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 		}
 		#endif
 
+		// TODO replace with custom conversion to supported format rather than brute force everything to RGB
+		IDeckLinkVideoFrame* convertedFrame;
+		auto t1 =  std::chrono::high_resolution_clock::now();
+		result = mDeckLinkFrameConverter->ConvertNewFrame(videoFrame, bmdFormat8BitBGRA, bmdColorspaceUnknown, nullptr,
+			&convertedFrame);
+		auto t2 =  std::chrono::high_resolution_clock::now();
+
+		if (S_OK == result)
+		{
+			std::chrono::duration<double, std::milli> conversionTime = t2 - t1;
+			#ifndef NO_QUILL
+			LOG_TRACE_L3(mLogData.logger, "[{}] Converted frame to BGRA in {:.3f} ms", mLogData.prefix, conversionTime.count());
+			#endif
+
+			newVideoFormat.pixelEncoding = RGB_444;
+			newVideoFormat.bitCount = BITS_RGBA;
+			newVideoFormat.pixelStructure = FOURCC_RGBA;
+			newVideoFormat.bitDepth = 8;
+			newVideoFormat.pixelStructureName = "RGBA";
+			GetImageDimensions(newVideoFormat.pixelStructure, newVideoFormat.cx, newVideoFormat.cy,
+				&newVideoFormat.lineLength, &newVideoFormat.imageSize);
+		}
+		else
+		{
+			#ifndef NO_QUILL
+			LOG_WARNING(mLogData.logger, "[{}] Failed to convert frame to BGRA {:#08x}", mLogData.prefix, result);
+			#endif
+			return E_FAIL;
+		}
+
 		{
 			CAutoLock lock(&mFrameSec);
 			mVideoFormat = newVideoFormat;
-			CComQIPtr<IDeckLinkVideoBuffer> buf(frameToProcess);
-			mVideoFrame = std::make_shared<VideoFrame>(newVideoFormat, now, frameTime, frameDuration,
-			                                           frameToProcess->GetRowBytes(), mCurrentVideoFrameIndex, buf);
+			mVideoFrame = std::make_shared<VideoFrame>(mLogData, newVideoFormat, now, frameTime, frameDuration,
+			                                           mCurrentVideoFrameIndex, convertedFrame);
+			convertedFrame->Release();
 		}
 
 		// signal listeners
@@ -1045,7 +1059,8 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			auto audioFrameLength = audioPacket->GetSampleFrameCount() * mDeviceInfo.audioChannelCount * audioByteDepth;
 
 			CAutoLock lock(&mFrameSec);
-			mAudioFrame = std::make_shared<AudioFrame>(now, frameTime, audioData, audioFrameLength, newAudioFormat);
+			mAudioFrame = std::make_shared<AudioFrame>(mLogData, now, frameTime, audioData, audioFrameLength,
+			                                           newAudioFormat, ++mCurrentAudioFrameIndex, audioPacket);
 		}
 
 		// signal listeners
@@ -1482,24 +1497,37 @@ HRESULT BlackmagicVideoCapturePin::FillBuffer(IMediaSample* pms)
 	auto hr = pms->GetPointer(&out);
 	if (FAILED(hr))
 	{
-		#ifndef NOQUILL
-		LOG_WARNING(mLogData.logger, "[{}] Unable to fill buffer for frame {}, can't get pointer to output buffer [{:#08x}]",
+		#ifndef NO_QUILL
+		LOG_WARNING(mLogData.logger,
+		            "[{}] Unable to fill buffer for frame {}, can't get pointer to output buffer [{:#08x}]",
 		            mLogData.prefix, mCurrentFrame->GetFrameIndex(), hr);
 		#endif
 
 		return hr;
 	}
-	if (mCurrentFrame->GetLength() > pms->GetSize())
+
+	auto sizeDelta = mCurrentFrame->GetLength() - pms->GetSize();
+	if (sizeDelta > 0)
 	{
-		#ifndef NOQUILL
-		LOG_WARNING(mLogData.logger, "[{}] Unable to fill buffer for frame {}, buffer size mismatch (frame: {}, buffer: {})",
+		#ifndef NO_QUILL
+		LOG_WARNING(mLogData.logger, "[{}] Buffer for frame {} too small, failing (frame: {}, buffer: {})",
 		            mLogData.prefix, mCurrentFrame->GetFrameIndex(), mCurrentFrame->GetLength(), pms->GetSize());
 		#endif
 
 		return S_FALSE;
 	}
+	if (sizeDelta < 0)
+	{
+		#ifndef NO_QUILL
+		LOG_WARNING(mLogData.logger,
+		            "[{}] Buffer for frame {} too large, setting ActualDataLength (frame: {}, buffer: {})",
+		            mLogData.prefix, mCurrentFrame->GetFrameIndex(), mCurrentFrame->GetLength(), pms->GetSize());
+		#endif
 
-	memcpy(out, mCurrentFrame->GetData(), mCurrentFrame->GetLength());
+		pms->SetActualDataLength(mCurrentFrame->GetLength());
+	}
+
+	mCurrentFrame->CopyData(out);
 
 	mFrameCounter = mCurrentFrame->GetFrameIndex();
 
@@ -1509,7 +1537,7 @@ HRESULT BlackmagicVideoCapturePin::FillBuffer(IMediaSample* pms)
 		AM_MEDIA_TYPE* sendMediaType = CreateMediaType(&cmt);
 		pms->SetMediaType(sendMediaType);
 		DeleteMediaType(sendMediaType);
-		mSendMediaType = FALSE;
+		mSendMediaType = false;
 	}
 	AppendHdrSideDataIfNecessary(pms, endTime);
 
@@ -1530,6 +1558,7 @@ HRESULT BlackmagicVideoCapturePin::FillBuffer(IMediaSample* pms)
 	#endif
 
 	mCurrentFrame.reset();
+	mCurrentFrame = nullptr;
 
 	if (S_FALSE == HandleStreamStateChange(pms))
 	{
@@ -1779,6 +1808,7 @@ HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
 	#endif
 
 	mCurrentFrame.reset();
+	mCurrentFrame = nullptr;
 
 	if (S_FALSE == HandleStreamStateChange(pms))
 	{

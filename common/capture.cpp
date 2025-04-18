@@ -1100,6 +1100,10 @@ HRESULT VideoCapturePin::DoChangeMediaType(const CMediaType* pmt, const VIDEO_FO
 		newVideoFormat->bitDepth,
 		newVideoFormat->pixelStructureName, newVideoFormat->colourFormatName, newVideoFormat->hdrMeta.transferFunction,
 		newVideoFormat->imageSize);
+
+	auto header = reinterpret_cast<VIDEOINFOHEADER2*>(pmt->pbFormat);
+	LOG_TRACE_L3(mLogData.logger, "[{}] sz: {} {}", mLogData.prefix, pmt->GetSampleSize(),
+	             header->bmiHeader.biSizeImage);
 	#endif
 
 	auto retVal = RenegotiateMediaType(pmt, newVideoFormat->imageSize,
