@@ -14,7 +14,7 @@
  */
 #pragma once
 
-#define NOMINMAX
+#define NOMINMAX // quill does not compile without this
 
 #include <windows.h>
 #include <process.h>
@@ -32,14 +32,11 @@
 
 #ifndef NO_QUILL
 #include "quill/Backend.h"
-#include "quill/Frontend.h"
-#include "quill/LogMacros.h"
-#include "quill/Logger.h"
 #include "quill/sinks/FileSink.h"
 #include <string_view>
 #include <utility>
 #include "quill/std/WideString.h"
-#endif // !NO_QUILL
+#endif
 
 #define S_PARTIAL_DATABURST    ((HRESULT)2L)
 #define S_POSSIBLE_BITSTREAM    ((HRESULT)3L)

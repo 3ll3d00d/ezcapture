@@ -313,6 +313,7 @@
     <ClInclude Include="domain.h" />
     <ClInclude Include="ISpecifyPropertyPages2.h" />
     <ClInclude Include="lavfilters_side_data.h" />
+    <ClInclude Include="logging.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="signalinfo.h" />
     <ClInclude Include="version.h" />

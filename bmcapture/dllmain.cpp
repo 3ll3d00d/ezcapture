@@ -14,7 +14,7 @@
  */
 #pragma once
 
-#define NOMINMAX
+#define NOMINMAX // quill does not compile without this
 
 #include <windows.h>
 #include <streams.h>

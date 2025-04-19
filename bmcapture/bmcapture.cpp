@@ -14,7 +14,7 @@
  */
 #pragma once
 
-#define NOMINMAX
+#define NOMINMAX  // quill does not compile without this
 
 #include <windows.h>
 #include <process.h>
@@ -27,18 +27,14 @@
 #include <cmath>
 // std::reverse
 #include <algorithm>
-#include <quill/LogMacros.h>
 
 #ifndef NO_QUILL
 #include "quill/Backend.h"
-#include "quill/Frontend.h"
-#include "quill/LogMacros.h"
-#include "quill/Logger.h"
 #include "quill/sinks/FileSink.h"
 #include <string_view>
 #include <utility>
 #include "quill/std/WideString.h"
-#endif // !NO_QUILL
+#endif
 
 // audio is limited to 48kHz and an audio packet is only delivered with a video frame
 // lowest fps is 23.976 so the max no of samples should be 48000/(24000/1001) = 2002

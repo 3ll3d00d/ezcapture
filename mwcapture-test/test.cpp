@@ -1,6 +1,6 @@
 #pragma once
 
-#define NOMINMAX
+#define NOMINMAX // quill does not compile without this
 
 #include "gtest/gtest.h"
 #include "LibMWCapture/MWCapture.h"

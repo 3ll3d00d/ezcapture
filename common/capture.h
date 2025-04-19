@@ -13,35 +13,16 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 #pragma once
-#define NOMINMAX
+#define NOMINMAX // quill does not compile without this
 
 #include <string>
 #include <utility>
 
-#ifndef NO_QUILL
-#include <quill/Logger.h>
-#include <quill/LogMacros.h>
-#include "quill/Frontend.h"
-
-struct CustomFrontendOptions
-{
-	static constexpr quill::QueueType queue_type{quill::QueueType::BoundedDropping};
-	static constexpr uint32_t initial_queue_capacity{64 * 1024 * 1024}; // 64MiB
-	static constexpr uint32_t blocking_queue_retry_interval_ns{800};
-	static constexpr bool huge_pages_enabled{false};
-};
-
-using CustomFrontend = quill::FrontendImpl<CustomFrontendOptions>;
-using CustomLogger = quill::LoggerImpl<CustomFrontendOptions>;
-#else
-#include <vector>
-#include <chrono>
-#endif // !NO_QUILL
-
+#include "logging.h"
 #include "signalinfo.h"
 #include "ISpecifyPropertyPages2.h"
 #include "lavfilters_side_data.h"
-#include "dvdmedia.h"
+#include <dvdmedia.h>
 #include <wmcodecdsp.h>
 
 EXTERN_C const GUID MEDIASUBTYPE_PCM_IN24;
@@ -53,14 +34,6 @@ EXTERN_C const AMOVIESETUP_PIN sMIPPins[];
 #define SHORT_BACKOFF Sleep(1)
 
 constexpr auto unity = 1.0;
-
-struct log_data
-{
-	#ifndef NO_QUILL
-	CustomLogger* logger = nullptr;
-	#endif
-	std::string prefix{};
-};
 
 inline bool diff(double x, double y)
 {
