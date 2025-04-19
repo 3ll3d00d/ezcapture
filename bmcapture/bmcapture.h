@@ -206,6 +206,12 @@ public:
 		mBuffer->EndAccess(bmdBufferAccessRead);
 	}
 
+	void WithData(void** dst) const
+	{
+		mBuffer->StartAccess(bmdBufferAccessRead);
+		mBuffer->GetBytes(dst);
+	}
+
 	uint64_t GetFrameIndex() const { return mFrameIndex; }
 
 	int64_t GetCaptureTime() const { return mCaptureTime; }

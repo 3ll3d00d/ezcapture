@@ -22,7 +22,6 @@
 #include <filesystem>
 #include <utility>
 #include "bmcapture.h"
-
 #include <initguid.h>
 
 #include <cmath>
@@ -795,21 +794,27 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			{
 			case bmdColorspaceRec601:
 				newVideoFormat.colourFormat = YUV601;
+				newVideoFormat.colourFormatName = "YUV601";
 				break;
 			case bmdColorspaceRec709:
 				newVideoFormat.colourFormat = YUV709;
+				newVideoFormat.colourFormatName = "YUV709";
 				break;
 			case bmdColorspaceRec2020:
 				newVideoFormat.colourFormat = YUV2020;
+				newVideoFormat.colourFormatName = "YUV2020";
 				break;
 			case bmdColorspaceP3D65:
 				newVideoFormat.colourFormat = P3D65;
+				newVideoFormat.colourFormatName = "P3D65";
 				break;
 			case bmdColorspaceDolbyVisionNative:
 				newVideoFormat.colourFormat = COLOUR_FORMAT_UNKNOWN;
+				newVideoFormat.colourFormatName = "?";
 				break;
 			case bmdColorspaceUnknown:
 				newVideoFormat.colourFormat = COLOUR_FORMAT_UNKNOWN;
+				newVideoFormat.colourFormatName = "?";
 				break;
 			}
 		}
@@ -824,24 +829,21 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			switch (intValue)
 			{
 			case 0:
-				hdr.transferFunction = 4;
+				newVideoFormat.hdrMeta.transferFunction = 4;
 				break;
 			case 2:
-				hdr.transferFunction = 15;
+				newVideoFormat.hdrMeta.transferFunction = 15;
 				break;
 			case 3:
-				hdr.transferFunction = 16;
+				newVideoFormat.hdrMeta.transferFunction = 16;
 				break;
 			default:
-				hdr.transferFunction = 4;
+				newVideoFormat.hdrMeta.transferFunction = 4;
 			}
 		}
-		else
+		else if (newVideoFormat.colourFormat == YUV2020)
 		{
-			if (newVideoFormat.colourFormat == YUV2020)
-			{
-				hdr.transferFunction = 15;
-			}
+			newVideoFormat.hdrMeta.transferFunction = 15;
 		}
 
 		if (videoFrame->GetFlags() & bmdFrameContainsHDRMetadata)
@@ -850,7 +852,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRDisplayPrimariesBlueX, &doubleValue);
 			if (S_OK == result && isInCieRange(doubleValue))
 			{
-				hdr.b_primary_x = doubleValue;
+				newVideoFormat.hdrMeta.b_primary_x = doubleValue;
 			}
 			else
 			{
@@ -859,7 +861,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRDisplayPrimariesBlueY, &doubleValue);
 			if (S_OK == result && isInCieRange(doubleValue))
 			{
-				hdr.b_primary_y = doubleValue;
+				newVideoFormat.hdrMeta.b_primary_y = doubleValue;
 			}
 			else
 			{
@@ -869,7 +871,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRDisplayPrimariesRedX, &doubleValue);
 			if (S_OK == result && isInCieRange(doubleValue))
 			{
-				hdr.r_primary_x = doubleValue;
+				newVideoFormat.hdrMeta.r_primary_x = doubleValue;
 			}
 			else
 			{
@@ -878,7 +880,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRDisplayPrimariesRedY, &doubleValue);
 			if (S_OK == result && isInCieRange(doubleValue))
 			{
-				hdr.r_primary_y = doubleValue;
+				newVideoFormat.hdrMeta.r_primary_y = doubleValue;
 			}
 			else
 			{
@@ -888,7 +890,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRDisplayPrimariesGreenX, &doubleValue);
 			if (S_OK == result && isInCieRange(doubleValue))
 			{
-				hdr.g_primary_x = doubleValue;
+				newVideoFormat.hdrMeta.g_primary_x = doubleValue;
 			}
 			else
 			{
@@ -897,7 +899,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRDisplayPrimariesGreenY, &doubleValue);
 			if (S_OK == result && isInCieRange(doubleValue))
 			{
-				hdr.g_primary_y = doubleValue;
+				newVideoFormat.hdrMeta.g_primary_y = doubleValue;
 			}
 			else
 			{
@@ -908,7 +910,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRWhitePointX, &doubleValue);
 			if (S_OK == result && isInCieRange(doubleValue))
 			{
-				hdr.whitepoint_x = doubleValue;
+				newVideoFormat.hdrMeta.whitepoint_x = doubleValue;
 			}
 			else
 			{
@@ -917,7 +919,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRWhitePointY, &doubleValue);
 			if (S_OK == result && isInCieRange(doubleValue))
 			{
-				hdr.whitepoint_y = doubleValue;
+				newVideoFormat.hdrMeta.whitepoint_y = doubleValue;
 			}
 			else
 			{
@@ -929,7 +931,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			                                      &doubleValue);
 			if (S_OK == result && std::fabs(doubleValue) > 0.000001)
 			{
-				hdr.minDML = doubleValue;
+				newVideoFormat.hdrMeta.minDML = doubleValue;
 			}
 			else
 			{
@@ -939,7 +941,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			                                      &doubleValue);
 			if (S_OK == result && std::fabs(doubleValue) > 0.000001)
 			{
-				hdr.maxDML = doubleValue;
+				newVideoFormat.hdrMeta.maxDML = doubleValue;
 			}
 			else
 			{
@@ -950,7 +952,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRMaximumContentLightLevel, &doubleValue);
 			if (S_OK == result && std::fabs(doubleValue) > 0.000001)
 			{
-				hdr.maxCLL = std::lround(doubleValue);
+				newVideoFormat.hdrMeta.maxCLL = std::lround(doubleValue);
 			}
 			else
 			{
@@ -960,16 +962,16 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			                                      &doubleValue);
 			if (S_OK == result && std::fabs(doubleValue) > 0.000001)
 			{
-				hdr.maxFALL = std::lround(doubleValue);
+				newVideoFormat.hdrMeta.maxFALL = std::lround(doubleValue);
 			}
 			else
 			{
 				// not present or invalid
 			}
-			hdr.exists = hdrMetaExists(&hdr);
+			newVideoFormat.hdrMeta.exists = hdrMetaExists(&hdr);
 
 			#ifndef NO_QUILL
-			if (hdr.exists)
+			if (newVideoFormat.hdrMeta.exists)
 			{
 				logHdrMeta(hdr, mVideoFormat.hdrMeta, mLogData);
 			}
@@ -977,7 +979,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 		}
 
 		#ifndef NO_QUILL
-		if (!hdr.exists && mVideoFormat.hdrMeta.exists)
+		if (!newVideoFormat.hdrMeta.exists && mVideoFormat.hdrMeta.exists)
 		{
 			LOG_TRACE_L1(mLogData.logger, "[{}] HDR metadata has been removed", mLogData.prefix);
 		}
@@ -987,7 +989,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 		IDeckLinkVideoFrame* convertedFrame;
 		auto t1 = std::chrono::high_resolution_clock::now();
 		result = mDeckLinkFrameConverter->ConvertNewFrame(videoFrame, bmdFormat8BitBGRA, bmdColorspaceUnknown, nullptr,
-		                                                  &convertedFrame);
+			&convertedFrame);
 		auto t2 = std::chrono::high_resolution_clock::now();
 
 		if (S_OK == result)
@@ -995,7 +997,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			std::chrono::duration<double, std::milli> conversionTime = t2 - t1;
 			#ifndef NO_QUILL
 			LOG_TRACE_L3(mLogData.logger, "[{}] Converted frame to BGRA in {:.3f} ms", mLogData.prefix,
-			             conversionTime.count());
+				conversionTime.count());
 			#endif
 
 			newVideoFormat.pixelEncoding = RGB_444;
@@ -1004,7 +1006,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			newVideoFormat.bitDepth = 8;
 			newVideoFormat.pixelStructureName = "RGBA";
 			GetImageDimensions(newVideoFormat.pixelStructure, newVideoFormat.cx, newVideoFormat.cy,
-			                   &newVideoFormat.lineLength, &newVideoFormat.imageSize);
+				&newVideoFormat.lineLength, &newVideoFormat.imageSize);
 		}
 		else
 		{
