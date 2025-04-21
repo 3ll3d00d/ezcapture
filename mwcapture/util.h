@@ -20,6 +20,17 @@ constexpr auto chromaticity_scale_factor = 0.00002;
 constexpr auto high_luminance_scale_factor = 1.0;
 constexpr auto low_luminance_scale_factor = 0.0001;
 
+// bit depth -> subsampling -> pixel format
+// rgb - 4:2:2 - 4:4:4 - 4:2:0
+const pixel_format pixelFormats[3][4] = {
+	// 8 bit
+	{BGR24, NV16, AYUV, NV12},
+	// 10 bit
+	{BGR10, P210, AYUV, P010},
+	// 12 bit
+	{BGR10, P210, AYUV, P010}
+};
+
 // utility functions
 inline void LoadHdrMeta(HDR_META* meta, const HDMI_HDR_INFOFRAME_PAYLOAD* frame)
 {

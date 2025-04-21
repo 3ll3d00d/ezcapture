@@ -24,7 +24,7 @@
 class IVideoFrameWriter
 {
 public:
-	virtual HRESULT Write(IDeckLinkVideoFrame* srcFrame) = 0;
+	virtual HRESULT WriteTo(IDeckLinkVideoFrame* srcFrame) = 0;
 
 protected:
 	IVideoFrameWriter(log_data pLogData) : mLogData(std::move(pLogData))

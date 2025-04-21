@@ -69,14 +69,10 @@ TEST(DIMS, CanCalcImageDims)
     {
         for (int j = 0; j < 4; ++j)
         {
-            GetImageDimensions(fourcc[i][j], 3840, 2160, &line, &img);
+            pixelFormats[i][j].GetImageDimensions(3840, 2160, &line, &img);
 
-            EXPECT_EQ(line, FOURCC_CalcMinStride(fourcc[i][j], 3840, 2));
-            EXPECT_EQ(img, FOURCC_CalcImageSize(fourcc[i][j], 3840, 2160, line));
+            EXPECT_EQ(line, FOURCC_CalcMinStride(pixelFormats[i][j].fourcc, 3840, 2));
+            EXPECT_EQ(img, FOURCC_CalcImageSize(pixelFormats[i][j].fourcc, 3840, 2160, line));
         }
     }
-
-    GetImageDimensions(FOURCC_RGBA, 3840, 2160, &line, &img);
-    EXPECT_EQ(line, FOURCC_CalcMinStride(FOURCC_RGBA, 3840, 2));
-    EXPECT_EQ(img, FOURCC_CalcImageSize(FOURCC_RGBA, 3840, 2160, line));
 }

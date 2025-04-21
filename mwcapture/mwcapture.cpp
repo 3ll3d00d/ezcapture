@@ -248,16 +248,16 @@ void MagewellCaptureFilter::OnVideoSignalLoaded(VIDEO_SIGNAL* vs)
 		mVideoInputStatus.inColourFormat = "RGB";
 		break;
 	case MWCAP_VIDEO_COLOR_FORMAT_YUV601:
-		mVideoInputStatus.inColourFormat = "YUV601";
+		mVideoInputStatus.inColourFormat = "REC601";
 		break;
 	case MWCAP_VIDEO_COLOR_FORMAT_YUV709:
-		mVideoInputStatus.inColourFormat = "YUV709";
+		mVideoInputStatus.inColourFormat = "REC709";
 		break;
 	case MWCAP_VIDEO_COLOR_FORMAT_YUV2020:
-		mVideoInputStatus.inColourFormat = "YUV2020";
+		mVideoInputStatus.inColourFormat = "BT2020";
 		break;
 	case MWCAP_VIDEO_COLOR_FORMAT_YUV2020C:
-		mVideoInputStatus.inColourFormat = "YUV2020C";
+		mVideoInputStatus.inColourFormat = "BT2020C";
 		break;
 	}
 
@@ -383,19 +383,19 @@ MagewellVideoCapturePin::VideoCapture::VideoCapture(MagewellVideoCapturePin* pin
 	mLogData(pin->mLogData)
 {
 	mEvent = MWCreateVideoCapture(hChannel, pin->mVideoFormat.cx, pin->mVideoFormat.cy,
-	                              pin->mVideoFormat.pixelStructure,
+	                              pin->mVideoFormat.pixelFormat.fourcc,
 	                              pin->mVideoFormat.frameInterval, CaptureFrame, pin);
 	#ifndef NO_QUILL
 	if (mEvent == nullptr)
 	{
 		LOG_ERROR(mLogData.logger, "[{}] MWCreateVideoCapture failed {}x{} {} {}", mLogData.prefix,
-		          pin->mVideoFormat.cx, pin->mVideoFormat.cy, pin->mVideoFormat.pixelStructureName,
+		          pin->mVideoFormat.cx, pin->mVideoFormat.cy, pin->mVideoFormat.pixelFormat.name,
 		          pin->mVideoFormat.frameInterval);
 	}
 	else
 	{
 		LOG_INFO(mLogData.logger, "[{}] MWCreateVideoCapture succeeded {}x{} {} {}", mLogData.prefix,
-		         pin->mVideoFormat.cx, pin->mVideoFormat.cy, pin->mVideoFormat.pixelStructureName,
+		         pin->mVideoFormat.cx, pin->mVideoFormat.cy, pin->mVideoFormat.pixelFormat.name,
 		         pin->mVideoFormat.frameInterval);
 	}
 	#endif
@@ -509,7 +509,7 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 				pin->mVideoFormat.lineLength,
 				FALSE,
 				nullptr,
-				pin->mVideoFormat.pixelStructure,
+				pin->mVideoFormat.pixelFormat.fourcc,
 				pin->mVideoFormat.cx,
 				pin->mVideoFormat.cy,
 				0,
@@ -598,7 +598,7 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 	}
 	if (hasFrame)
 	{
-		if (pin->mVideoFormat.pixelStructure == FOURCC_AYUV)
+		if (pin->mVideoFormat.pixelFormat.format == pixel_format::AYUV)
 		{
 			// endianness is wrong on a per pixel basis
 			BYTE* pixelStart = pmsData;
@@ -638,18 +638,19 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 		if (pin->mFrameCounter == 1)
 		{
 			LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame H|f_idx,lat,ft_0,ft_1,ft_d,ft_o,dur,s_sz,missed",
-				mLogData.prefix);
+			             mLogData.prefix);
 		}
 		auto frameInterval = pin->mCurrentFrameTime - pin->mPreviousFrameTime;
 		auto sz = pms->GetSize();
 		if (pin->mVideoFormat.imageSize != sz)
 		{
-			LOG_TRACE_L3(mLogData.logger, "[{}] Video format size mismatch (format: {} buffer: {})", mLogData.prefix, pin->mVideoFormat.imageSize, sz);
+			LOG_TRACE_L3(mLogData.logger, "[{}] Video format size mismatch (format: {} buffer: {})", mLogData.prefix,
+			             pin->mVideoFormat.imageSize, sz);
 		}
 		LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame D|{},{},{},{},{},{},{},{},{}", mLogData.prefix,
 		             pin->mFrameCounter, now - pin->mCaptureTime, pin->mPreviousFrameTime,
 		             pin->mCurrentFrameTime, frameInterval, frameInterval - pin->mVideoFormat.frameInterval,
-					 pin->mVideoFormat.frameInterval, pin->mVideoFormat.imageSize, missedFrame);
+		             pin->mVideoFormat.frameInterval, pin->mVideoFormat.imageSize, missedFrame);
 		#endif
 	}
 	else
@@ -722,28 +723,22 @@ MagewellVideoCapturePin::MagewellVideoCapturePin(HRESULT* phr, MagewellCaptureFi
 		LOG_WARNING(
 			mLogData.logger,
 			"[{}] Initialised video format {} x {} ({}:{}) @ {:.3f} Hz in {} bits ({} {} tf: {}) size {} bytes",
-			mLogData.prefix,
-			mVideoFormat.cx, mVideoFormat.cy, mVideoFormat.aspectX, mVideoFormat.aspectY, mVideoFormat.fps,
-			mVideoFormat.bitDepth,
-			mVideoFormat.pixelStructureName, mVideoFormat.colourFormatName, mVideoFormat.hdrMeta.transferFunction,
-			mVideoFormat.imageSize);
+			mLogData.prefix, mVideoFormat.cx, mVideoFormat.cy, mVideoFormat.aspectX, mVideoFormat.aspectY,
+			mVideoFormat.fps, mVideoFormat.pixelFormat.bitDepth, mVideoFormat.pixelFormat.name,
+			mVideoFormat.colourFormatName, mVideoFormat.hdrMeta.transferFunction, mVideoFormat.imageSize);
 		#endif
 	}
 	else
 	{
-		mVideoFormat.lineLength = FOURCC_CalcMinStride(mVideoFormat.pixelStructure, mVideoFormat.cx, 2);
-		mVideoFormat.imageSize = FOURCC_CalcImageSize(mVideoFormat.pixelStructure, mVideoFormat.cx, mVideoFormat.cy,
-		                                              mVideoFormat.lineLength);
+		mVideoFormat.CalculateDimensions();
 
 		#ifndef NO_QUILL
 		LOG_WARNING(
 			mLogData.logger,
 			"[{}] Initialised video format using defaults {} x {} ({}:{}) @ {.3f} Hz in {} bits ({} {} tf: {}) size {} bytes",
-			mLogData.prefix,
-			mVideoFormat.cx, mVideoFormat.cy, mVideoFormat.aspectX, mVideoFormat.aspectY, mVideoFormat.fps,
-			mVideoFormat.bitDepth,
-			mVideoFormat.pixelStructureName, mVideoFormat.colourFormatName, mVideoFormat.hdrMeta.transferFunction,
-			mVideoFormat.imageSize);
+			mLogData.prefix, mVideoFormat.cx, mVideoFormat.cy, mVideoFormat.aspectX, mVideoFormat.aspectY,
+			mVideoFormat.fps, mVideoFormat.pixelFormat.bitDepth, mVideoFormat.pixelFormat.name,
+			mVideoFormat.colourFormatName, mVideoFormat.hdrMeta.transferFunction, mVideoFormat.imageSize);
 		#endif
 	}
 	mFilter->OnVideoFormatLoaded(&mVideoFormat);
@@ -775,6 +770,8 @@ void MagewellVideoCapturePin::DoThreadDestroy()
 void MagewellVideoCapturePin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL* videoSignal,
                                          USB_CAPTURE_FORMATS* captureFormats)
 {
+	auto subsampling = RGB_444;
+	auto bitDepth = 8;
 	if (videoSignal->signalStatus.state == MWCAP_VIDEO_SIGNAL_LOCKED)
 	{
 		videoFormat->cx = videoSignal->signalStatus.cx;
@@ -785,9 +782,10 @@ void MagewellVideoCapturePin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL
 		videoFormat->saturation = static_cast<saturation_range>(videoSignal->signalStatus.satRange);
 		videoFormat->fps = static_cast<double>(dshowTicksPerSecond) / videoSignal->signalStatus.dwFrameDuration;
 		videoFormat->frameInterval = videoSignal->signalStatus.dwFrameDuration;
-		videoFormat->bitDepth = videoSignal->inputStatus.hdmiStatus.byBitDepth;
 		videoFormat->colourFormat = static_cast<colour_format>(videoSignal->signalStatus.colorFormat);
-		videoFormat->pixelEncoding = static_cast<pixel_encoding>(videoSignal->inputStatus.hdmiStatus.pixelEncoding);
+
+		bitDepth = videoSignal->inputStatus.hdmiStatus.byBitDepth;
+		subsampling = static_cast<pixel_encoding>(videoSignal->inputStatus.hdmiStatus.pixelEncoding);
 
 		LoadHdrMeta(&videoFormat->hdrMeta, &videoSignal->hdrInfo);
 	}
@@ -796,24 +794,20 @@ void MagewellVideoCapturePin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL
 		// invalid/no signal is 720x480 RGB 4:4:4 image 
 		videoFormat->cx = 720;
 		videoFormat->cy = 480;
-		videoFormat->bitDepth = 8;
 		videoFormat->quantisation = QUANTISATION_FULL;
 		videoFormat->saturation = SATURATION_FULL;
 		videoFormat->colourFormat = RGB;
-		videoFormat->pixelEncoding = RGB_444;
 	}
 
-	auto idx = videoFormat->bitDepth == 8 ? 0 : videoFormat->bitDepth == 10 ? 1 : 2;
-	videoFormat->pixelStructure = fourcc[idx][videoFormat->pixelEncoding];
-	videoFormat->pixelStructureName = fourccName[idx][videoFormat->pixelEncoding];
-
-	if (videoFormat->colourFormat == YUV709)
+	auto pfIdx = bitDepth == 8 ? 0 : bitDepth == 10 ? 1 : 2;
+	videoFormat->pixelFormat = pixelFormats[pfIdx][subsampling];
+	if (videoFormat->colourFormat == REC709)
 	{
-		videoFormat->colourFormatName = "YUV709";
+		videoFormat->colourFormatName = "REC709";
 	}
-	else if (videoFormat->colourFormat == YUV2020)
+	else if (videoFormat->colourFormat == BT2020)
 	{
-		videoFormat->colourFormatName = "YUV2020";
+		videoFormat->colourFormatName = "BT2020";
 	}
 	else if (videoFormat->colourFormat == RGB)
 	{
@@ -829,19 +823,31 @@ void MagewellVideoCapturePin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL
 		bool found = false;
 		for (int i = 0; i < captureFormats->fourccs.byCount && !found; i++)
 		{
-			if (captureFormats->fourccs.adwFOURCCs[i] == videoFormat->pixelStructure)
+			uint32_t adw_fourcc = captureFormats->fourccs.adwFOURCCs[i];
+			for (auto pf : ALL_PIXEL_FORMATS)
 			{
-				found = true;
+				if (adw_fourcc == pf.fourcc)
+				{
+					found = true;
+				}
+			}
+			if (!found)
+			{
+				#ifndef NO_QUILL
+				std::string captureFormatName{static_cast<char>(adw_fourcc & 0xFF)};
+				captureFormatName += static_cast<char>(adw_fourcc >> 8 & 0xFF);
+				captureFormatName += static_cast<char>(adw_fourcc >> 16 & 0xFF);
+				captureFormatName += static_cast<char>(adw_fourcc >> 24 & 0xFF);
+				LOG_WARNING(mLogData.logger, "[{}] {} is not a supported pixel format", mLogData.prefix,
+				            captureFormatName);
+				#endif
 			}
 		}
 		if (!found)
 		{
-			videoFormat->pixelStructure = captureFormats->fourccs.adwFOURCCs[0];
-			std::string captureFormatName{static_cast<char>(videoFormat->pixelStructure & 0xFF)};
-			captureFormatName += static_cast<char>(videoFormat->pixelStructure >> 8 & 0xFF);
-			captureFormatName += static_cast<char>(videoFormat->pixelStructure >> 16 & 0xFF);
-			captureFormatName += static_cast<char>(videoFormat->pixelStructure >> 24 & 0xFF);
-			videoFormat->pixelStructureName = captureFormatName;
+			#ifndef NO_QUILL
+			LOG_ERROR(mLogData.logger, "[{}] No supported pixel formats found", mLogData.prefix);
+			#endif
 		}
 
 		found = false;
@@ -874,10 +880,7 @@ void MagewellVideoCapturePin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL
 		}
 	}
 
-
-	videoFormat->bitCount = fourccBitCount[idx][videoFormat->pixelEncoding];
-	GetImageDimensions(videoFormat->pixelStructure, videoFormat->cx, videoFormat->cy, &videoFormat->lineLength,
-	                   &videoFormat->imageSize);
+	videoFormat->CalculateDimensions();
 }
 
 void MagewellVideoCapturePin::LogHdrMetaIfPresent(VIDEO_FORMAT* newVideoFormat)
@@ -2698,10 +2701,10 @@ HRESULT MagewellAudioCapturePin::FillBuffer(IMediaSample* pms)
 	if (mFrameCounter == 1)
 	{
 		LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame H|f_idx,lat,ft_0,ft_1,ft_d,s_sz,s_ct",
-			mLogData.prefix);
+		             mLogData.prefix);
 	}
-	LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame ({} since {}) D|{},{},{},{},{},{},{}", 
-				 mLogData.prefix, codecNames[mAudioFormat.codec], mSinceCodecChange,
+	LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame ({} since {}) D|{},{},{},{},{},{},{}",
+	             mLogData.prefix, codecNames[mAudioFormat.codec], mSinceCodecChange,
 	             mFrameCounter, now - mCurrentFrameTime, mPreviousFrameTime, mCurrentFrameTime,
 	             mCurrentFrameTime - mPreviousFrameTime, bytesCaptured, samplesCaptured);
 	#endif

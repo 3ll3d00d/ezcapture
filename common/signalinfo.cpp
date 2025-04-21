@@ -197,7 +197,7 @@ HRESULT CSignalInfoProp::Reload(VIDEO_OUTPUT_STATUS* payload)
 	SendDlgItemMessage(m_Dlg, IDC_OUT_QUANTISATION, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 	_snwprintf_s(buffer, _TRUNCATE, L"%hs", payload->outSaturation.c_str());
 	SendDlgItemMessage(m_Dlg, IDC_OUT_SATURATION, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
-	_snwprintf_s(buffer, _TRUNCATE, L"%hs / %hs", payload->outPixelLayout.c_str(), payload->outPixelStructure.c_str());
+	_snwprintf_s(buffer, _TRUNCATE, L"%hs / %hs", payload->outSubsampling.c_str(), payload->outPixelStructure.c_str());
 	SendDlgItemMessage(m_Dlg, IDC_OUT_PIXEL_LAYOUT, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 	_snwprintf_s(buffer, _TRUNCATE, L"%hs", payload->outTransferFunction.c_str());
 	SendDlgItemMessage(m_Dlg, IDC_VIDEO_OUT_TF, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));

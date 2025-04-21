@@ -65,80 +65,54 @@ void BlackmagicCaptureFilter::LoadFormat(VIDEO_FORMAT* videoFormat, const VIDEO_
 	videoFormat->fps = static_cast<double>(videoSignal->frameDurationScale) / static_cast<double>(videoSignal->
 		frameDuration);
 	videoFormat->frameInterval = videoSignal->frameDuration;
-	auto fourccIdx = 0;
-	// TODO implement conversions
 	switch (videoSignal->pixelFormat)
 	{
 	case bmdFormat8BitYUV:
-		// YUV2 -> YV16
-		videoFormat->bitDepth = 8;
-		videoFormat->pixelEncoding = YUV_422;
+		// fallback = YV16
+		videoFormat->pixelFormat = YUV2;
 		break;
 	case bmdFormat10BitYUV:
-		// V210 -> P210
-		videoFormat->bitDepth = 10;
-		videoFormat->pixelEncoding = YUV_422;
-		fourccIdx = 1;
+		// fallback = P210
+		videoFormat->pixelFormat = V210;
 		break;
 	case bmdFormat10BitYUVA:
-		// unlikely to be encountered so convert to bmdFormat8BitARGB?
-		videoFormat->bitDepth = 10;
-		videoFormat->pixelEncoding = YUV_422;
-		fourccIdx = 1;
+		// unusual format, Ultrastudio 4k mini only
+		// fallback = RGB48?
+		videoFormat->pixelFormat = AY10;
 		break;
 	case bmdFormat8BitARGB:
-		videoFormat->bitDepth = 8;
-		videoFormat->pixelEncoding = RGB_444;
+		videoFormat->pixelFormat = ARGB;
 		break;
 	case bmdFormat8BitBGRA:
-		// unlikely to be encountered so convert to bmdFormat8BitARGB?
-		videoFormat->bitDepth = 8;
-		videoFormat->pixelEncoding = RGB_444;
+		videoFormat->pixelFormat = BGRA;
 		break;
 	case bmdFormat10BitRGB:
-		// R210 -> RGB48?
-		videoFormat->bitDepth = 10;
-		videoFormat->pixelEncoding = RGB_444;
+		// fallback = RGB48
+		videoFormat->pixelFormat = R210;
 		break;
 	case bmdFormat12BitRGB:
-		// R12B ->  RGB48?
-		videoFormat->bitDepth = 12;
-		fourccIdx = 2;
-		videoFormat->pixelEncoding = RGB_444;
+		// fallback = RGB48
+		videoFormat->pixelFormat = R12B;
 		break;
 	case bmdFormat12BitRGBLE:
-		// R12L -> RGB48?
-		videoFormat->bitDepth = 12;
-		fourccIdx = 2;
-		videoFormat->pixelEncoding = RGB_444;
+		// fallback = RGB48
+		videoFormat->pixelFormat = R12L;
 		break;
 	case bmdFormat10BitRGBXLE:
-		// R10l -> RGB48?
-		videoFormat->bitDepth = 10;
-		fourccIdx = 1;
-		videoFormat->pixelEncoding = RGB_444;
+		// fallback = RGB48
+		videoFormat->pixelFormat = R10L;
 		break;
 	case bmdFormat10BitRGBX:
-		// R10b -> RGB48?
-		videoFormat->bitDepth = 10;
-		fourccIdx = 1;
-		videoFormat->pixelEncoding = RGB_444;
+		// fallback = RGB48
+		videoFormat->pixelFormat = R10B;
 		break;
 	case bmdFormatUnspecified:
 	case bmdFormatH265:
 	case bmdFormatDNxHR:
 		// unsupported
-		videoFormat->bitDepth = 0;
 		break;
 	}
-	if (fourccIdx != -1)
-	{
-		videoFormat->pixelStructure = fourcc[fourccIdx][videoFormat->pixelEncoding];
-		videoFormat->pixelStructureName = fourccName[fourccIdx][videoFormat->pixelEncoding];
-		videoFormat->bitCount = fourccBitCount[fourccIdx][videoFormat->pixelEncoding];
-	}
-	GetImageDimensions(videoFormat->pixelStructure, videoFormat->cx, videoFormat->cy, &videoFormat->lineLength,
-	                   &videoFormat->imageSize);
+	videoFormat->CalculateDimensions();
 }
 
 BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
@@ -511,22 +485,17 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 	// compatibility bodge for renderers (madvr) that don't resize buffers correctly at all times
 	if (mVideoSignal.pixelFormat == bmdFormat8BitARGB)
 	{
-		mVideoFormat.bitCount = 32;
-		mVideoFormat.pixelStructure = FOURCC_RGBA;
-		mVideoFormat.pixelStructureName = "RGBA";
-		GetImageDimensions(mVideoFormat.pixelStructure, mVideoFormat.cx, mVideoFormat.cy,
-		                   &mVideoFormat.lineLength, &mVideoFormat.imageSize);
+		mVideoFormat.pixelFormat = ARGB;
+		mVideoFormat.CalculateDimensions();
 	}
 
 	#ifndef NO_QUILL
 	LOG_WARNING(
 		mLogData.logger,
 		"[{}] Initialised video format {} x {} ({}:{}) @ {:.3f} Hz in {} bits ({} {} tf: {}) size {} bytes",
-		mLogData.prefix,
-		mVideoFormat.cx, mVideoFormat.cy, mVideoFormat.aspectX, mVideoFormat.aspectY, mVideoFormat.fps,
-		mVideoFormat.bitDepth,
-		mVideoFormat.pixelStructureName, mVideoFormat.colourFormatName, mVideoFormat.hdrMeta.transferFunction,
-		mVideoFormat.imageSize);
+		mLogData.prefix, mVideoFormat.cx, mVideoFormat.cy, mVideoFormat.aspectX, mVideoFormat.aspectY, mVideoFormat.fps,
+		mVideoFormat.pixelFormat.bitDepth, mVideoFormat.pixelFormat.name, mVideoFormat.colourFormatName,
+		mVideoFormat.hdrMeta.transferFunction, mVideoFormat.imageSize);
 	#endif
 
 	new BlackmagicVideoCapturePin(phr, this, false, mVideoFormat);
@@ -789,16 +758,16 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			switch (static_cast<BMDColorspace>(intValue))
 			{
 			case bmdColorspaceRec601:
-				newVideoFormat.colourFormat = YUV601;
-				newVideoFormat.colourFormatName = "YUV601";
+				newVideoFormat.colourFormat = REC601;
+				newVideoFormat.colourFormatName = "REC601";
 				break;
 			case bmdColorspaceRec709:
-				newVideoFormat.colourFormat = YUV709;
-				newVideoFormat.colourFormatName = "YUV709";
+				newVideoFormat.colourFormat = REC709;
+				newVideoFormat.colourFormatName = "REC709";
 				break;
 			case bmdColorspaceRec2020:
-				newVideoFormat.colourFormat = YUV2020;
-				newVideoFormat.colourFormatName = "YUV2020";
+				newVideoFormat.colourFormat = BT2020;
+				newVideoFormat.colourFormatName = "BT2020";
 				break;
 			case bmdColorspaceP3D65:
 				newVideoFormat.colourFormat = P3D65;
@@ -837,7 +806,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 				newVideoFormat.hdrMeta.transferFunction = 4;
 			}
 		}
-		else if (newVideoFormat.colourFormat == YUV2020)
+		else if (newVideoFormat.colourFormat == BT2020)
 		{
 			newVideoFormat.hdrMeta.transferFunction = 15;
 		}
@@ -985,7 +954,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 		IDeckLinkVideoFrame* convertedFrame;
 		auto t1 = std::chrono::high_resolution_clock::now();
 		result = mDeckLinkFrameConverter->ConvertNewFrame(videoFrame, bmdFormat8BitBGRA, bmdColorspaceUnknown, nullptr,
-			&convertedFrame);
+		                                                  &convertedFrame);
 		auto t2 = std::chrono::high_resolution_clock::now();
 
 		if (S_OK == result)
@@ -993,16 +962,11 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			std::chrono::duration<double, std::milli> conversionTime = t2 - t1;
 			#ifndef NO_QUILL
 			LOG_TRACE_L3(mLogData.logger, "[{}] Converted frame to BGRA in {:.3f} ms", mLogData.prefix,
-				conversionTime.count());
+			             conversionTime.count());
 			#endif
 
-			newVideoFormat.pixelEncoding = RGB_444;
-			newVideoFormat.bitCount = BITS_RGBA;
-			newVideoFormat.pixelStructure = FOURCC_RGBA;
-			newVideoFormat.bitDepth = 8;
-			newVideoFormat.pixelStructureName = "RGBA";
-			GetImageDimensions(newVideoFormat.pixelStructure, newVideoFormat.cx, newVideoFormat.cy,
-				&newVideoFormat.lineLength, &newVideoFormat.imageSize);
+			newVideoFormat.pixelFormat = BGRA;
+			newVideoFormat.CalculateDimensions();
 		}
 		else
 		{

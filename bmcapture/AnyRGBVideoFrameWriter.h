@@ -17,13 +17,12 @@
 
 #include "VideoFrameWriter.h"
 #include <atlcomcli.h>
-#include "DeckLinkAPI_h.h"
 // #include "domain.h"
 
 class AnyRGBVideoFrameWriter : public IVideoFrameWriter
 {
 public:
-	HRESULT Write(IDeckLinkVideoFrame* srcFrame) override;
+	HRESULT WriteTo(IDeckLinkVideoFrame* srcFrame) override;
 
 protected:
 	~AnyRGBVideoFrameWriter() = default;

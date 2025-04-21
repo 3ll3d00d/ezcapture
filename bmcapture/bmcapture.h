@@ -20,6 +20,7 @@
 
 #include "capture.h"
 #include "DeckLinkAPI_h.h"
+#include "VideoFrameWriter.h"
 
 EXTERN_C const GUID CLSID_BMCAPTURE_FILTER;
 EXTERN_C const GUID MEDIASUBTYPE_PCM_IN24;
@@ -57,6 +58,13 @@ inline bool isInCieRange(double value)
 
 constexpr int64_t invalidFrameTime = std::numeric_limits<int64_t>::lowest();
 constexpr BMDAudioSampleType audioBitDepth = bmdAudioSampleType16bitInteger;
+
+enum FrameConversionStrategy :uint8_t
+{
+	ANY_RGB,
+	YUV2_YV16,
+	V210_P210
+};
 
 struct DEVICE_INFO
 {
@@ -395,6 +403,10 @@ protected:
 	void OnChangeMediaType() override;
 
 	std::shared_ptr<VideoFrame> mCurrentFrame;
+
+private:
+	FrameConversionStrategy mFrameConversionStrategy;
+	IVideoFrameWriter* mFrameWriter;
 };
 
 /**

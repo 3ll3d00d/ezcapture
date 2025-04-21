@@ -16,37 +16,35 @@
 #pragma once
 
 #include "AnyRGBVideoFrameWriter.h"
-// #include "quill/std/Chrono.h"
+#include "quill/StopWatch.h"
 
-HRESULT AnyRGBVideoFrameWriter::Write(IDeckLinkVideoFrame* srcFrame)
+HRESULT AnyRGBVideoFrameWriter::WriteTo(IDeckLinkVideoFrame* srcFrame)
 {
 	IDeckLinkVideoFrame* convertedFrame;
-	auto t1 = std::chrono::high_resolution_clock::now();
+	const quill::StopWatchTsc swt;
 	auto result = mConverter->ConvertNewFrame(srcFrame, bmdFormat8BitBGRA, bmdColorspaceUnknown, nullptr,
 	                                          &convertedFrame);
-	auto t2 = std::chrono::high_resolution_clock::now();
-
+	auto execMillis = swt.elapsed_as<std::chrono::milliseconds>();
 	if (S_OK == result)
 	{
-		std::chrono::duration<double, std::milli> conversionTime = t2 - t1;
-		// #ifndef NO_QUILL
-		// LOG_TRACE_L3(mLogData.logger, "[{}] Converted frame to BGRA in {:.3f} ms", mLogData.prefix, conversionTime);
-		// #endif
+		#ifndef NO_QUILL
+		LOG_TRACE_L3(mLogData.logger, "[{}] Converted frame to BGRA in {:.3f} ms", mLogData.prefix,
+		             execMillis);
+		#endif
 		//
 		// 	newVideoFormat.pixelEncoding = RGB_444;
 		// 	newVideoFormat.bitCount = BITS_RGBA;
 		// 	newVideoFormat.pixelStructure = FOURCC_RGBA;
 		// 	newVideoFormat.bitDepth = 8;
 		// 	newVideoFormat.pixelStructureName = "RGBA";
-		// 	GetImageDimensions(newVideoFormat.pixelStructure, newVideoFormat.cx, newVideoFormat.cy,
-		// 		&newVideoFormat.lineLength, &newVideoFormat.imageSize);
+		//  newVideoFormat.CalculateDimensions();
 		return S_OK;
 	}
 	else
 	{
-		// #ifndef NO_QUILL
-		// LOG_WARNING(mLogData.logger, "[{}] Failed to convert frame to BGRA {:#08x}", mLogData.prefix, result);
-		// #endif
+		#ifndef NO_QUILL
+		LOG_WARNING(mLogData.logger, "[{}] Failed to convert frame to BGRA {:#08x}", mLogData.prefix, result);
+		#endif
 		return E_FAIL;
 	}
 }

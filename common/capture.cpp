@@ -269,17 +269,17 @@ void CaptureFilter::OnVideoFormatLoaded(VIDEO_FORMAT* vf)
 	case RGB:
 		mVideoOutputStatus.outColourFormat = "RGB";
 		break;
-	case YUV601:
-		mVideoOutputStatus.outColourFormat = "YUV601";
+	case REC601:
+		mVideoOutputStatus.outColourFormat = "REC601";
 		break;
-	case YUV709:
-		mVideoOutputStatus.outColourFormat = "YUV709";
+	case REC709:
+		mVideoOutputStatus.outColourFormat = "REC709";
 		break;
-	case YUV2020:
-		mVideoOutputStatus.outColourFormat = "YUV2020";
+	case BT2020:
+		mVideoOutputStatus.outColourFormat = "BT2020";
 		break;
-	case YUV2020C:
-		mVideoOutputStatus.outColourFormat = "YUV2020C";
+	case BT2020C:
+		mVideoOutputStatus.outColourFormat = "BT2020C";
 		break;
 	case P3D65:
 		mVideoOutputStatus.outColourFormat = "P3D65";
@@ -315,25 +315,25 @@ void CaptureFilter::OnVideoFormatLoaded(VIDEO_FORMAT* vf)
 		break;
 	}
 
-	mVideoOutputStatus.outBitDepth = vf->bitDepth;
+	mVideoOutputStatus.outBitDepth = vf->pixelFormat.bitDepth;
 
-	switch (vf->pixelEncoding)
+	switch (vf->pixelFormat.subsampling)
 	{
 	case YUV_420:
-		mVideoOutputStatus.outPixelLayout = "YUV 4:2:0";
+		mVideoOutputStatus.outSubsampling = "YUV 4:2:0";
 		break;
 	case YUV_422:
-		mVideoOutputStatus.outPixelLayout = "YUV 4:2:2";
+		mVideoOutputStatus.outSubsampling = "YUV 4:2:2";
 		break;
 	case YUV_444:
-		mVideoOutputStatus.outPixelLayout = "YUV 4:4:4";
+		mVideoOutputStatus.outSubsampling = "YUV 4:4:4";
 		break;
 	case RGB_444:
-		mVideoOutputStatus.outPixelLayout = "RGB 4:4:4";
+		mVideoOutputStatus.outSubsampling = "RGB 4:4:4";
 		break;
 	}
 
-	mVideoOutputStatus.outPixelStructure = vf->pixelStructureName;
+	mVideoOutputStatus.outPixelStructure = vf->pixelFormat.name;
 	switch (vf->hdrMeta.transferFunction)
 	{
 	case 4:
@@ -940,7 +940,7 @@ void VideoCapturePin::VideoFormatToMediaType(CMediaType* pmt, VIDEO_FORMAT* vide
 
 	SetRectEmpty(&(pvi->rcSource)); // we want the whole image area rendered.
 	SetRectEmpty(&(pvi->rcTarget)); // no particular destination rectangle
-	pvi->dwBitRate = static_cast<DWORD>(videoFormat->bitDepth * videoFormat->imageSize * 8 * videoFormat->fps);
+	pvi->dwBitRate = static_cast<DWORD>(videoFormat->pixelFormat.bitDepth * videoFormat->imageSize * 8 * videoFormat->fps);
 	pvi->dwBitErrorRate = 0;
 	pvi->AvgTimePerFrame = static_cast<DWORD>(static_cast<double>(dshowTicksPerSecond) / videoFormat->fps);
 	pvi->dwInterlaceFlags = 0;
@@ -955,11 +955,11 @@ void VideoCapturePin::VideoFormatToMediaType(CMediaType* pmt, VIDEO_FORMAT* vide
 
 	auto colorimetry = reinterpret_cast<DXVA_ExtendedFormat*>(&(pvi->dwControlFlags));
 	// 1 = REC.709, 4 = BT.2020
-	colorimetry->VideoTransferMatrix = videoFormat->colourFormat == YUV2020
+	colorimetry->VideoTransferMatrix = videoFormat->colourFormat == BT2020
 		                                   ? static_cast<DXVA_VideoTransferMatrix>(4)
 		                                   : DXVA_VideoTransferMatrix_BT709;
 	// 1 = REC.709, 9 = BT.2020
-	colorimetry->VideoPrimaries = videoFormat->colourFormat == YUV2020
+	colorimetry->VideoPrimaries = videoFormat->colourFormat == BT2020
 		                              ? static_cast<DXVA_VideoPrimaries>(9)
 		                              : DXVA_VideoPrimaries_BT709;
 	// 4 = REC.709, 15 = SMPTE ST 2084 (PQ), 16 = HLG (JRVR only)
@@ -977,13 +977,13 @@ void VideoCapturePin::VideoFormatToMediaType(CMediaType* pmt, VIDEO_FORMAT* vide
 	pvi->dwControlFlags += AMCONTROL_USED;
 	pvi->dwControlFlags += AMCONTROL_COLORINFO_PRESENT;
 
-	auto isRgb = videoFormat->pixelEncoding == RGB_444;
+	auto isRgb = videoFormat->pixelFormat.GetBiCompression() == BI_RGB;
 	pvi->bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
 	pvi->bmiHeader.biWidth = videoFormat->cx;
 	pvi->bmiHeader.biHeight = isRgb ? -(videoFormat->cy) : videoFormat->cy; // RGB on windows is upside down
 	pvi->bmiHeader.biPlanes = 1;
-	pvi->bmiHeader.biBitCount = videoFormat->bitCount;
-	pvi->bmiHeader.biCompression = isRgb ? BI_RGB : videoFormat->pixelStructure;
+	pvi->bmiHeader.biBitCount = videoFormat->pixelFormat.bitCount;
+	pvi->bmiHeader.biCompression = videoFormat->pixelFormat.GetBiCompression();
 	pvi->bmiHeader.biSizeImage = videoFormat->imageSize;
 	pvi->bmiHeader.biXPelsPerMeter = 0;
 	pvi->bmiHeader.biYPelsPerMeter = 0;
@@ -1027,24 +1027,13 @@ bool VideoCapturePin::ShouldChangeMediaType(VIDEO_FORMAT* newVideoFormat)
 		         mLogData.prefix, mVideoFormat.fps, newVideoFormat->fps);
 		#endif
 	}
-	if (mVideoFormat.bitDepth != newVideoFormat->bitDepth)
+	if (mVideoFormat.pixelFormat.format != newVideoFormat->pixelFormat.format)
 	{
 		reconnect = true;
 
 		#ifndef NO_QUILL
-		LOG_INFO(mLogData.logger, "[{}] Video bit depth change {} to {}",
-		         mLogData.prefix, mVideoFormat.bitDepth, newVideoFormat->bitDepth);
-		#endif
-	}
-	if (mVideoFormat.pixelEncoding != newVideoFormat->pixelEncoding)
-	{
-		reconnect = true;
-
-		#ifndef NO_QUILL
-		LOG_INFO(mLogData.logger, "[{}] Video pixel encoding change {} to {}",
-		         mLogData.prefix,
-		         static_cast<int>(mVideoFormat.pixelEncoding),
-		         static_cast<int>(newVideoFormat->pixelEncoding));
+		LOG_INFO(mLogData.logger, "[{}] Video pixel format change {} to {}",
+		         mLogData.prefix, mVideoFormat.pixelFormat.name, newVideoFormat->pixelFormat.name);
 		#endif
 	}
 	if (mVideoFormat.colourFormat != newVideoFormat->colourFormat)
@@ -1101,33 +1090,32 @@ bool VideoCapturePin::ShouldChangeMediaType(VIDEO_FORMAT* newVideoFormat)
 HRESULT VideoCapturePin::DoChangeMediaType(const CMediaType* pNewMt, const VIDEO_FORMAT* newVideoFormat)
 {
 	#ifndef NO_QUILL
-	LOG_WARNING(
-		mLogData.logger,
-		"[{}] Proposing new video format {} x {} ({}:{}) @ {:.3f} Hz in {} bits ({} {} tf: {}) size {} bytes",
-		mLogData.prefix,
-		newVideoFormat->cx, newVideoFormat->cy, newVideoFormat->aspectX, newVideoFormat->aspectY, newVideoFormat->fps,
-		newVideoFormat->bitDepth,
-		newVideoFormat->pixelStructureName, newVideoFormat->colourFormatName, newVideoFormat->hdrMeta.transferFunction,
-		newVideoFormat->imageSize);
+	LOG_WARNING(mLogData.logger,
+	            "[{}] Proposing new video format {} x {} ({}:{}) @ {:.3f} Hz in {} bits ({} {} tf: {}) size {} bytes",
+	            mLogData.prefix, newVideoFormat->cx, newVideoFormat->cy, newVideoFormat->aspectX,
+	            newVideoFormat->aspectY, newVideoFormat->fps, newVideoFormat->pixelFormat.bitDepth,
+	            newVideoFormat->pixelFormat.name, newVideoFormat->colourFormatName,
+	            newVideoFormat->hdrMeta.transferFunction, newVideoFormat->imageSize);
 
 	if (mLogData.logger->should_log_statement(quill::LogLevel::TraceL3))
 	{
 		AM_MEDIA_TYPE currentMt;
 		if (SUCCEEDED(m_Connected->ConnectionMediaType(&currentMt)))
 		{
-			LOG_TRACE_L3(mLogData.logger, "[{}] MT,lSampleSize,biBitCount,biWidth,biHeight,biSizeImage", mLogData.prefix);
+			LOG_TRACE_L3(mLogData.logger, "[{}] MT,lSampleSize,biBitCount,biWidth,biHeight,biSizeImage",
+			             mLogData.prefix);
 
 			auto currentHeader = reinterpret_cast<VIDEOINFOHEADER2*>(currentMt.pbFormat);
 			auto currentBmi = currentHeader->bmiHeader;
 
 			LOG_TRACE_L3(mLogData.logger, "[{}] current,{},{},{},{},{}", mLogData.prefix, currentMt.lSampleSize,
-				currentBmi.biBitCount, currentBmi.biWidth, currentBmi.biHeight, currentBmi.biSizeImage);
+			             currentBmi.biBitCount, currentBmi.biWidth, currentBmi.biHeight, currentBmi.biSizeImage);
 
 			auto newHeader = reinterpret_cast<VIDEOINFOHEADER2*>(pNewMt->pbFormat);
 			auto newBmi = newHeader->bmiHeader;
 
 			LOG_TRACE_L3(mLogData.logger, "[{}] proposed,{},{},{},{},{}", mLogData.prefix, pNewMt->lSampleSize,
-				newBmi.biBitCount, newBmi.biWidth, newBmi.biHeight, newBmi.biSizeImage);
+			             newBmi.biBitCount, newBmi.biWidth, newBmi.biHeight, newBmi.biSizeImage);
 
 			FreeMediaType(currentMt);
 		}
