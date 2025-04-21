@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2025 Matt Khan
- *      https://github.com/3ll3d00d/mwcapture
+ *      https://github.com/3ll3d00d/ezcapture
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of
  * the GNU General Public License as published by the Free Software Foundation, version 3.
@@ -68,42 +68,34 @@ void BlackmagicCaptureFilter::LoadFormat(VIDEO_FORMAT* videoFormat, const VIDEO_
 	switch (videoSignal->pixelFormat)
 	{
 	case bmdFormat8BitYUV:
-		// fallback = YV16
 		videoFormat->pixelFormat = YUV2;
 		break;
 	case bmdFormat10BitYUV:
-		// fallback = P210
 		videoFormat->pixelFormat = V210;
 		break;
 	case bmdFormat10BitYUVA:
 		// unusual format, Ultrastudio 4k mini only
-		// fallback = RGB48?
 		videoFormat->pixelFormat = AY10;
 		break;
 	case bmdFormat8BitARGB:
-		videoFormat->pixelFormat = ARGB;
+		videoFormat->pixelFormat = RGBA; // seems dubious but appears to work in practice
 		break;
 	case bmdFormat8BitBGRA:
-		videoFormat->pixelFormat = BGRA;
+		videoFormat->pixelFormat = RGBA; // seems dubious but appears to work in practice
 		break;
 	case bmdFormat10BitRGB:
-		// fallback = RGB48
 		videoFormat->pixelFormat = R210;
 		break;
 	case bmdFormat12BitRGB:
-		// fallback = RGB48
 		videoFormat->pixelFormat = R12B;
 		break;
 	case bmdFormat12BitRGBLE:
-		// fallback = RGB48
 		videoFormat->pixelFormat = R12L;
 		break;
 	case bmdFormat10BitRGBXLE:
-		// fallback = RGB48
 		videoFormat->pixelFormat = R10L;
 		break;
 	case bmdFormat10BitRGBX:
-		// fallback = RGB48
 		videoFormat->pixelFormat = R10B;
 		break;
 	case bmdFormatUnspecified:
@@ -965,7 +957,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			             conversionTime.count());
 			#endif
 
-			newVideoFormat.pixelFormat = BGRA;
+			newVideoFormat.pixelFormat = ARGB;
 			newVideoFormat.CalculateDimensions();
 		}
 		else

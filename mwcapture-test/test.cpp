@@ -73,6 +73,11 @@ TEST(DIMS, CanCalcImageDims)
 
             EXPECT_EQ(line, FOURCC_CalcMinStride(pixelFormats[i][j].fourcc, 3840, 2));
             EXPECT_EQ(img, FOURCC_CalcImageSize(pixelFormats[i][j].fourcc, 3840, 2160, line));
+
+        	pixelFormats[i][j].GetImageDimensions(1920, 1080, &line, &img);
+
+            EXPECT_EQ(line, FOURCC_CalcMinStride(pixelFormats[i][j].fourcc, 1920, 2));
+            EXPECT_EQ(img, FOURCC_CalcImageSize(pixelFormats[i][j].fourcc, 1920, 1080, line));
         }
     }
 }

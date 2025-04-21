@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2025 Matt Khan
- *      https://github.com/3ll3d00d/mwcapture
+ *      https://github.com/3ll3d00d/ezcapture
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of
  * the GNU General Public License as published by the Free Software Foundation, version 3.
@@ -17,6 +17,8 @@
 #include <array>
 #include <ks.h>
 #include <ksmedia.h>
+#include <map>
+#include <vector>
 
 constexpr auto not_present = 1024;
 constexpr LONGLONG dshowTicksPerSecond = 10LL * 1000 * 1000; // 100ns
@@ -76,6 +78,7 @@ struct pixel_format
 		AY10,
 		ARGB,
 		BGRA,
+		RGBA,
 		R210,
 		R12B,
 		R12L,
@@ -83,7 +86,7 @@ struct pixel_format
 		R10L
 	};
 
-	pixel_format(format pf, char a, char b, char c, char d, uint8_t pBitDepth, bool pPacked,
+	pixel_format(format pf, char a, char b, char c, char d, uint8_t pBitDepth, bool pRgb,
 	             pixel_encoding pPixelEncoding, DWORD pByteAlignment = 2)
 	{
 		format = pf;
@@ -91,7 +94,7 @@ struct pixel_format
 		bitDepth = pBitDepth;
 		bitCount = pBitDepth * 3;
 		name = std::string{a, b, c, d};
-		packed = pPacked;
+		rgb = pRgb;
 		byteAlignment = pByteAlignment;
 		subsampling = pPixelEncoding;
 	}
@@ -101,7 +104,7 @@ struct pixel_format
 	uint8_t bitDepth;
 	uint8_t bitCount;
 	std::string name;
-	bool packed;
+	bool rgb;
 	DWORD byteAlignment;
 	pixel_encoding subsampling;
 
@@ -119,23 +122,24 @@ struct pixel_format
 		case V210:
 			cbLine = (cx + 47) / 48 * 128;
 			break;
-		case NV16:
-		case YV16:
 		case YUV2:
+		case P010:
+		case P210:
 			cbLine = cx * 2;
 			break;
-		case P010:
 		case BGR24:
 			cbLine = cx * 3;
 			break;
+		case NV16:
+		case YV16:
 		case NV12:
-			cbLine = cx * 3 / 2;
+			cbLine = cx;
 			break;
 		case AYUV:
-		case P210:
 		case BGR10:
 		case ARGB:
 		case BGRA:
+		case RGBA:
 			cbLine = cx * 4;
 			break;
 		case R12B:
@@ -146,35 +150,50 @@ struct pixel_format
 
 		*rowBytes = (cbLine + byteAlignment - 1) & ~(byteAlignment - 1);
 		*imageBytes = *rowBytes * cy;
+
+		if (format == NV12 || format == P010)
+		{
+			*imageBytes = *imageBytes * 3 / 2;
+		} else if (format == YV16 || format == NV16 || format == P210)
+		{
+			*imageBytes = *imageBytes * 2;
+		}
 	}
 
 	DWORD GetBiCompression() const
 	{
-		return packed ? fourcc : BI_RGB;
+		return rgb ? BI_RGB : fourcc;
+	}
+
+	// required to allow use in a std::map
+	bool operator<(const pixel_format& rhs) const noexcept
+	{
+		return this->format < rhs.format;
 	}
 };
 
 // magewell
-const inline pixel_format NV12{pixel_format::NV12, 'N', 'V', '1', '2', 8, true, YUV_420};
-const inline pixel_format NV16{pixel_format::NV16, 'N', 'V', '1', '6', 8, true, YUV_422};
-const inline pixel_format P010{pixel_format::P010, 'P', '0', '1', '0', 10, true, YUV_420};
-const inline pixel_format P210{pixel_format::P210, 'P', '0', '1', '0', 10, true, YUV_422};
-const inline pixel_format AYUV{pixel_format::AYUV, 'A', 'Y', 'U', 'V', 8, true, YUV_444};
-const inline pixel_format BGR24{pixel_format::BGR24, 'B', 'G', 'R', ' ', 8, false, RGB_444};
-const inline pixel_format BGR10{pixel_format::BGR10, 'B', 'G', '1', '0', 10, false, RGB_444};
+const inline pixel_format NV12{pixel_format::NV12, 'N', 'V', '1', '2', 8, false, YUV_420};
+const inline pixel_format NV16{pixel_format::NV16, 'N', 'V', '1', '6', 8, false, YUV_422};
+const inline pixel_format P010{pixel_format::P010, 'P', '0', '1', '0', 10, false, YUV_420};
+const inline pixel_format P210{pixel_format::P210, 'P', '2', '1', '0', 10, false, YUV_422};
+const inline pixel_format AYUV{pixel_format::AYUV, 'A', 'Y', 'U', 'V', 8, false, YUV_444};
+const inline pixel_format BGR24{pixel_format::BGR24, 'B', 'G', 'R', ' ', 8, true, RGB_444};
+const inline pixel_format BGR10{pixel_format::BGR10, 'B', 'G', '1', '0', 10, true, RGB_444};
 // blackmagic, generally require conversion due to lack of native renderer support
-const inline pixel_format YUV2{pixel_format::YUV2, '2', 'V', 'U', 'Y', 8, true, YUV_422};
-const inline pixel_format V210{pixel_format::V210, 'v', '2', '1', '0', 10, true, YUV_422, 128};
-const inline pixel_format AY10{pixel_format::AY10, 'A', 'y', '1', '0', 10, true, YUV_422, 256};
-const inline pixel_format ARGB{pixel_format::ARGB, 'A', 'R', 'G', 'B', 8, false, RGB_444};
-const inline pixel_format BGRA{pixel_format::BGRA, 'B', 'G', 'R', 'A', 8, false, RGB_444};
-const inline pixel_format R210{pixel_format::R210, 'r', '2', '1', '0', 10, true, RGB_444, 256};
-const inline pixel_format R12B{pixel_format::R12B, 'R', '1', '2', 'B', 12, true, RGB_444};
-const inline pixel_format R12L{pixel_format::R12L, 'R', '1', '2', 'L', 12, true, RGB_444};
-const inline pixel_format R10L{pixel_format::R10L, 'R', '1', '0', 'l', 10, true, RGB_444, 256};
-const inline pixel_format R10B{pixel_format::R10B, 'R', '1', '0', 'b', 10, true, RGB_444, 256};
+const inline pixel_format YUV2{pixel_format::YUV2, '2', 'V', 'U', 'Y', 8, false, YUV_422};
+const inline pixel_format V210{pixel_format::V210, 'v', '2', '1', '0', 10, false, YUV_422, 128};
+const inline pixel_format AY10{pixel_format::AY10, 'A', 'y', '1', '0', 10, false, YUV_422, 256};
+const inline pixel_format ARGB{pixel_format::ARGB, 'A', 'R', 'G', 'B', 8, true, RGB_444};
+const inline pixel_format BGRA{pixel_format::BGRA, 'B', 'G', 'R', 'A', 8, true, RGB_444};
+const inline pixel_format RGBA{pixel_format::RGBA, 'R', 'G', 'B', 'A', 8, true, RGB_444};
+const inline pixel_format R210{pixel_format::R210, 'r', '2', '1', '0', 10, false, RGB_444, 256};
+const inline pixel_format R12B{pixel_format::R12B, 'R', '1', '2', 'B', 12, false, RGB_444};
+const inline pixel_format R12L{pixel_format::R12L, 'R', '1', '2', 'L', 12, false, RGB_444};
+const inline pixel_format R10L{pixel_format::R10L, 'R', '1', '0', 'l', 10, false, RGB_444, 256};
+const inline pixel_format R10B{pixel_format::R10B, 'R', '1', '0', 'b', 10, false, RGB_444, 256};
 // jrvr
-const inline pixel_format YV16{pixel_format::YV16, 'Y', 'V', '1', '6', 8, true, YUV_422};
+const inline pixel_format YV16{pixel_format::YV16, 'Y', 'V', '1', '6', 8, false, YUV_422};
 
 const pixel_format ALL_PIXEL_FORMATS[] = {
 	NV12,
@@ -190,11 +209,27 @@ const pixel_format ALL_PIXEL_FORMATS[] = {
 	AY10,
 	ARGB,
 	BGRA,
+	RGBA,
 	R210,
 	R12B,
 	R12L,
 	R10L,
 	R10B
+};
+
+typedef std::map<pixel_format, std::vector<pixel_format>> PixelFormatFallbacks;
+
+const PixelFormatFallbacks pixelFormatFallbacks{
+	// expected formats
+	{YUV2, {YV16}},
+	{V210, {P210}},
+	{R210, {BGR10}},
+	// unusual formats
+	{AY10, {RGBA}},
+	{R12B, {RGBA}},
+	{R12L, {RGBA}},
+	{R10B, {RGBA}},
+	{R10L, {RGBA}},
 };
 
 struct DEVICE_STATUS

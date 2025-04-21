@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2025 Matt Khan
- *      https://github.com/3ll3d00d/mwcapture
+ *      https://github.com/3ll3d00d/ezcapture
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of
  * the GNU General Public License as published by the Free Software Foundation, version 3.
@@ -20,7 +20,7 @@ constexpr auto chromaticity_scale_factor = 0.00002;
 constexpr auto high_luminance_scale_factor = 1.0;
 constexpr auto low_luminance_scale_factor = 0.0001;
 
-// bit depth -> subsampling -> pixel format
+// bit depth -> pixel_encoding -> pixel_format
 // rgb - 4:2:2 - 4:4:4 - 4:2:0
 const pixel_format pixelFormats[3][4] = {
 	// 8 bit
