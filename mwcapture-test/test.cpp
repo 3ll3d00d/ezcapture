@@ -78,6 +78,16 @@ TEST(DIMS, CanCalcImageDims)
 
             EXPECT_EQ(line, FOURCC_CalcMinStride(pixelFormats[i][j].fourcc, 1920, 2));
             EXPECT_EQ(img, FOURCC_CalcImageSize(pixelFormats[i][j].fourcc, 1920, 1080, line));
+
+        	pixelFormats[i][j].GetImageDimensions(720, 480, &line, &img);
+
+            EXPECT_EQ(line, FOURCC_CalcMinStride(pixelFormats[i][j].fourcc, 720, 2));
+            EXPECT_EQ(img, FOURCC_CalcImageSize(pixelFormats[i][j].fourcc, 720, 480, line));
         }
     }
+}
+
+int main(int argc, char** argv) {
+    testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
 }
