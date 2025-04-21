@@ -22,6 +22,10 @@
 #include "DeckLinkAPI_h.h"
 #include "VideoFrameWriter.h"
 
+#ifdef NO_QUILL
+#include <memory>
+#endif
+
 EXTERN_C const GUID CLSID_BMCAPTURE_FILTER;
 EXTERN_C const GUID MEDIASUBTYPE_PCM_IN24;
 EXTERN_C const GUID MEDIASUBTYPE_PCM_IN32;

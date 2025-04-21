@@ -17,6 +17,9 @@
 #include "capture.h"
 #include "LibMWCapture/MWCapture.h"
 #include "util.h"
+#ifdef NO_QUILL
+#include <chrono>
+#endif
 
 // HDMI Audio Bitstream Codec Identification metadata
 
