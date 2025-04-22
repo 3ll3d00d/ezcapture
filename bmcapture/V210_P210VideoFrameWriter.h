@@ -15,6 +15,18 @@
 #pragma once
 #include "VideoFrameWriter.h"
 
-class V210P210VideoFrameWriter : public IVideoFrameWriter
+class V210_P210VideoFrameWriter : public IVideoFrameWriter
 {
+public:
+	V210_P210VideoFrameWriter(const log_data& pLogData) : IVideoFrameWriter(pLogData)
+	{
+		
+	}
+
+	~V210_P210VideoFrameWriter() override = default;
+
+	HRESULT WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame) override
+	{
+		return S_OK;
+	}
 };

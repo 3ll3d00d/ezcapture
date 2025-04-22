@@ -17,8 +17,6 @@
 #include <array>
 #include <ks.h>
 #include <ksmedia.h>
-#include <map>
-#include <vector>
 
 constexpr auto not_present = 1024;
 constexpr LONGLONG dshowTicksPerSecond = 10LL * 1000 * 1000; // 100ns
@@ -170,6 +168,11 @@ struct pixel_format
 	{
 		return this->format < rhs.format;
 	}
+
+	bool operator==(const pixel_format& rhs) const noexcept
+	{
+		return this->format == rhs.format;
+	}
 };
 
 // magewell
@@ -215,21 +218,6 @@ const pixel_format ALL_PIXEL_FORMATS[] = {
 	R12L,
 	R10L,
 	R10B
-};
-
-typedef std::map<pixel_format, std::vector<pixel_format>> PixelFormatFallbacks;
-
-const PixelFormatFallbacks pixelFormatFallbacks{
-	// expected formats
-	{YUV2, {YV16}},
-	{V210, {P210}},
-	{R210, {BGR10}},
-	// unusual formats
-	{AY10, {RGBA}},
-	{R12B, {RGBA}},
-	{R12L, {RGBA}},
-	{R10B, {RGBA}},
-	{R10L, {RGBA}},
 };
 
 struct DEVICE_STATUS
@@ -356,8 +344,8 @@ struct VIDEO_FORMAT
 	HDR_META hdrMeta{};
 	int aspectX{16};
 	int aspectY{9};
-	quantisation_range quantisation{QUANTISATION_LIMITED};
-	saturation_range saturation{SATURATION_LIMITED};
+	quantisation_range quantisation{QUANTISATION_UNKNOWN};
+	saturation_range saturation{SATURATION_UNKNOWN};
 	// derived from the above attributes
 	std::string colourFormatName{"REC709"};
 	DWORD lineLength{0};

@@ -24,7 +24,7 @@
     <ClCompile Include="convert.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="AnyRGBVideoFrameWriter.cpp">
+    <ClCompile Include="Any_RGBVideoFrameWriter.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -38,10 +38,22 @@
     <ClInclude Include="VideoFrameWriter.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="V210P210VideoFrameWriter.h">
+    <ClInclude Include="V210_P210VideoFrameWriter.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="AnyRGBVideoFrameWriter.h">
+    <ClInclude Include="Any_RGBVideoFrameWriter.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="YUV2_YV16VideoFrameWriter.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="R210_BGR10VideoFrameWriter.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="StraightThroughVideoFrameWriter.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="bmdomain.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

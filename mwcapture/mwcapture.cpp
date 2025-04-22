@@ -21,22 +21,20 @@
 #include <DXVA.h>
 #include <filesystem>
 #include <utility>
-// linking side data GUIDs fails without this
-#include "mwcapture.h"
-
+ // linking side data GUIDs fails without this
 #include <initguid.h>
-
-#include <cmath>
-// std::reverse
-#include <algorithm>
 
 #ifndef NO_QUILL
 #include "quill/Backend.h"
 #include "quill/sinks/FileSink.h"
-#include <string_view>
-#include <utility>
 #include "quill/std/WideString.h"
 #endif
+
+#include "mwcapture.h"
+
+#include <cmath>
+// std::reverse
+#include <algorithm>
 
 #define S_PARTIAL_DATABURST    ((HRESULT)2L)
 #define S_POSSIBLE_BITSTREAM    ((HRESULT)3L)

@@ -17,10 +17,17 @@
 #include <functional>
 #include <utility>
 #include <atlcomcli.h>
+#include <map>
 
 #include "capture.h"
-#include "DeckLinkAPI_h.h"
+#include "bmdomain.h"
 #include "VideoFrameWriter.h"
+
+#include "Any_RGBVideoFrameWriter.h"
+#include "R210_BGR10VideoFrameWriter.h"
+#include "StraightThroughVideoFrameWriter.h"
+#include "V210_P210VideoFrameWriter.h"
+#include "YUV2_YV16VideoFrameWriter.h"
 
 #ifdef NO_QUILL
 #include <memory>
@@ -60,192 +67,44 @@ inline bool isInCieRange(double value)
 	return value >= 0 && value <= 1.1;
 }
 
-constexpr int64_t invalidFrameTime = std::numeric_limits<int64_t>::lowest();
-constexpr BMDAudioSampleType audioBitDepth = bmdAudioSampleType16bitInteger;
-
-enum FrameConversionStrategy :uint8_t
+enum frame_writer_strategy :uint8_t
 {
 	ANY_RGB,
 	YUV2_YV16,
-	V210_P210
+	V210_P210,
+	R210_BGR10,
+	STRAIGHT_THROUGH
 };
 
-struct DEVICE_INFO
+inline const char* to_string(frame_writer_strategy e)
 {
-	std::string name{};
-	int apiVersion[3]{0, 0, 0};
-	uint8_t audioChannelCount{0};
-	bool inputFormatDetection{false};
-	bool hdrMetadata{false};
-	bool colourspaceMetadata{false};
-	bool dynamicRangeMetadata{false};
+	switch (e)
+	{
+	case ANY_RGB: return "ANY_RGB";
+	case YUV2_YV16: return "YUV2_YV16";
+	case V210_P210: return "V210_P210";
+	case R210_BGR10: return "R210_BGR10";
+	default: return "unknown";
+	}
+}
+
+typedef std::map<pixel_format, std::pair<pixel_format, frame_writer_strategy>> pixel_format_fallbacks;
+
+const pixel_format_fallbacks pixelFormatFallbacks{
+	// standard consumer formats
+	{YUV2, {YV16, YUV2_YV16}},
+	{V210, {P210, V210_P210}},
+	{R210, {BGR10, R210_BGR10}}, // supported natively by JRVR >= MC34
+	// unlikely to be seen in the wild
+	{AY10, {RGBA, ANY_RGB}},
+	{R12B, {RGBA, ANY_RGB}},
+	{R12L, {RGBA, ANY_RGB}},
+	{R10B, {RGBA, ANY_RGB}},
+	{R10L, {RGBA, ANY_RGB}},
 };
 
-struct VIDEO_SIGNAL
-{
-	BMDPixelFormat pixelFormat{bmdFormat8BitARGB};
-	BMDDisplayMode displayMode{bmdMode4K2160p2398};
-	std::string colourFormat{"YUV"};
-	std::string displayModeName{"4K2160p23.98"};
-	uint8_t bitDepth{8};
-	uint32_t frameDuration{1001};
-	uint16_t frameDurationScale{24000};
-	uint16_t cx{3840};
-	uint16_t cy{2160};
-	uint8_t aspectX{16};
-	uint8_t aspectY{9};
-};
-
-struct AUDIO_SIGNAL
-{
-	uint8_t channelCount{0};
-	uint8_t bitDepth{0};
-};
-
-class AudioFrame
-{
-public:
-	AudioFrame(log_data logData, int64_t captureTime, int64_t frameTime, void* data, long len, AUDIO_FORMAT fmt,
-	           uint64_t frameIndex, IDeckLinkAudioInputPacket* packet):
-		mCaptureTime(captureTime),
-		mFrameTime(frameTime),
-		mData(data),
-		mLength(len),
-		mFormat(std::move(fmt)),
-		mLogData(std::move(logData)),
-		mFrameIndex(frameIndex),
-		mPacket(packet)
-	{
-		auto ct = packet->AddRef();
-
-		#ifndef NO_QUILL
-		LOG_TRACE_L3(mLogData.logger, "[{}] AudioFrame Access (new) {} {}", mLogData.prefix, mFrameIndex, ct);
-		#endif
-	}
-
-	~AudioFrame()
-	{
-		auto ct = mPacket->Release();
-
-		#ifndef NO_QUILL
-		LOG_TRACE_L3(mLogData.logger, "[{}] AudioFrame Access (del) {} {}", mLogData.prefix, mFrameIndex, ct);
-		#endif
-	}
-
-	AudioFrame& operator=(const AudioFrame& rhs)
-	{
-		if (this == &rhs)
-			return *this;
-
-		mPacket = rhs.mPacket;
-		auto ct = mPacket->AddRef();
-
-		#ifndef NO_QUILL
-		LOG_TRACE_L3(mLogData.logger, "[{}] AudioFrame Access (assign) {} {}", mLogData.prefix, mFrameIndex, ct);
-		#endif
-
-		mLogData = rhs.mLogData;
-		mCaptureTime = rhs.mCaptureTime;
-		mFrameTime = rhs.mFrameTime;
-		mData = rhs.mData;
-		mLength = rhs.mLength;
-		mFormat = rhs.mFormat;
-		mFrameIndex = rhs.mFrameIndex;
-
-		return *this;
-	}
-
-	int64_t GetCaptureTime() const { return mCaptureTime; }
-
-	int64_t GetFrameTime() const { return mFrameTime; }
-
-	void* GetData() const { return mData; }
-
-	long GetLength() const { return mLength; }
-
-	AUDIO_FORMAT GetFormat() const { return mFormat; }
-
-private:
-	int64_t mCaptureTime{0};
-	int64_t mFrameTime{0};
-	void* mData = nullptr;
-	long mLength{0};
-	AUDIO_FORMAT mFormat{};
-	log_data mLogData;
-	uint64_t mFrameIndex{0};
-	IDeckLinkAudioInputPacket* mPacket;
-};
-
-class VideoFrame
-{
-public:
-	VideoFrame(log_data logData, VIDEO_FORMAT format, int64_t captureTime, int64_t frameTime, int64_t duration,
-	           uint64_t index, IDeckLinkVideoFrame* frame) :
-		mFormat(std::move(format)),
-		mCaptureTime(captureTime),
-		mFrameTime(frameTime),
-		mFrameDuration(duration),
-		mFrameIndex(index),
-		mLogData(std::move(logData))
-	{
-		frame->QueryInterface(IID_IDeckLinkVideoBuffer, reinterpret_cast<void**>(&mBuffer));
-		#ifndef NO_QUILL
-		// hack to get current ref count
-		frame->AddRef();
-		auto ct = frame->Release();
-		LOG_TRACE_L3(mLogData.logger, "[{}] VideoFrame Access (new) {} {}", mLogData.prefix, index, ct);
-		#endif
-
-		mLength = frame->GetRowBytes() * mFormat.cy;
-	}
-
-	~VideoFrame()
-	{
-		auto ct = mBuffer->Release();
-		#ifndef NO_QUILL
-		LOG_TRACE_L3(mLogData.logger, "[{}] VideoFrame Access (del) {} {}", mLogData.prefix, mFrameIndex, ct);
-		#endif
-	}
-
-	void CopyData(BYTE* dst) const
-	{
-		mBuffer->StartAccess(bmdBufferAccessRead);
-
-		void* data;
-		mBuffer->GetBytes(&data);
-		memcpy(dst, data, mLength);
-
-		mBuffer->EndAccess(bmdBufferAccessRead);
-	}
-
-	void WithData(void** dst) const
-	{
-		mBuffer->StartAccess(bmdBufferAccessRead);
-		mBuffer->GetBytes(dst);
-	}
-
-	uint64_t GetFrameIndex() const { return mFrameIndex; }
-
-	int64_t GetCaptureTime() const { return mCaptureTime; }
-
-	int64_t GetFrameTime() const { return mFrameTime; }
-
-	int64_t GetFrameDuration() const { return mFrameDuration; }
-
-	VIDEO_FORMAT GetVideoFormat() const { return mFormat; }
-
-	long GetLength() const { return mLength; }
-
-private:
-	VIDEO_FORMAT mFormat{};
-	int64_t mCaptureTime{0};
-	int64_t mFrameTime{0};
-	int64_t mFrameDuration{0};
-	uint64_t mFrameIndex{0};
-	long mLength{0};
-	IDeckLinkVideoBuffer* mBuffer = nullptr;
-	log_data mLogData;
-};
+constexpr int64_t invalidFrameTime = std::numeric_limits<int64_t>::lowest();
+constexpr BMDAudioSampleType audioBitDepth = bmdAudioSampleType16bitInteger;
 
 class BMReferenceClock final :
 	public CBaseReferenceClock
@@ -262,8 +121,6 @@ public:
 		BMDTimeValue tv, tif, tpf;
 		mInput->GetHardwareReferenceClock(dshowTicksPerSecond, &tv, &tif, &tpf);
 		return tv;
-		// return std::chrono::duration_cast<std::chrono::microseconds>(
-		// std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 	}
 
 private:
@@ -409,8 +266,33 @@ protected:
 	std::shared_ptr<VideoFrame> mCurrentFrame;
 
 private:
-	FrameConversionStrategy mFrameConversionStrategy;
-	IVideoFrameWriter* mFrameWriter;
+	void UpdateFrameWriter(frame_writer_strategy strategy)
+	{
+		if (mFrameWriterStrategy != strategy)
+		{
+			mFrameWriterStrategy = strategy;
+			switch (mFrameWriterStrategy)
+			{
+			case ANY_RGB:
+				mFrameWriter = std::make_unique<Any_RGBVideoFrameWriter>(mLogData);
+				break;
+			case YUV2_YV16:
+				mFrameWriter = std::make_unique<YUV2_YV16VideoFrameWriter>(mLogData);
+				break;
+			case V210_P210:
+				mFrameWriter = std::make_unique<V210_P210VideoFrameWriter>(mLogData);
+				break;
+			case R210_BGR10:
+				mFrameWriter = std::make_unique<R210_BGR10VideoFrameWriter>(mLogData);
+				break;
+			case STRAIGHT_THROUGH:
+				mFrameWriter = std::make_unique<StraightThroughVideoFrameWriter>(mLogData);
+			}
+		}
+	}
+
+	frame_writer_strategy mFrameWriterStrategy;
+	std::unique_ptr<IVideoFrameWriter> mFrameWriter;
 };
 
 /**

@@ -13,13 +13,14 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 #pragma once
+#define NOMINMAX // quill does not compile without this
 
-#include "capture.h"
-#include "LibMWCapture/MWCapture.h"
-#include "util.h"
 #ifdef NO_QUILL
 #include <chrono>
 #endif
+#include "capture.h"
+#include "util.h"
+#include "LibMWCapture/MWCapture.h"
 
 // HDMI Audio Bitstream Codec Identification metadata
 

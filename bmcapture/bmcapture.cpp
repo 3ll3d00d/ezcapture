@@ -14,7 +14,7 @@
  */
 #pragma once
 
-#define NOMINMAX  // quill does not compile without this
+#define NOMINMAX // quill does not compile without this
 
 #include <windows.h>
 #include <process.h>
@@ -22,6 +22,7 @@
 #include <filesystem>
 #include <utility>
 #include "bmcapture.h"
+ // linking side data GUIDs fails without this
 #include <initguid.h>
 
 #include <cmath>
@@ -34,6 +35,7 @@
 #include <string_view>
 #include <utility>
 #include "quill/std/WideString.h"
+#include "quill/StopWatch.h"
 #endif
 
 // audio is limited to 48kHz and an audio packet is only delivered with a video frame
@@ -477,7 +479,7 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 	// compatibility bodge for renderers (madvr) that don't resize buffers correctly at all times
 	if (mVideoSignal.pixelFormat == bmdFormat8BitARGB)
 	{
-		mVideoFormat.pixelFormat = ARGB;
+		mVideoFormat.pixelFormat = RGBA;
 		mVideoFormat.CalculateDimensions();
 	}
 
@@ -1406,18 +1408,69 @@ HRESULT BlackmagicVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, RE
 				VideoFormatToMediaType(&proposedMediaType, &newVideoFormat);
 
 				auto hr = DoChangeMediaType(&proposedMediaType, &newVideoFormat);
-
-				if (FAILED(hr))
+				auto reconnected = SUCCEEDED(hr);
+				if (reconnected)
 				{
-					#ifndef NO_QUILL
-					LOG_ERROR(mLogData.logger,
-					          "[{}] VideoFormat changed but not able to reconnect! retry after backoff [Result: {:#08x}]",
-					          mLogData.prefix, hr);
-					#endif
+					UpdateFrameWriter(STRAIGHT_THROUGH);
+				}
+				else
+				{
+					auto search = pixelFormatFallbacks.find(newVideoFormat.pixelFormat);
+					if (search != pixelFormatFallbacks.end())
+					{
+						auto fallbackPixelFormat = search->second.first;
 
+						#ifndef NO_QUILL
+						LOG_WARNING(mLogData.logger,
+							"[{}] VideoFormat changed but not able to reconnect! [Result: {:#08x}] Attempting fallback format {}",
+							mLogData.prefix, hr, fallbackPixelFormat.name);
+						#endif
+
+						auto fallbackVideoFormat = std::move(newVideoFormat);
+						fallbackVideoFormat.pixelFormat = std::move(fallbackPixelFormat);
+						fallbackVideoFormat.CalculateDimensions();
+
+						CMediaType fallbackMediaType(m_mt);
+						VideoFormatToMediaType(&fallbackMediaType, &fallbackVideoFormat);
+
+						hr = DoChangeMediaType(&fallbackMediaType, &fallbackVideoFormat);
+						reconnected = SUCCEEDED(hr);
+						if (reconnected)
+						{
+							auto strategy = search->second.second;
+
+							#ifndef NO_QUILL
+							LOG_WARNING(mLogData.logger,
+								"[{}] VideoFormat changed and fallback format {} required to reconnect, updating frame conversion strategy to {}",
+								mLogData.prefix, fallbackVideoFormat.pixelFormat.name, to_string(strategy));
+							#endif
+
+							UpdateFrameWriter(strategy);
+						}
+						else
+						{
+							#ifndef NO_QUILL
+							LOG_WARNING(mLogData.logger,
+								"[{}] VideoFormat changed but fallback format also not able to reconnect! Will retry after backoff [Result: {:#08x}]",
+								mLogData.prefix, hr, fallbackVideoFormat.pixelFormat.name);
+							#endif
+						}
+					}
+					else
+					{
+						#ifndef NO_QUILL
+						LOG_ERROR(mLogData.logger,
+							"[{}] VideoFormat changed but not able to reconnect! Will retry after backoff [Result: {:#08x}]",
+							mLogData.prefix, hr);
+						#endif
+					}
+				}
+
+				if (!reconnected)
+				{
 					mCurrentFrame.reset();
-					// TODO show OSD to say we need to change
 					BACKOFF;
+
 					continue;
 				}
 
@@ -1459,42 +1512,6 @@ HRESULT BlackmagicVideoCapturePin::FillBuffer(IMediaSample* pms)
 	auto gap = mCurrentFrame->GetFrameIndex() - mFrameCounter;
 	pms->SetDiscontinuity(gap != 1);
 
-	BYTE* out = nullptr;
-	auto hr = pms->GetPointer(&out);
-	if (FAILED(hr))
-	{
-		#ifndef NO_QUILL
-		LOG_WARNING(mLogData.logger,
-		            "[{}] Unable to fill buffer for frame {}, can't get pointer to output buffer [{:#08x}]",
-		            mLogData.prefix, mCurrentFrame->GetFrameIndex(), hr);
-		#endif
-
-		return hr;
-	}
-
-	auto sizeDelta = mCurrentFrame->GetLength() - pms->GetSize();
-	if (sizeDelta > 0)
-	{
-		#ifndef NO_QUILL
-		LOG_WARNING(mLogData.logger, "[{}] Buffer for frame {} too small, failing (frame: {}, buffer: {})",
-		            mLogData.prefix, mCurrentFrame->GetFrameIndex(), mCurrentFrame->GetLength(), pms->GetSize());
-		#endif
-
-		return S_FALSE;
-	}
-	if (sizeDelta < 0)
-	{
-		#ifndef NO_QUILL
-		LOG_WARNING(mLogData.logger,
-		            "[{}] Buffer for frame {} too large, setting ActualDataLength (frame: {}, buffer: {})",
-		            mLogData.prefix, mCurrentFrame->GetFrameIndex(), mCurrentFrame->GetLength(), pms->GetSize());
-		#endif
-
-		pms->SetActualDataLength(mCurrentFrame->GetLength());
-	}
-
-	mCurrentFrame->CopyData(out);
-
 	mFrameCounter = mCurrentFrame->GetFrameIndex();
 
 	if (mSendMediaType)
@@ -1510,15 +1527,27 @@ HRESULT BlackmagicVideoCapturePin::FillBuffer(IMediaSample* pms)
 	#ifndef NO_QUILL
 	REFERENCE_TIME now;
 	mFilter->GetReferenceTime(&now);
+	#endif
 
+	#ifndef NO_QUILL
+	const quill::StopWatchTsc swt;
+	#endif
+
+	if (mFrameWriter->WriteTo(mCurrentFrame.get(), pms) != S_OK)
+	{
+		return S_FALSE;
+	}
+
+	#ifndef NO_QUILL
+	auto execMillis = swt.elapsed_as<std::chrono::milliseconds>();
 	if (mFrameCounter == 1)
 	{
-		LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame H|f_idx,lat,ft_0,ft_1,ft_d,ft_o,dur,s_sz,missed",
+		LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame H|f_idx,cap_lat,conv_lat,ft_0,ft_1,ft_d,ft_o,dur,s_sz,missed,",
 		             mLogData.prefix);
 	}
 	auto frameInterval = mCurrentFrameTime - mPreviousFrameTime;
-	LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame D|{},{},{},{},{},{}", mLogData.prefix,
-	             mFrameCounter, now - mCurrentFrame->GetCaptureTime(), mPreviousFrameTime,
+	LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame D|{},{},{:.3f},{},{},{},{}", mLogData.prefix,
+	             mFrameCounter, now - mCurrentFrame->GetCaptureTime(), execMillis,
 	             mCurrentFrameTime, frameInterval, frameInterval - mCurrentFrame->GetFrameDuration(),
 	             mCurrentFrame->GetFrameDuration(), mCurrentFrame->GetLength(), gap!=1);
 	#endif

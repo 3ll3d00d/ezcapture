@@ -332,7 +332,7 @@
     </Midl>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="AnyRGBVideoFrameWriter.cpp" />
+    <ClCompile Include="Any_RGBVideoFrameWriter.cpp" />
     <ClCompile Include="bmcapture.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="convert.cpp" />
@@ -352,11 +352,15 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="AnyRGBVideoFrameWriter.h" />
+    <ClInclude Include="Any_RGBVideoFrameWriter.h" />
     <ClInclude Include="bmcapture.h" />
+    <ClInclude Include="bmdomain.h" />
     <ClInclude Include="convert.h" />
-    <ClInclude Include="V210P210VideoFrameWriter.h" />
+    <ClInclude Include="StraightThroughVideoFrameWriter.h" />
+    <ClInclude Include="R210_BGR10VideoFrameWriter.h" />
+    <ClInclude Include="V210_P210VideoFrameWriter.h" />
     <ClInclude Include="VideoFrameWriter.h" />
+    <ClInclude Include="YUV2_YV16VideoFrameWriter.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="bmcapture.rc" />

@@ -17,18 +17,11 @@
 
 #include "VideoFrameWriter.h"
 #include <atlcomcli.h>
-// #include "domain.h"
 
-class AnyRGBVideoFrameWriter : public IVideoFrameWriter
+class Any_RGBVideoFrameWriter : public IVideoFrameWriter
 {
 public:
-	HRESULT WriteTo(IDeckLinkVideoFrame* srcFrame) override;
-
-protected:
-	~AnyRGBVideoFrameWriter() = default;
-
-private:
-	AnyRGBVideoFrameWriter(const log_data& pLogData) : IVideoFrameWriter(pLogData)
+	Any_RGBVideoFrameWriter(const log_data& pLogData) : IVideoFrameWriter(pLogData)
 	{
 		auto result = mConverter.CoCreateInstance(CLSID_CDeckLinkVideoConversion, nullptr);
 		if (S_OK == result)
@@ -44,6 +37,12 @@ private:
 			#endif
 		}
 	}
+
+	~Any_RGBVideoFrameWriter() override = default;
+
+	HRESULT WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame) override;
+
+protected:
 
 	CComPtr<IDeckLinkVideoConversion> mConverter;
 };

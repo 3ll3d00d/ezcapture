@@ -13,6 +13,8 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 #pragma once
+#define NOMINMAX // quill does not compile without this
+
 #include <LibMWCapture/MWHDMIPackets.h>
 #include "domain.h"
 

@@ -17,21 +17,46 @@
 #define NOMINMAX // quill does not compile without this
 
 #include <intsafe.h>
+#include <strmif.h>
 
-#include "DeckLinkAPI_h.h"
-#include "logging.h"
+#include "bmdomain.h"
 
 class IVideoFrameWriter
 {
 public:
-	virtual HRESULT WriteTo(IDeckLinkVideoFrame* srcFrame) = 0;
-
-protected:
 	IVideoFrameWriter(log_data pLogData) : mLogData(std::move(pLogData))
 	{
 	}
 
-	~IVideoFrameWriter() = default;
+	virtual ~IVideoFrameWriter() = default;
+
+	virtual HRESULT WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame) = 0;
+
+protected:
+	HRESULT CheckFrameSizes(uint64_t frameIndex, long srcSize, IMediaSample* dstFrame)
+	{
+		auto sizeDelta = srcSize - dstFrame->GetSize();
+		if (sizeDelta > 0)
+		{
+			#ifndef NO_QUILL
+			LOG_WARNING(mLogData.logger, "[{}] Buffer for frame {} too small, failing (frame: {}, buffer: {})",
+				mLogData.prefix, frameIndex, srcSize, dstFrame->GetSize());
+			#endif
+
+			return S_FALSE;
+		}
+		if (sizeDelta < 0)
+		{
+			#ifndef NO_QUILL
+			LOG_WARNING(mLogData.logger,
+				"[{}] Buffer for frame {} too large, setting ActualDataLength (frame: {}, buffer: {})",
+				mLogData.prefix, frameIndex, srcSize, dstFrame->GetSize());
+			#endif
+
+			dstFrame->SetActualDataLength(srcSize);
+		}
+		return S_OK;
+	}
 
 	log_data mLogData;
 };
