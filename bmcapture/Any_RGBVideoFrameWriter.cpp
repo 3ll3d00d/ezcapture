@@ -16,16 +16,25 @@
 #pragma once
 
 #include "Any_RGBVideoFrameWriter.h"
+
+#include "MediaSampleBackedDecklinkBuffer.h"
 #include "quill/StopWatch.h"
 
 HRESULT Any_RGBVideoFrameWriter::WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame)
 {
+	if (S_OK != CheckFrameSizes(srcFrame->GetFrameIndex(), mExpectedImageSize, dstFrame))
+	{
+		return S_FALSE;
+	}
+
 	IDeckLinkVideoFrame* convertedFrame;
+	MediaSampleBackedDecklinkBuffer wrapper(mLogData, dstFrame);
+
 	const quill::StopWatchTsc swt;
-	// TODO convert directly into the media sample?
-	auto result = mConverter->ConvertNewFrame(srcFrame->GetRawFrame(), bmdFormat8BitBGRA, bmdColorspaceUnknown, nullptr,
-	                                          &convertedFrame);
+	auto result = mConverter->ConvertNewFrame(srcFrame->GetRawFrame(), bmdFormat8BitBGRA, bmdColorspaceUnknown,
+	                                          &wrapper, &convertedFrame);
 	auto execMillis = swt.elapsed_as<std::chrono::milliseconds>();
+
 	if (S_OK != result)
 	{
 		#ifndef NO_QUILL
@@ -42,11 +51,7 @@ HRESULT Any_RGBVideoFrameWriter::WriteTo(VideoFrame* srcFrame, IMediaSample* dst
 	             execMillis);
 	#endif
 
-	VideoFrame vf(mLogData, srcFrame->GetVideoFormat(), srcFrame->GetCaptureTime(), srcFrame->GetFrameTime(),
-	              srcFrame->GetFrameDuration(), srcFrame->GetFrameIndex(), convertedFrame);
-	CheckFrameSizes(vf.GetFrameIndex(), vf.GetLength(), dstFrame);
-	auto hr = vf.CopyData(dstFrame);
 	convertedFrame->Release();
 
-	return hr;
+	return S_OK;
 }

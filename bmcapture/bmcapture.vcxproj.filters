@@ -27,6 +27,9 @@
     <ClCompile Include="Any_RGBVideoFrameWriter.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="MediaSampleBackedDecklinkBuffer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="bmcapture.h">
@@ -54,6 +57,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="bmdomain.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="MediaSampleBackedDecklinkBuffer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

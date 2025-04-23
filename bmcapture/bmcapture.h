@@ -92,9 +92,13 @@ typedef std::map<pixel_format, std::pair<pixel_format, frame_writer_strategy>> p
 
 const pixel_format_fallbacks pixelFormatFallbacks{
 	// standard consumer formats
-	{YUV2, {YV16, YUV2_YV16}},
-	{V210, {P210, V210_P210}},
-	{R210, {BGR10, R210_BGR10}}, // supported natively by JRVR >= MC34
+	// TODO impl
+	// {YUV2, {YV16, YUV2_YV16}},
+	// {V210, {P210, V210_P210}},
+	// {R210, {BGR10, R210_BGR10}}, // supported natively by JRVR >= MC34
+	{YUV2, {RGBA, ANY_RGB}},
+	{V210, {RGBA, ANY_RGB}},
+	{R210, {RGBA, ANY_RGB}},
 	// unlikely to be seen in the wild
 	{AY10, {RGBA, ANY_RGB}},
 	{R12B, {RGBA, ANY_RGB}},
@@ -274,7 +278,7 @@ private:
 			switch (mFrameWriterStrategy)
 			{
 			case ANY_RGB:
-				mFrameWriter = std::make_unique<Any_RGBVideoFrameWriter>(mLogData);
+				mFrameWriter = std::make_unique<Any_RGBVideoFrameWriter>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
 				break;
 			case YUV2_YV16:
 				mFrameWriter = std::make_unique<YUV2_YV16VideoFrameWriter>(mLogData);

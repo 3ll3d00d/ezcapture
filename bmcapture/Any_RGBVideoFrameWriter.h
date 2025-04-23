@@ -12,7 +12,6 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-
 #pragma once
 
 #include "VideoFrameWriter.h"
@@ -21,13 +20,14 @@
 class Any_RGBVideoFrameWriter : public IVideoFrameWriter
 {
 public:
-	Any_RGBVideoFrameWriter(const log_data& pLogData) : IVideoFrameWriter(pLogData)
+	Any_RGBVideoFrameWriter(const log_data& pLogData, uint32_t pX, uint32_t pY) :
+		IVideoFrameWriter(pLogData)
 	{
 		auto result = mConverter.CoCreateInstance(CLSID_CDeckLinkVideoConversion, nullptr);
 		if (S_OK == result)
 		{
 			#ifndef NO_QUILL
-			LOG_INFO(mLogData.logger, "[{}] Created Frame Converter", mLogData.prefix);
+			LOG_INFO(mLogData.logger, "[{}] Created Frame Converter for frame {} x {}", mLogData.prefix, pX, pY);
 			#endif
 		}
 		else
@@ -36,13 +36,15 @@ public:
 			LOG_ERROR(mLogData.logger, "[{}] Failed to create Frame Converter {:#08x}", mLogData.prefix, result);
 			#endif
 		}
+		DWORD b;
+		RGBA.GetImageDimensions(pX, pY, &b, &mExpectedImageSize);
 	}
 
 	~Any_RGBVideoFrameWriter() override = default;
 
 	HRESULT WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame) override;
 
-protected:
-
+private:
 	CComPtr<IDeckLinkVideoConversion> mConverter;
+	DWORD mExpectedImageSize;
 };
