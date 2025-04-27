@@ -15,7 +15,7 @@
 
 #pragma once
 
-#include "Any_RGB.h"
+#include "any_rgb.h"
 
 #include "MediaSampleBackedDecklinkBuffer.h"
 #include "quill/StopWatch.h"

@@ -21,7 +21,7 @@ class any_rgb : public IVideoFrameWriter
 {
 public:
 	any_rgb(const log_data& pLogData, uint32_t pX, uint32_t pY) :
-		IVideoFrameWriter(pLogData)
+		IVideoFrameWriter(pLogData, pX, pY, &RGBA)
 	{
 		auto result = mConverter.CoCreateInstance(CLSID_CDeckLinkVideoConversion, nullptr);
 		if (S_OK == result)
@@ -46,5 +46,4 @@ public:
 
 private:
 	CComPtr<IDeckLinkVideoConversion> mConverter;
-	DWORD mExpectedImageSize;
 };

@@ -14,7 +14,7 @@
  */
 #pragma once
 
-#include "V210_P210.h"
+#include "v210_p210.h"
 #include <atlcomcli.h>
 #include <cstdint>
 #include <quill/StopWatch.h>

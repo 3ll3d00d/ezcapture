@@ -21,13 +21,16 @@
     <ClCompile Include="bmcapture.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Any_RGB.cpp">
+    <ClCompile Include="any_rgb.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="MediaSampleBackedDecklinkBuffer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="V210_P210.cpp">
+    <ClCompile Include="v210_p210.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="yuv2_yv16.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -38,16 +41,16 @@
     <ClInclude Include="VideoFrameWriter.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="V210_P210.h">
+    <ClInclude Include="v210_p210.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Any_RGB.h">
+    <ClInclude Include="any_rgb.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="YUV2_YV16.h">
+    <ClInclude Include="yuv2_yv16.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="R210_BGR10.h">
+    <ClInclude Include="r210_bgr10.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="StraightThrough.h">

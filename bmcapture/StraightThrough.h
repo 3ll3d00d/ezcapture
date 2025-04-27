@@ -18,7 +18,8 @@
 class StraightThrough : public IVideoFrameWriter
 {
 public:
-	StraightThrough(const log_data& pLogData) : IVideoFrameWriter(pLogData)
+	StraightThrough(const log_data& pLogData, int pX, int pY, const pixel_format* pPixelFormat)
+		: IVideoFrameWriter(pLogData, pX, pY, pPixelFormat)
 	{
 	}
 

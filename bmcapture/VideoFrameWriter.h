@@ -24,8 +24,9 @@
 class IVideoFrameWriter
 {
 public:
-	IVideoFrameWriter(log_data pLogData) : mLogData(std::move(pLogData))
+	IVideoFrameWriter(log_data pLogData, int pX, int pY, const pixel_format* pPixelFormat) : mLogData(std::move(pLogData))
 	{
+		pPixelFormat->GetImageDimensions(pX, pY, &mExpectedRowLength, &mExpectedImageSize);
 	}
 
 	virtual ~IVideoFrameWriter() = default;
@@ -59,4 +60,6 @@ protected:
 	}
 
 	log_data mLogData;
+	DWORD mExpectedImageSize;
+	DWORD mExpectedRowLength;
 };

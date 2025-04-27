@@ -18,7 +18,7 @@
 class r210_bgr10 : public IVideoFrameWriter
 {
 public:
-	r210_bgr10(const log_data& pLogData) : IVideoFrameWriter(pLogData)
+	r210_bgr10(const log_data& pLogData, uint32_t pX, uint32_t pY) : IVideoFrameWriter(pLogData, pX, pY, &BGR10)
 	{
 	}
 

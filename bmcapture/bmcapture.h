@@ -23,11 +23,11 @@
 #include "bmdomain.h"
 #include "VideoFrameWriter.h"
 
-#include "Any_RGB.h"
-#include "R210_BGR10.h"
+#include "any_rgb.h"
+#include "r210_bgr10.h"
 #include "StraightThrough.h"
-#include "V210_P210.h"
-#include "YUV2_YV16.h"
+#include "v210_p210.h"
+#include "yuv2_yv16.h"
 
 #ifdef NO_QUILL
 #include <memory>
@@ -96,14 +96,11 @@ const pixel_conversion_strategies pixelConverters{
 };
 const pixel_format_fallbacks pixelFormatFallbacks{
 	// standard consumer formats
-	// TODO impl
-	// {YUV2, {YV16, YUV2_YV16}},
+	{YUV2, {YV16, YUV2_YV16}},
 	{V210, {P210, V210_P210}},
 	// {R210, {BGR10, R210_BGR10}}, // supported natively by JRVR >= MC34
-	{YUV2, {RGBA, ANY_RGB}},
-	// {V210, {RGBA, ANY_RGB}},
 	{R210, {RGBA, ANY_RGB}},
-	// unlikely to be seen in the wild
+	// unlikely to be seen in the wild so just fallback to RGB using decklink sdk
 	{AY10, {RGBA, ANY_RGB}},
 	{R12B, {RGBA, ANY_RGB}},
 	{R12L, {RGBA, ANY_RGB}},
@@ -309,16 +306,17 @@ private:
 				mFrameWriter = std::make_unique<any_rgb>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
 				break;
 			case YUV2_YV16:
-				mFrameWriter = std::make_unique<yuv2_yv16>(mLogData);
+				mFrameWriter = std::make_unique<yuv2_yv16>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
 				break;
 			case V210_P210:
 				mFrameWriter = std::make_unique<v210_p210>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
 				break;
 			case R210_BGR10:
-				mFrameWriter = std::make_unique<r210_bgr10>(mLogData);
+				mFrameWriter = std::make_unique<r210_bgr10>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
 				break;
 			case STRAIGHT_THROUGH:
-				mFrameWriter = std::make_unique<StraightThrough>(mLogData);
+				mFrameWriter = std::make_unique<StraightThrough>(mLogData, mVideoFormat.cx, mVideoFormat.cy,
+				                                                 &mVideoFormat.pixelFormat);
 			}
 		}
 		else

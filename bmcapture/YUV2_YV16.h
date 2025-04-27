@@ -18,14 +18,11 @@
 class yuv2_yv16 : public IVideoFrameWriter
 {
 public:
-	yuv2_yv16(const log_data& pLogData) : IVideoFrameWriter(pLogData)
+	yuv2_yv16(const log_data& pLogData, int pX, int pY) : IVideoFrameWriter(pLogData, pX, pY, &YV16)
 	{
 	}
 
 	~yuv2_yv16() override = default;
 
-	HRESULT WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame) override
-	{
-		return S_OK;
-	}
+	HRESULT WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame) override;
 };

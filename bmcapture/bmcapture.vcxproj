@@ -332,11 +332,12 @@
     </Midl>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="Any_RGB.cpp" />
+    <ClCompile Include="any_rgb.cpp" />
     <ClCompile Include="bmcapture.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="MediaSampleBackedDecklinkBuffer.cpp" />
-    <ClCompile Include="V210_P210.cpp" />
+    <ClCompile Include="v210_p210.cpp" />
+    <ClCompile Include="yuv2_yv16.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="bmcapture.def" />
@@ -353,15 +354,15 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Any_RGB.h" />
+    <ClInclude Include="any_rgb.h" />
     <ClInclude Include="bmcapture.h" />
     <ClInclude Include="bmdomain.h" />
     <ClInclude Include="MediaSampleBackedDecklinkBuffer.h" />
     <ClInclude Include="StraightThrough.h" />
-    <ClInclude Include="R210_BGR10.h" />
-    <ClInclude Include="V210_P210.h" />
+    <ClInclude Include="r210_bgr10.h" />
+    <ClInclude Include="v210_p210.h" />
     <ClInclude Include="VideoFrameWriter.h" />
-    <ClInclude Include="YUV2_YV16.h" />
+    <ClInclude Include="yuv2_yv16.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="bmcapture.rc" />
