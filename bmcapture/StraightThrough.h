@@ -11,14 +11,26 @@
  *
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
- */#pragma once
-#include <bit>
+ */
+#pragma once
+#include "VideoFrameWriter.h"
 
-#include "DeckLinkAPI_h.h"
-
-inline bool is_aligned(const void* ptr, size_t alignment)
+class StraightThrough : public IVideoFrameWriter
 {
-	return (std::bit_cast<std::uintptr_t>(ptr) & (alignment - 1)) == 0;
-}
+public:
+	StraightThrough(const log_data& pLogData) : IVideoFrameWriter(pLogData)
+	{
+	}
 
-void convert_v210_p210(IDeckLinkVideoInputFrame* frame, uint16_t** yPlane, uint16_t** uPlane, uint16_t** vPlane);
+	~StraightThrough() override = default;
+
+	HRESULT WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame) override
+	{
+		if (CheckFrameSizes(srcFrame->GetFrameIndex(), srcFrame->GetLength(), dstFrame) != S_OK)
+		{
+			return S_FALSE;
+		}
+
+		return srcFrame->CopyData(dstFrame);
+	}
+};

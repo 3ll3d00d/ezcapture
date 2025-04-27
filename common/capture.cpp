@@ -940,7 +940,7 @@ void VideoCapturePin::VideoFormatToMediaType(CMediaType* pmt, VIDEO_FORMAT* vide
 
 	SetRectEmpty(&(pvi->rcSource)); // we want the whole image area rendered.
 	SetRectEmpty(&(pvi->rcTarget)); // no particular destination rectangle
-	pvi->dwBitRate = static_cast<DWORD>(videoFormat->pixelFormat.bitDepth * videoFormat->imageSize * 8 * videoFormat->fps);
+	pvi->dwBitRate = static_cast<DWORD>(videoFormat->imageSize * 8 * videoFormat->fps);
 	pvi->dwBitErrorRate = 0;
 	pvi->AvgTimePerFrame = static_cast<DWORD>(static_cast<double>(dshowTicksPerSecond) / videoFormat->fps);
 	pvi->dwInterlaceFlags = 0;
@@ -982,7 +982,7 @@ void VideoCapturePin::VideoFormatToMediaType(CMediaType* pmt, VIDEO_FORMAT* vide
 	pvi->bmiHeader.biWidth = videoFormat->cx;
 	pvi->bmiHeader.biHeight = isRgb ? -(videoFormat->cy) : videoFormat->cy; // RGB on windows is upside down
 	pvi->bmiHeader.biPlanes = 1;
-	pvi->bmiHeader.biBitCount = videoFormat->pixelFormat.bitCount;
+	pvi->bmiHeader.biBitCount = videoFormat->pixelFormat.bitsPerPixel;
 	pvi->bmiHeader.biCompression = videoFormat->pixelFormat.GetBiCompression();
 	pvi->bmiHeader.biSizeImage = videoFormat->imageSize;
 	pvi->bmiHeader.biXPelsPerMeter = 0;
@@ -1097,7 +1097,8 @@ HRESULT VideoCapturePin::DoChangeMediaType(const CMediaType* pNewMt, const VIDEO
 	            newVideoFormat->pixelFormat.name, newVideoFormat->colourFormatName,
 	            newVideoFormat->hdrMeta.transferFunction, newVideoFormat->imageSize);
 
-	if (mLogData.logger->should_log_statement(quill::LogLevel::TraceL3))
+	auto inTraceMode = mLogData.logger->should_log_statement(quill::LogLevel::TraceL3);
+	if (inTraceMode)
 	{
 		AM_MEDIA_TYPE currentMt;
 		if (SUCCEEDED(m_Connected->ConnectionMediaType(&currentMt)))
@@ -1128,6 +1129,16 @@ HRESULT VideoCapturePin::DoChangeMediaType(const CMediaType* pNewMt, const VIDEO
 	{
 		mVideoFormat = *newVideoFormat;
 		OnChangeMediaType();
+
+		#ifndef NO_QUILL
+		if (inTraceMode)
+		{
+			ALLOCATOR_PROPERTIES props;
+			m_pAllocator->GetProperties(&props);
+			LOG_TRACE_L3(mLogData.logger, "[{}] new buffer {} {}", mLogData.prefix, props.cBuffers, props.cbBuffer,
+			             props.cbAlign, props.cbPrefix);
+		}
+		#endif
 	}
 
 	return retVal;

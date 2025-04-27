@@ -22,7 +22,7 @@
 #include <filesystem>
 #include <utility>
 #include "bmcapture.h"
- // linking side data GUIDs fails without this
+// linking side data GUIDs fails without this
 #include <initguid.h>
 
 #include <cmath>
@@ -458,19 +458,6 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		#endif
 	}
 
-	result = mDeckLinkFrameConverter.CoCreateInstance(CLSID_CDeckLinkVideoConversion, nullptr);
-	if (S_OK == result)
-	{
-		#ifndef NO_QUILL
-		LOG_INFO(mLogData.logger, "[{}] Created Frame Converter", mLogData.prefix);
-		#endif
-	}
-	else
-	{
-		#ifndef NO_QUILL
-		LOG_ERROR(mLogData.logger, "[{}] Failed to create Frame Converter {:#08x}", mLogData.prefix, result);
-		#endif
-	}
 	mClock = new BMReferenceClock(phr, mDeckLinkInput);
 
 	// video pin must have a default format in order to ensure a renderer is present in the graph
@@ -549,8 +536,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFormatChanged(BMDVideoInputFormatChan
 	{
 		#ifndef NO_QUILL
 		LOG_TRACE_L1(mLogData.logger, "[{}] VideoInputFormatChanged::bmdVideoInputColorspaceChanged {}",
-		             mLogData.prefix,
-		             detectedSignalFlags);
+		             mLogData.prefix, detectedSignalFlags);
 		#endif
 
 		if (detectedSignalFlags & bmdDetectedVideoInputYCbCr422)
@@ -632,9 +618,10 @@ HRESULT BlackmagicCaptureFilter::VideoInputFormatChanged(BMDVideoInputFormatChan
 				{
 					#ifndef NO_QUILL
 					LOG_WARNING(mLogData.logger,
-					            "[{}] Enabled video input on input format change (displayMode: {:#08x} pixelFormat: {:#08x})",
+					            "[{}] Enabled video input on input format change (displayMode: {:#08x} {} pixelFormat: {:#08x} {})",
 					            mLogData.prefix, static_cast<int>(newDisplayMode->GetDisplayMode()),
-					            static_cast<int>(newSignal.pixelFormat));
+					            to_string(newDisplayMode->GetDisplayMode()), static_cast<int>(newSignal.pixelFormat),
+					            to_string(newSignal.pixelFormat));
 					#endif
 				}
 				else
@@ -944,38 +931,11 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 		}
 		#endif
 
-		// TODO replace with custom conversion to supported format rather than brute force everything to RGB
-		IDeckLinkVideoFrame* convertedFrame;
-		auto t1 = std::chrono::high_resolution_clock::now();
-		result = mDeckLinkFrameConverter->ConvertNewFrame(videoFrame, bmdFormat8BitBGRA, bmdColorspaceUnknown, nullptr,
-		                                                  &convertedFrame);
-		auto t2 = std::chrono::high_resolution_clock::now();
-
-		if (S_OK == result)
-		{
-			std::chrono::duration<double, std::milli> conversionTime = t2 - t1;
-			#ifndef NO_QUILL
-			LOG_TRACE_L3(mLogData.logger, "[{}] Converted frame to BGRA in {:.3f} ms", mLogData.prefix,
-			             conversionTime.count());
-			#endif
-
-			newVideoFormat.pixelFormat = ARGB;
-			newVideoFormat.CalculateDimensions();
-		}
-		else
-		{
-			#ifndef NO_QUILL
-			LOG_WARNING(mLogData.logger, "[{}] Failed to convert frame to BGRA {:#08x}", mLogData.prefix, result);
-			#endif
-			return E_FAIL;
-		}
-
 		{
 			CAutoLock lock(&mFrameSec);
 			mVideoFormat = newVideoFormat;
 			mVideoFrame = std::make_shared<VideoFrame>(mLogData, newVideoFormat, now, frameTime, frameDuration,
-			                                           mCurrentVideoFrameIndex, convertedFrame);
-			convertedFrame->Release();
+			                                           mCurrentVideoFrameIndex, videoFrame);
 		}
 
 		// signal listeners
@@ -1340,9 +1300,12 @@ BlackmagicVideoCapturePin::BlackmagicVideoCapturePin(HRESULT* phr, BlackmagicCap
 		pPreview ? "VideoPreview" : "VideoCapture",
 		pPreview ? L"Preview" : L"Capture",
 		pPreview ? "VideoPreview" : "VideoCapture"
-	)
+	),
+	mSignalledFormat(pVideoFormat.pixelFormat)
 {
-	mVideoFormat = pVideoFormat;
+	mVideoFormat = std::move(pVideoFormat);
+	auto search = pixelConverters.find(mVideoFormat.pixelFormat);
+	UpdateFrameWriter(search == pixelConverters.end() ? STRAIGHT_THROUGH : search->second, mVideoFormat.pixelFormat);
 }
 
 BlackmagicVideoCapturePin::~BlackmagicVideoCapturePin()
@@ -1400,81 +1363,92 @@ HRESULT BlackmagicVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, RE
 
 			if (ShouldChangeMediaType(&newVideoFormat))
 			{
-				#ifndef NO_QUILL
-				LOG_WARNING(mLogData.logger, "[{}] VideoFormat changed! Attempting to reconnect", mLogData.prefix);
-				#endif
-
-				CMediaType proposedMediaType(m_mt);
-				VideoFormatToMediaType(&proposedMediaType, &newVideoFormat);
-
-				auto hr = DoChangeMediaType(&proposedMediaType, &newVideoFormat);
-				auto reconnected = SUCCEEDED(hr);
-				if (reconnected)
+				if (IsFallbackActive(&newVideoFormat))
 				{
-					UpdateFrameWriter(STRAIGHT_THROUGH);
+					#ifndef NO_QUILL
+					LOG_TRACE_L3(mLogData.logger, "[{}] Fallback is active", mLogData.prefix);
+					#endif
 				}
 				else
 				{
-					auto search = pixelFormatFallbacks.find(newVideoFormat.pixelFormat);
-					if (search != pixelFormatFallbacks.end())
+					#ifndef NO_QUILL
+					LOG_WARNING(mLogData.logger, "[{}] VideoFormat changed! Attempting to reconnect", mLogData.prefix);
+					#endif
+
+					CMediaType proposedMediaType(m_mt);
+					VideoFormatToMediaType(&proposedMediaType, &newVideoFormat);
+
+					auto hr = DoChangeMediaType(&proposedMediaType, &newVideoFormat);
+					auto reconnected = SUCCEEDED(hr);
+					auto signalledFormat = newVideoFormat.pixelFormat;
+					if (reconnected)
 					{
-						auto fallbackPixelFormat = search->second.first;
-
-						#ifndef NO_QUILL
-						LOG_WARNING(mLogData.logger,
-							"[{}] VideoFormat changed but not able to reconnect! [Result: {:#08x}] Attempting fallback format {}",
-							mLogData.prefix, hr, fallbackPixelFormat.name);
-						#endif
-
-						auto fallbackVideoFormat = std::move(newVideoFormat);
-						fallbackVideoFormat.pixelFormat = std::move(fallbackPixelFormat);
-						fallbackVideoFormat.CalculateDimensions();
-
-						CMediaType fallbackMediaType(m_mt);
-						VideoFormatToMediaType(&fallbackMediaType, &fallbackVideoFormat);
-
-						hr = DoChangeMediaType(&fallbackMediaType, &fallbackVideoFormat);
-						reconnected = SUCCEEDED(hr);
-						if (reconnected)
+						auto search = pixelConverters.find(mVideoFormat.pixelFormat);
+						UpdateFrameWriter(search == pixelConverters.end() ? STRAIGHT_THROUGH : search->second, signalledFormat);
+					}
+					else
+					{
+						auto search = pixelFormatFallbacks.find(newVideoFormat.pixelFormat);
+						if (search != pixelFormatFallbacks.end())
 						{
-							auto strategy = search->second.second;
+							auto fallbackPixelFormat = search->second.first;
 
 							#ifndef NO_QUILL
 							LOG_WARNING(mLogData.logger,
-								"[{}] VideoFormat changed and fallback format {} required to reconnect, updating frame conversion strategy to {}",
-								mLogData.prefix, fallbackVideoFormat.pixelFormat.name, to_string(strategy));
+								"[{}] VideoFormat changed but not able to reconnect! [Result: {:#08x}] Attempting fallback format {}",
+								mLogData.prefix, hr, fallbackPixelFormat.name);
 							#endif
 
-							UpdateFrameWriter(strategy);
+							auto fallbackVideoFormat = std::move(newVideoFormat);
+							fallbackVideoFormat.pixelFormat = std::move(fallbackPixelFormat);
+							fallbackVideoFormat.CalculateDimensions();
+
+							CMediaType fallbackMediaType(m_mt);
+							VideoFormatToMediaType(&fallbackMediaType, &fallbackVideoFormat);
+
+							hr = DoChangeMediaType(&fallbackMediaType, &fallbackVideoFormat);
+							reconnected = SUCCEEDED(hr);
+							if (reconnected)
+							{
+								auto strategy = search->second.second;
+
+								#ifndef NO_QUILL
+								LOG_WARNING(mLogData.logger,
+									"[{}] VideoFormat changed and fallback format {} required to reconnect, updating frame conversion strategy to {}",
+									mLogData.prefix, fallbackVideoFormat.pixelFormat.name, to_string(strategy));
+								#endif
+
+								UpdateFrameWriter(strategy, signalledFormat);
+							}
+							else
+							{
+								#ifndef NO_QUILL
+								LOG_WARNING(mLogData.logger,
+									"[{}] VideoFormat changed but fallback format also not able to reconnect! Will retry after backoff [Result: {:#08x}]",
+									mLogData.prefix, hr, fallbackVideoFormat.pixelFormat.name);
+								#endif
+							}
 						}
 						else
 						{
 							#ifndef NO_QUILL
-							LOG_WARNING(mLogData.logger,
-								"[{}] VideoFormat changed but fallback format also not able to reconnect! Will retry after backoff [Result: {:#08x}]",
-								mLogData.prefix, hr, fallbackVideoFormat.pixelFormat.name);
+							LOG_ERROR(mLogData.logger,
+								"[{}] VideoFormat changed but not able to reconnect! Will retry after backoff [Result: {:#08x}]",
+								mLogData.prefix, hr);
 							#endif
 						}
 					}
-					else
+
+					if (!reconnected)
 					{
-						#ifndef NO_QUILL
-						LOG_ERROR(mLogData.logger,
-							"[{}] VideoFormat changed but not able to reconnect! Will retry after backoff [Result: {:#08x}]",
-							mLogData.prefix, hr);
-						#endif
+						mCurrentFrame.reset();
+						BACKOFF;
+
+						continue;
 					}
+
+					mFilter->OnVideoFormatLoaded(&mVideoFormat);
 				}
-
-				if (!reconnected)
-				{
-					mCurrentFrame.reset();
-					BACKOFF;
-
-					continue;
-				}
-
-				mFilter->OnVideoFormatLoaded(&mVideoFormat);
 			}
 
 			retVal = VideoCapturePin::GetDeliveryBuffer(ppSample, pStartTime, pEndTime, dwFlags);
@@ -1539,17 +1513,19 @@ HRESULT BlackmagicVideoCapturePin::FillBuffer(IMediaSample* pms)
 	}
 
 	#ifndef NO_QUILL
-	auto execMillis = swt.elapsed_as<std::chrono::milliseconds>();
+	auto execMicros = swt.elapsed_as<std::chrono::microseconds>().count() / 1000.0;
 	if (mFrameCounter == 1)
 	{
-		LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame H|f_idx,cap_lat,conv_lat,ft_0,ft_1,ft_d,ft_o,dur,s_sz,missed,",
+		LOG_TRACE_L1(mLogData.logger,
+		             "[{}] Captured video frame H|f_idx,cap_lat,conv_lat,ft_0,ft_1,ft_d,ft_o,dur,s_sz,missed",
 		             mLogData.prefix);
 	}
 	auto frameInterval = mCurrentFrameTime - mPreviousFrameTime;
-	LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame D|{},{},{:.3f},{},{},{},{}", mLogData.prefix,
-	             mFrameCounter, now - mCurrentFrame->GetCaptureTime(), execMillis,
-	             mCurrentFrameTime, frameInterval, frameInterval - mCurrentFrame->GetFrameDuration(),
-	             mCurrentFrame->GetFrameDuration(), mCurrentFrame->GetLength(), gap!=1);
+	LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame D|{},{},{:.3f},{},{},{},{},{},{},{}", mLogData.prefix,
+	             mFrameCounter, now - mCurrentFrame->GetCaptureTime(), execMicros,
+	             mPreviousFrameTime, mCurrentFrameTime, frameInterval,
+	             frameInterval - mCurrentFrame->GetFrameDuration(), mCurrentFrame->GetFrameDuration(),
+	             mCurrentFrame->GetLength(), gap!=1);
 	#endif
 
 	mCurrentFrame.reset();

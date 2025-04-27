@@ -39,7 +39,7 @@ protected:
 		if (sizeDelta > 0)
 		{
 			#ifndef NO_QUILL
-			LOG_WARNING(mLogData.logger, "[{}] Buffer for frame {} too small, failing (frame: {}, buffer: {})",
+			LOG_WARNING(mLogData.logger, "[{}] Buffer for frame {} too small, failing (src: {}, dst: {})",
 				mLogData.prefix, frameIndex, srcSize, dstFrame->GetSize());
 			#endif
 
@@ -49,7 +49,7 @@ protected:
 		{
 			#ifndef NO_QUILL
 			LOG_WARNING(mLogData.logger,
-				"[{}] Buffer for frame {} too large, setting ActualDataLength (frame: {}, buffer: {})",
+				"[{}] Buffer for frame {} too large, setting ActualDataLength (src: {}, dst: {})",
 				mLogData.prefix, frameIndex, srcSize, dstFrame->GetSize());
 			#endif
 

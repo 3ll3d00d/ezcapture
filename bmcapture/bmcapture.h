@@ -23,11 +23,11 @@
 #include "bmdomain.h"
 #include "VideoFrameWriter.h"
 
-#include "Any_RGBVideoFrameWriter.h"
-#include "R210_BGR10VideoFrameWriter.h"
-#include "StraightThroughVideoFrameWriter.h"
-#include "V210_P210VideoFrameWriter.h"
-#include "YUV2_YV16VideoFrameWriter.h"
+#include "Any_RGB.h"
+#include "R210_BGR10.h"
+#include "StraightThrough.h"
+#include "V210_P210.h"
+#include "YUV2_YV16.h"
 
 #ifdef NO_QUILL
 #include <memory>
@@ -84,20 +84,24 @@ inline const char* to_string(frame_writer_strategy e)
 	case YUV2_YV16: return "YUV2_YV16";
 	case V210_P210: return "V210_P210";
 	case R210_BGR10: return "R210_BGR10";
+	case STRAIGHT_THROUGH: return "STRAIGHT_THROUGH";
 	default: return "unknown";
 	}
 }
 
 typedef std::map<pixel_format, std::pair<pixel_format, frame_writer_strategy>> pixel_format_fallbacks;
-
+typedef std::map<pixel_format, frame_writer_strategy> pixel_conversion_strategies;
+const pixel_conversion_strategies pixelConverters{
+	{RGBA, STRAIGHT_THROUGH},
+};
 const pixel_format_fallbacks pixelFormatFallbacks{
 	// standard consumer formats
 	// TODO impl
 	// {YUV2, {YV16, YUV2_YV16}},
-	// {V210, {P210, V210_P210}},
+	{V210, {P210, V210_P210}},
 	// {R210, {BGR10, R210_BGR10}}, // supported natively by JRVR >= MC34
 	{YUV2, {RGBA, ANY_RGB}},
-	{V210, {RGBA, ANY_RGB}},
+	// {V210, {RGBA, ANY_RGB}},
 	{R210, {RGBA, ANY_RGB}},
 	// unlikely to be seen in the wild
 	{AY10, {RGBA, ANY_RGB}},
@@ -219,7 +223,6 @@ private:
 	CComQIPtr<IDeckLinkNotification> mDeckLinkNotification;
 	CComQIPtr<IDeckLinkStatus> mDeckLinkStatus;
 	CComQIPtr<IDeckLinkHDMIInputEDID> mDeckLinkHDMIInputEDID;
-	CComPtr<IDeckLinkVideoConversion> mDeckLinkFrameConverter;
 	CCritSec mFrameSec;
 	CCritSec mDeckLinkSec;
 
@@ -232,7 +235,6 @@ private:
 	std::shared_ptr<VideoFrame> mVideoFrame;
 	HANDLE mVideoFrameEvent;
 
-	int64_t mPreviousAudioFrameTime{invalidFrameTime};
 	uint64_t mCurrentAudioFrameIndex{0};
 	std::shared_ptr<AudioFrame> mAudioFrame;
 	HANDLE mAudioFrameEvent;
@@ -270,33 +272,67 @@ protected:
 	std::shared_ptr<VideoFrame> mCurrentFrame;
 
 private:
-	void UpdateFrameWriter(frame_writer_strategy strategy)
+	boolean IsFallbackActive(const VIDEO_FORMAT* newVideoFormat) const
 	{
-		if (mFrameWriterStrategy != strategy)
+		if (newVideoFormat->pixelFormat.format != mVideoFormat.pixelFormat.format)
 		{
+			auto search = pixelFormatFallbacks.find(newVideoFormat->pixelFormat);
+			if (search != pixelFormatFallbacks.end())
+			{
+				auto fallbackPixelFormat = search->second.first;
+				if (fallbackPixelFormat.format == mVideoFormat.pixelFormat.format)
+				{
+					if (newVideoFormat->cx == mVideoFormat.cx && newVideoFormat->cy == mVideoFormat.cy)
+					{
+						return true;
+					}
+				}
+			}
+		}
+		return false;
+	}
+
+	void UpdateFrameWriter(frame_writer_strategy strategy, const pixel_format& signalledFormat)
+	{
+		mSignalledFormat = signalledFormat;
+		if (mFrameWriterStrategy != strategy || strategy == ANY_RGB)
+		{
+			#ifndef NO_QUILL
+			LOG_TRACE_L1(mLogData.logger, "[{}] Updating conversion strategy from {} to {}", mLogData.prefix,
+			             to_string(mFrameWriterStrategy), to_string(strategy));
+			#endif
+
 			mFrameWriterStrategy = strategy;
 			switch (mFrameWriterStrategy)
 			{
 			case ANY_RGB:
-				mFrameWriter = std::make_unique<Any_RGBVideoFrameWriter>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
+				mFrameWriter = std::make_unique<any_rgb>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
 				break;
 			case YUV2_YV16:
-				mFrameWriter = std::make_unique<YUV2_YV16VideoFrameWriter>(mLogData);
+				mFrameWriter = std::make_unique<yuv2_yv16>(mLogData);
 				break;
 			case V210_P210:
-				mFrameWriter = std::make_unique<V210_P210VideoFrameWriter>(mLogData);
+				mFrameWriter = std::make_unique<v210_p210>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
 				break;
 			case R210_BGR10:
-				mFrameWriter = std::make_unique<R210_BGR10VideoFrameWriter>(mLogData);
+				mFrameWriter = std::make_unique<r210_bgr10>(mLogData);
 				break;
 			case STRAIGHT_THROUGH:
-				mFrameWriter = std::make_unique<StraightThroughVideoFrameWriter>(mLogData);
+				mFrameWriter = std::make_unique<StraightThrough>(mLogData);
 			}
+		}
+		else
+		{
+			#ifndef NO_QUILL
+			LOG_TRACE_L1(mLogData.logger, "[{}] No change to conversion strategy required {}", mLogData.prefix,
+			             to_string(mFrameWriterStrategy));
+			#endif
 		}
 	}
 
 	frame_writer_strategy mFrameWriterStrategy;
 	std::unique_ptr<IVideoFrameWriter> mFrameWriter;
+	pixel_format mSignalledFormat;
 };
 
 /**

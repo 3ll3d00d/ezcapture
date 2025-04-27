@@ -13,38 +13,30 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 #pragma once
-
 #include "VideoFrameWriter.h"
-#include <atlcomcli.h>
 
-class Any_RGBVideoFrameWriter : public IVideoFrameWriter
+/**
+  * V210 to P210 conversion using AVX2 instructions.
+  *
+  * V210: 4:2:2 YUV packed format with 10-bit samples in 32-bit words
+  * P210: 4:2:2 YUV planar format with 16-bit samples (10-bit in LSBs)
+  *
+  * V210 packs 6 pixels(6Y, 3U, 3V) components into 4 32-bit words (16 bytes).
+  * P210 stores components in separate planes with 16-bit samples.
+  */
+class v210_p210 : public IVideoFrameWriter
 {
 public:
-	Any_RGBVideoFrameWriter(const log_data& pLogData, uint32_t pX, uint32_t pY) :
-		IVideoFrameWriter(pLogData)
+	v210_p210(const log_data& pLogData, int pX, int pY) : IVideoFrameWriter(pLogData)
 	{
-		auto result = mConverter.CoCreateInstance(CLSID_CDeckLinkVideoConversion, nullptr);
-		if (S_OK == result)
-		{
-			#ifndef NO_QUILL
-			LOG_INFO(mLogData.logger, "[{}] Created Frame Converter for frame {} x {}", mLogData.prefix, pX, pY);
-			#endif
-		}
-		else
-		{
-			#ifndef NO_QUILL
-			LOG_ERROR(mLogData.logger, "[{}] Failed to create Frame Converter {:#08x}", mLogData.prefix, result);
-			#endif
-		}
-		DWORD b;
-		RGBA.GetImageDimensions(pX, pY, &b, &mExpectedImageSize);
+		P210.GetImageDimensions(pX, pY, &mExpectedRowLength, &mExpectedImageSize);
 	}
 
-	~Any_RGBVideoFrameWriter() override = default;
+	~v210_p210() override = default;
 
 	HRESULT WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame) override;
 
 private:
-	CComPtr<IDeckLinkVideoConversion> mConverter;
 	DWORD mExpectedImageSize;
+	DWORD mExpectedRowLength;
 };

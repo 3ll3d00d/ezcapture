@@ -15,12 +15,12 @@
 
 #pragma once
 
-#include "Any_RGBVideoFrameWriter.h"
+#include "Any_RGB.h"
 
 #include "MediaSampleBackedDecklinkBuffer.h"
 #include "quill/StopWatch.h"
 
-HRESULT Any_RGBVideoFrameWriter::WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame)
+HRESULT any_rgb::WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame)
 {
 	if (S_OK != CheckFrameSizes(srcFrame->GetFrameIndex(), mExpectedImageSize, dstFrame))
 	{
@@ -33,7 +33,7 @@ HRESULT Any_RGBVideoFrameWriter::WriteTo(VideoFrame* srcFrame, IMediaSample* dst
 	const quill::StopWatchTsc swt;
 	auto result = mConverter->ConvertNewFrame(srcFrame->GetRawFrame(), bmdFormat8BitBGRA, bmdColorspaceUnknown,
 	                                          &wrapper, &convertedFrame);
-	auto execMillis = swt.elapsed_as<std::chrono::milliseconds>();
+	auto execTime = swt.elapsed_as<std::chrono::microseconds>().count() / 1000.0;
 
 	if (S_OK != result)
 	{
@@ -48,7 +48,7 @@ HRESULT Any_RGBVideoFrameWriter::WriteTo(VideoFrame* srcFrame, IMediaSample* dst
 
 	#ifndef NO_QUILL
 	LOG_TRACE_L2(mLogData.logger, "[{}] Converted frame to BGRA in {:.3f} ms", mLogData.prefix,
-	             execMillis);
+	             execTime);
 	#endif
 
 	convertedFrame->Release();

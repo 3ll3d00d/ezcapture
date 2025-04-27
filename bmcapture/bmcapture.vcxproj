@@ -332,11 +332,11 @@
     </Midl>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="Any_RGBVideoFrameWriter.cpp" />
+    <ClCompile Include="Any_RGB.cpp" />
     <ClCompile Include="bmcapture.cpp" />
     <ClCompile Include="dllmain.cpp" />
-    <ClCompile Include="convert.cpp" />
     <ClCompile Include="MediaSampleBackedDecklinkBuffer.cpp" />
+    <ClCompile Include="V210_P210.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="bmcapture.def" />
@@ -353,16 +353,15 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Any_RGBVideoFrameWriter.h" />
+    <ClInclude Include="Any_RGB.h" />
     <ClInclude Include="bmcapture.h" />
     <ClInclude Include="bmdomain.h" />
-    <ClInclude Include="convert.h" />
     <ClInclude Include="MediaSampleBackedDecklinkBuffer.h" />
-    <ClInclude Include="StraightThroughVideoFrameWriter.h" />
-    <ClInclude Include="R210_BGR10VideoFrameWriter.h" />
-    <ClInclude Include="V210_P210VideoFrameWriter.h" />
+    <ClInclude Include="StraightThrough.h" />
+    <ClInclude Include="R210_BGR10.h" />
+    <ClInclude Include="V210_P210.h" />
     <ClInclude Include="VideoFrameWriter.h" />
-    <ClInclude Include="YUV2_YV16VideoFrameWriter.h" />
+    <ClInclude Include="YUV2_YV16.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="bmcapture.rc" />

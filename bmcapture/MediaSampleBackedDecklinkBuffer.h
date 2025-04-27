@@ -19,6 +19,7 @@
 #include "logging.h"
 #include <atomic>
 #include <strmif.h>
+#include <memory>
 
 class MediaSampleBackedDecklinkBuffer : public IDeckLinkVideoBuffer
 {

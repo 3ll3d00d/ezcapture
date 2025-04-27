@@ -15,14 +15,14 @@
 #pragma once
 #include "VideoFrameWriter.h"
 
-class YUV2_YV16VideoFrameWriter : public IVideoFrameWriter
+class r210_bgr10 : public IVideoFrameWriter
 {
 public:
-	YUV2_YV16VideoFrameWriter(const log_data& pLogData) : IVideoFrameWriter(pLogData)
+	r210_bgr10(const log_data& pLogData) : IVideoFrameWriter(pLogData)
 	{
 	}
 
-	~YUV2_YV16VideoFrameWriter() override = default;
+	~r210_bgr10() override = default;
 
 	HRESULT WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame) override
 	{
