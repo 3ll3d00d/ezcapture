@@ -21,7 +21,7 @@
 #include <DXVA.h>
 #include <filesystem>
 #include <utility>
- // linking side data GUIDs fails without this
+// linking side data GUIDs fails without this
 #include <initguid.h>
 
 #ifndef NO_QUILL
@@ -546,7 +546,8 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 				if (skip)
 				{
 					#ifndef NO_QUILL
-					LOG_TRACE_L1(mLogData.logger, "[{}] Unexpected capture event ({:#08x})", mLogData.prefix, dwRet);
+					LOG_TRACE_L1(mLogData.logger, "[{}] Unexpected capture event ({:#08x})", mLogData.prefix,
+					             static_cast<unsigned long>(dwRet));
 					#endif
 
 					if (dwRet == STATUS_TIMEOUT)
@@ -1120,7 +1121,7 @@ HRESULT MagewellVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 				#ifndef NO_QUILL
 				LOG_ERROR(mLogData.logger,
 				          "[{}] VideoFormat changed but not able to reconnect! retry after backoff [Result: {:#08x}]",
-				          mLogData.prefix, hr);
+				          mLogData.prefix, static_cast<unsigned long>(hr));
 				#endif
 
 				// TODO show OSD to say we need to change
@@ -1250,7 +1251,7 @@ HRESULT MagewellVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 			{
 				#ifndef NO_QUILL
 				LOG_TRACE_L1(mLogData.logger, "[{}] Wait for frame unexpected response ({:#08x})", mLogData.prefix,
-				             dwRet);
+				             static_cast<unsigned long>(dwRet));
 				#endif
 			}
 		}
@@ -3087,7 +3088,7 @@ HRESULT MagewellAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 				{
 					#ifndef NO_QUILL
 					LOG_TRACE_L2(mLogData.logger, "[{}] Detected bitstream in frame {} {} (res: {:#08x})",
-					             mLogData.prefix, mFrameCounter, codecNames[mDetectedCodec], res);
+					             mLogData.prefix, mFrameCounter, codecNames[mDetectedCodec], static_cast<unsigned long>(res));
 					#endif
 					mProbeOnTimer = false;
 					if (mDetectedCodec == *detectedCodec)
@@ -3182,7 +3183,7 @@ HRESULT MagewellAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 					#ifndef NO_QUILL
 					LOG_WARNING(mLogData.logger,
 					            "[{}] AudioFormat changed but not able to reconnect ({:#08x}) retry after backoff",
-					            mLogData.prefix, hr);
+					            mLogData.prefix, static_cast<unsigned long>(hr));
 					#endif
 
 					// TODO communicate that we need to change somehow

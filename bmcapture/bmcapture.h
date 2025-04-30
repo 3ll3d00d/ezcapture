@@ -97,9 +97,8 @@ const pixel_conversion_strategies pixelConverters{
 const pixel_format_fallbacks pixelFormatFallbacks{
 	// standard consumer formats
 	{YUV2, {YV16, YUV2_YV16}},
-	{V210, {P210, V210_P210}},
-	// {R210, {BGR10, R210_BGR10}}, // supported natively by JRVR >= MC34
-	{R210, {RGBA, ANY_RGB}},
+	{V210, {P210, V210_P210}},   // supported natively by madvr
+	{R210, {BGR10, R210_BGR10}}, // supported natively by jrvr >= MC34
 	// unlikely to be seen in the wild so just fallback to RGB using decklink sdk
 	{AY10, {RGBA, ANY_RGB}},
 	{R12B, {RGBA, ANY_RGB}},
@@ -259,6 +258,7 @@ public:
 	//////////////////////////////////////////////////////////////////////////
 	HRESULT FillBuffer(IMediaSample* pms) override;
 	HRESULT OnThreadCreate(void) override;
+	HRESULT CheckMediaType(const CMediaType*) override;
 
 protected:
 	void DoThreadDestroy() override;

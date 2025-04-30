@@ -35,7 +35,7 @@ constexpr size_t CalculateV210BufferSize(int width, int height)
 	return bytesPerRow * height;
 }
 
-struct V210P210Strides
+struct strides
 {
 	int srcStride;
 	int dstYStride;
@@ -49,9 +49,9 @@ inline int Align(int value, int align)
 	return (value + align - 1) & ~(align - 1);
 }
 
-inline V210P210Strides CalculateAlignedV210P210Strides(int width)
+inline strides CalculateAlignedV210P210Strides(int width)
 {
-	V210P210Strides s;
+	strides s;
 	int rawSrcStride = ((width + 5) / 6) * 16;
 	int rawDstYStride = width * 2;
 	int rawDstUVStride = width * 2;
@@ -63,8 +63,71 @@ inline V210P210Strides CalculateAlignedV210P210Strides(int width)
 	return s;
 }
 
-void V210ToP210_AVX2_Fast(const uint8_t* src, uint8_t* dstY, uint8_t* dstUV, int width, int height,
-                          V210P210Strides strides)
+void convertScalar(const uint8_t* src, int srcStride, uint8_t* dstY, uint8_t* dstUV, int width, int height)
+{
+	// Each group of 16 bytes contains 6 pixels (YUVYUV)
+	const int groupsPerLine = width / 6;
+	uint16_t* dstLineY = reinterpret_cast<uint16_t*>(dstY);
+	uint16_t* dstLineUV = reinterpret_cast<uint16_t*>(dstUV);
+
+	for (int y = 0; y < height; y++)
+	{
+		const uint32_t* srcLine = reinterpret_cast<const uint32_t*>(src + y * srcStride);
+		for (int g = 0; g < groupsPerLine; ++g)
+		{
+			// Load 4 dwords (16 bytes = 128 bits)
+			__m128i v = _mm_loadu_si128(reinterpret_cast<const __m128i*>(srcLine));
+
+			// Unpack 12 16 bit samples to a 10 bit value manually
+			alignas(32) uint16_t samples[12];
+			const uint32_t* p = reinterpret_cast<const uint32_t*>(&v);
+
+			samples[0] = p[0] & 0x3FF;
+			samples[1] = (p[0] >> 10) & 0x3FF;
+			samples[2] = (p[0] >> 20) & 0x3FF;
+
+			samples[3] = p[1] & 0x3FF;
+			samples[4] = (p[1] >> 10) & 0x3FF;
+			samples[5] = (p[1] >> 20) & 0x3FF;
+
+			samples[6] = p[2] & 0x3FF;
+			samples[7] = (p[2] >> 10) & 0x3FF;
+			samples[8] = (p[2] >> 20) & 0x3FF;
+
+			samples[9] = p[3] & 0x3FF;
+			samples[10] = (p[3] >> 10) & 0x3FF;
+			samples[11] = (p[3] >> 20) & 0x3FF;
+
+			// Now samples array has: [U0, Y0, V0, Y1, U2, Y2, V2, Y3, U4, Y4, V4, Y5]
+
+			// Arrange and store Y plane
+			dstLineY[0] = samples[1]; // Y0
+			dstLineY[1] = samples[3]; // Y1
+			dstLineY[2] = samples[5]; // Y2
+			dstLineY[3] = samples[7]; // Y3
+			dstLineY[4] = samples[9]; // Y4
+			dstLineY[5] = samples[11]; // Y5
+
+			// Arrange and store UV interleaved plane
+			dstLineUV[0] = samples[0]; // U0
+			dstLineUV[1] = samples[2]; // V0
+			dstLineUV[2] = samples[4]; // U2
+			dstLineUV[3] = samples[6]; // V2
+			dstLineUV[4] = samples[8]; // U4
+			dstLineUV[5] = samples[10]; // V4
+
+			dstLineY += 6;
+			dstLineUV += 6;
+			srcLine += 4;
+		}
+	}
+}
+
+void V210ToP210_AVX2_Fast(
+	const uint8_t* src, int srcStride,
+	uint8_t* dstY, int dstYStride,
+	uint8_t* dstUV, int dstUVStride,
+	int width, int height)
 {
 	const int groupsPerLine = width / 12;
 	const int tailPixels = width % 12;
@@ -72,8 +135,9 @@ void V210ToP210_AVX2_Fast(const uint8_t* src, uint8_t* dstY, uint8_t* dstUV, int
 	const __m256i mask_10bit = _mm256_set1_epi32(0x3FF);
 
 	// Dynamically allocate 64-byte aligned memory for temp buffer
-	uint16_t* tmp = static_cast<uint16_t*>(_aligned_malloc(64 * sizeof(uint16_t), 32)); // 64 bytes for temp buffer
-	if (!tmp)
+	uint16_t* temp = reinterpret_cast<uint16_t*>(_aligned_malloc(64 * sizeof(uint16_t), 32));
+	// 64 bytes for temp buffer
+	if (!temp)
 	{
 		// Handle memory allocation failure if necessary
 		return;
@@ -81,9 +145,9 @@ void V210ToP210_AVX2_Fast(const uint8_t* src, uint8_t* dstY, uint8_t* dstUV, int
 
 	for (int y = 0; y < height; ++y)
 	{
-		const uint32_t* srcLine = reinterpret_cast<const uint32_t*>(src + y * strides.srcStride);
-		uint16_t* dstLineY = reinterpret_cast<uint16_t*>(dstY + y * strides.dstYStride);
-		uint16_t* dstLineUV = reinterpret_cast<uint16_t*>(dstUV + y * strides.dstUVStride);
+		const uint32_t* srcLine = reinterpret_cast<const uint32_t*>(src + y * srcStride);
+		uint16_t* dstLineY = reinterpret_cast<uint16_t*>(dstY + y * dstYStride);
+		uint16_t* dstLineUV = reinterpret_cast<uint16_t*>(dstUV + y * dstUVStride);
 
 		int x = 0;
 		int uvIndex = 0; // UV plane moves half-speed
@@ -104,7 +168,7 @@ void V210ToP210_AVX2_Fast(const uint8_t* src, uint8_t* dstY, uint8_t* dstUV, int
 			__m256i unpack2 = _mm256_unpacklo_epi32(unpack_hi, hi10);
 			__m256i unpack3 = _mm256_unpackhi_epi32(unpack_hi, hi10);
 
-			alignas(32) uint16_t* temp32 = tmp;
+			alignas(32) uint16_t* temp32 = temp;
 
 			_mm256_store_si256(reinterpret_cast<__m256i*>(temp32), unpack0);
 			_mm_store_si128(reinterpret_cast<__m128i*>(temp32 + 8), _mm256_castsi256_si128(unpack1));
@@ -115,12 +179,12 @@ void V210ToP210_AVX2_Fast(const uint8_t* src, uint8_t* dstY, uint8_t* dstUV, int
 			for (int i = 0; i < 12; i += 2)
 			{
 				// 2 Y samples
-				dstLineY[x + i] = tmp[1 + i * 2];
-				dstLineY[x + i + 1] = tmp[3 + i * 2];
+				dstLineY[x + i] = temp[1 + i * 2];
+				dstLineY[x + i + 1] = temp[3 + i * 2];
 
 				// U and V samples for the pair
-				dstLineUV[uvIndex + 0] = tmp[0 + i * 2]; // U
-				dstLineUV[uvIndex + 1] = tmp[2 + i * 2]; // V
+				dstLineUV[uvIndex + 0] = temp[0 + i * 2]; // U
+				dstLineUV[uvIndex + 1] = temp[2 + i * 2]; // V
 
 				uvIndex += 2;
 			}
@@ -133,7 +197,7 @@ void V210ToP210_AVX2_Fast(const uint8_t* src, uint8_t* dstY, uint8_t* dstUV, int
 			// Scalar fallback for leftovers
 			const uint32_t* srcTail = srcLine + groupsPerLine * 8;
 			int tailBytes = ((tailPixels * 2 + tailPixels / 2 + 1) / 2) * 4;
-			uint8_t temp[64] = {};
+			uint8_t temp[64] = {0};
 			std::memcpy(temp, srcTail, tailBytes);
 
 			const uint32_t* p = reinterpret_cast<const uint32_t*>(temp);
@@ -162,6 +226,9 @@ void V210ToP210_AVX2_Fast(const uint8_t* src, uint8_t* dstY, uint8_t* dstUV, int
 			}
 		}
 	}
+
+	// Free the aligned memory
+	_aligned_free(temp);
 }
 
 // Class for handling file I/O with C++20 features
@@ -179,7 +246,7 @@ public:
 
 		try
 		{
-			V210P210Strides strides = CalculateAlignedV210P210Strides(width);
+			strides strides = CalculateAlignedV210P210Strides(width);
 
 			// Calculate buffer sizes
 			size_t v210Size = CalculateV210BufferSize(width, height);
@@ -188,8 +255,8 @@ public:
 			std::vector<uint8_t> v210Buffer(v210Size);
 			auto planeSize = strides.dstYStride * height * 2;
 			std::vector<uint8_t> p210Buffer(planeSize);
-			uint8_t* p210Y = std::span(p210Buffer).subspan(0, planeSize).data();
-			uint8_t* p210UV = std::span(p210Buffer).subspan(planeSize, planeSize).data();
+			uint8_t* p210Y = std::span(p210Buffer).subspan(0, planeSize / 2).data();
+			uint8_t* p210UV = std::span(p210Buffer).subspan(planeSize / 2, planeSize / 2).data();
 
 			// Read input file using standard file streams
 			std::ifstream inFile(inputFile, std::ios::binary);
@@ -204,7 +271,9 @@ public:
 			}
 
 			// Convert the data
-			V210ToP210_AVX2_Fast(v210Buffer.data(), p210Y, p210UV, width, height, strides);
+			convertScalar(v210Buffer.data(), strides.srcStride, p210Y, p210UV, width, height);
+			// V210ToP210_AVX2_Fast(v210Buffer.data(), strides.srcStride, p210Y, strides.dstYStride, p210UV,
+			// strides.dstUVStride, width, height);
 
 			// Write output file
 			std::ofstream outFile(outputFile, std::ios::binary);
@@ -214,8 +283,7 @@ public:
 			}
 
 			// Write P210 data (Y plane followed by UV interleaved plane)
-			outFile.write(reinterpret_cast<const char*>(p210Y), planeSize);
-			outFile.write(reinterpret_cast<const char*>(p210UV), planeSize);
+			outFile.write(reinterpret_cast<const char*>(p210Buffer.data()), p210Buffer.size());
 
 			if (!outFile)
 			{

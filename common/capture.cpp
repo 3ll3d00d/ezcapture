@@ -529,7 +529,7 @@ HRESULT CapturePin::DoBufferProcessingLoop(void)
 			{
 				#ifndef NO_QUILL
 				LOG_WARNING(mLogData.logger, "[{}] Failed to GetDeliveryBuffer ({:#08x}), retrying", mLogData.prefix,
-				            hrBuf);
+							static_cast<unsigned long>(hrBuf));
 				#endif
 				SHORT_BACKOFF;
 				continue;
@@ -547,7 +547,7 @@ HRESULT CapturePin::DoBufferProcessingLoop(void)
 					#ifndef NO_QUILL
 					LOG_WARNING(mLogData.logger,
 					            "[{}] Failed to deliver sample downstream ({:#08x}), process loop will exit",
-					            mLogData.prefix, hr);
+					            mLogData.prefix, static_cast<unsigned long>(hr));
 					#endif
 
 					return S_OK;
@@ -564,7 +564,7 @@ HRESULT CapturePin::DoBufferProcessingLoop(void)
 			{
 				#ifndef NO_QUILL
 				LOG_WARNING(mLogData.logger, "[{}] FillBuffer failed ({:#08x}), sending EOS and EC_ERRORABORT",
-				            mLogData.prefix, hr);
+				            mLogData.prefix, static_cast<unsigned long>(hr));
 				#endif
 
 				pSample->Release();
@@ -677,7 +677,7 @@ HRESULT CapturePin::SetMediaType(const CMediaType* pmt)
 	HRESULT hr = CSourceStream::SetMediaType(pmt);
 
 	#ifndef NO_QUILL
-	LOG_TRACE_L3(mLogData.logger, "[{}] SetMediaType (res: {:#08x})", mLogData.prefix, hr);
+	LOG_TRACE_L3(mLogData.logger, "[{}] SetMediaType (res: {:#08x})", mLogData.prefix, static_cast<unsigned long>(hr));
 	#endif
 
 	return hr;
@@ -703,8 +703,7 @@ HRESULT CapturePin::DecideBufferSize(IMemAllocator* pIMemAlloc, ALLOCATOR_PROPER
 	{
 		#ifndef NO_QUILL
 		LOG_WARNING(mLogData.logger, "[{}] CapturePin::DecideBufferSize failed to SetProperties result {:#08x}",
-		            mLogData.prefix,
-		            hr);
+		            mLogData.prefix, static_cast<unsigned long>(hr));
 		#endif
 
 		return hr;
@@ -780,7 +779,7 @@ receiveconnection:
 	{
 		#ifndef NO_QUILL
 		LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::RenegotiateMediaType ReceiveConnection succeeded [{:#08x}]",
-		             mLogData.prefix, hr);
+		             mLogData.prefix, static_cast<unsigned long>(hr));
 		#endif
 
 		hr = SetMediaType(pmt);
@@ -792,7 +791,7 @@ receiveconnection:
 		{
 			#ifndef NO_QUILL
 			LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::RenegotiateMediaType SetMediaType failed [{:#08x}]",
-			             mLogData.prefix, hr);
+			             mLogData.prefix, static_cast<unsigned long>(hr));
 			#endif
 		}
 	}
@@ -878,7 +877,7 @@ receiveconnection:
 						#ifndef NO_QUILL
 						LOG_WARNING(mLogData.logger,
 						            "[{}] Allocator did not accept update to {} bytes {} buffers [{:#08x}]",
-						            mLogData.prefix, props.cbBuffer, props.cBuffers, hr);
+						            mLogData.prefix, props.cbBuffer, props.cBuffers, static_cast<unsigned long>(hr));
 						#endif
 					}
 				}
@@ -887,7 +886,7 @@ receiveconnection:
 					#ifndef NO_QUILL
 					LOG_WARNING(mLogData.logger,
 					            "[{}] Allocator did not commit update to {} bytes {} buffers [{:#08x}]",
-					            mLogData.prefix, props.cbBuffer, props.cBuffers, hr);
+					            mLogData.prefix, props.cbBuffer, props.cBuffers, static_cast<unsigned long>(hr));
 					#endif
 				}
 			}
@@ -899,7 +898,7 @@ receiveconnection:
 		LOG_WARNING(
 			mLogData.logger,
 			"[{}] CapturePin::NegotiateMediaType Receive Connection failed (hr: {:#08x}); QueryAccept: {:#08x}",
-			mLogData.prefix, hr, hrQA);
+			mLogData.prefix, static_cast<unsigned long>(hr), static_cast<unsigned long>(hrQA));
 		#endif
 	}
 	if (retVal == S_OK)
@@ -916,7 +915,8 @@ receiveconnection:
 	{
 		// reinstate the old formats otherwise we're stuck thinking we have the new format
 		#ifndef NO_QUILL
-		LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::NegotiateMediaType failed {:#08x}", mLogData.prefix, retVal);
+		LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::NegotiateMediaType failed {:#08x}", mLogData.prefix,
+		             static_cast<unsigned long>(retVal));
 		#endif
 
 		SetMediaType(&oldMediaType);

@@ -38,7 +38,8 @@ HRESULT any_rgb::WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame)
 	if (S_OK != result)
 	{
 		#ifndef NO_QUILL
-		LOG_WARNING(mLogData.logger, "[{}] Failed to convert frame to BGRA {:#08x}", mLogData.prefix, result);
+		LOG_WARNING(mLogData.logger, "[{}] Failed to convert frame to BGRA {:#08x}", mLogData.prefix,
+		            static_cast<unsigned long>(result));
 		#endif
 
 		if (convertedFrame) convertedFrame->Release();

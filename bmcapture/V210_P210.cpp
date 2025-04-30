@@ -22,89 +22,64 @@
 
 namespace
 {
-	// Convert V210 to P210 format using AVX2 instructions
-	// V210: 10-bit YUV 4:2:2 packed in 32-bit words: [U0 Y0 V0][Y1 U1 Y2][V1 Y3 U2]...
-	// P210: 10-bit YUV 4:2:2 planar format in 16-bit containers:
-	//       - Y plane: 16-bit values with 10-bit data (LSB aligned)
-	//       - U plane: 16-bit values with 10-bit data (LSB aligned)
-	//       - V plane: 16-bit values with 10-bit data (LSB aligned)
-	//
-	bool convert(const uint32_t* src, uint16_t* p210Y, uint16_t* p210U, uint16_t* p210V, int width, int height)
+	bool convertScalar(const uint8_t* src, int srcStride, uint8_t* dstY, uint8_t* dstUV, int width, int height)
 	{
-		uint16_t* dstY = p210Y;
-		uint16_t* dstU = p210U;
-		uint16_t* dstV = p210V;
+		// Each group of 16 bytes contains 6 pixels (YUVYUV)
+		const int groupsPerLine = width / 6;
+		uint16_t* dstLineY = reinterpret_cast<uint16_t*>(dstY);
+		uint16_t* dstLineUV = reinterpret_cast<uint16_t*>(dstUV);
 
-		// Process each row
 		for (int y = 0; y < height; y++)
 		{
-			// Process remaining pixels using scalar code
-			for (int x = 0; x < width; x += 6)
+			const uint32_t* srcLine = reinterpret_cast<const uint32_t*>(src + y * srcStride);
+			for (int g = 0; g < groupsPerLine; ++g)
 			{
-				// Process each 128-bit block (32 bits * 4)
-				// Word 0: Cr0 (9:0), Y0 (19:10), Cb0 (29:20)
-				uint32_t word0 = *src++;
-				uint16_t u0 = static_cast<uint16_t>((word0 >> 20) & 0x3FF); // Cb0
-				uint16_t y0 = static_cast<uint16_t>((word0 >> 10) & 0x3FF); // Y0
-				uint16_t v0 = static_cast<uint16_t>(word0 & 0x3FF); // Cr0
+				// Load 4 dwords (16 bytes = 128 bits)
+				__m128i v = _mm_loadu_si128(reinterpret_cast<const __m128i*>(srcLine));
 
-				// Word 1: Y1 (9:0), Cb1 (19:10), Y2 (29:20)
-				uint32_t word1 = *src++;
-				uint16_t y2 = static_cast<uint16_t>((word1 >> 20) & 0x3FF); // Y2
-				uint16_t u1 = static_cast<uint16_t>((word1 >> 10) & 0x3FF); // Cb1
-				uint16_t y1 = static_cast<uint16_t>(word1 & 0x3FF); // Y1
+				// Unpack 12 16 bit samples to a 10 bit value manually
+				alignas(32) uint16_t samples[12];
+				const uint32_t* p = reinterpret_cast<const uint32_t*>(&v);
 
-				// Word 2: Cb2 (9:0), Y3 (19:10), Cr1 (29:20)
-				uint32_t word2 = *src++;
-				uint16_t v1 = static_cast<uint16_t>((word2 >> 20) & 0x3FF); // Cr1
-				uint16_t y3 = static_cast<uint16_t>((word2 >> 10) & 0x3FF); // Y3
-				uint16_t u2 = static_cast<uint16_t>(word2 & 0x3FF); // Cb2
+				samples[0] = p[0] & 0x3FF;
+				samples[1] = (p[0] >> 10) & 0x3FF;
+				samples[2] = (p[0] >> 20) & 0x3FF;
 
-				// Word 3: Y4 (9:0), Cr2 (19:10), Y5 (29:20)
-				uint32_t word3 = *src++;
-				uint16_t y5 = static_cast<uint16_t>((word3 >> 20) & 0x3FF); // Y5
-				uint16_t v2 = static_cast<uint16_t>((word3 >> 10) & 0x3FF); // Cr2
-				uint16_t y4 = static_cast<uint16_t>(word3 & 0x3FF); // Y4
+				samples[3] = p[1] & 0x3FF;
+				samples[4] = (p[1] >> 10) & 0x3FF;
+				samples[5] = (p[1] >> 20) & 0x3FF;
 
-				// Scale 10-bit values to the correct bit position in 16-bit words
-				// Left-shift by 6 to align with MSB for P210 format
-				y0 <<= 6;
-				y1 <<= 6;
-				y2 <<= 6;
-				y3 <<= 6;
-				y4 <<= 6;
-				y5 <<= 6;
-				u0 <<= 6;
-				u1 <<= 6;
-				u2 <<= 6;
-				v0 <<= 6;
-				v1 <<= 6;
-				v2 <<= 6;
+				samples[6] = p[2] & 0x3FF;
+				samples[7] = (p[2] >> 10) & 0x3FF;
+				samples[8] = (p[2] >> 20) & 0x3FF;
 
-				// Store the luma samples
-				int remaining = width - x;
-				if (remaining > 0) dstY[0] = y0;
-				if (remaining > 1) dstY[1] = y1;
-				if (remaining > 2) dstY[2] = y2;
-				if (remaining > 3) dstY[3] = y3;
-				if (remaining > 4) dstY[4] = y4;
-				if (remaining > 5) dstY[5] = y5;
+				samples[9] = p[3] & 0x3FF;
+				samples[10] = (p[3] >> 10) & 0x3FF;
+				samples[11] = (p[3] >> 20) & 0x3FF;
 
-				// Store the chroma samples (4:2:2 has half the U,V samples)
-				remaining = (width - x) / 2;
-				if (remaining > 0) dstU[0] = u0;
-				if (remaining > 1) dstU[1] = u1;
-				if (remaining > 2) dstU[2] = u2;
-				if (remaining > 0) dstV[0] = v0;
-				if (remaining > 1) dstV[1] = v1;
-				if (remaining > 2) dstV[2] = v2;
+				// Now samples array has: [U0, Y0, V0, Y1, U2, Y2, V2, Y3, U4, Y4, V4, Y5]
 
-				dstY += 6;
-				dstU += 3;
-				dstV += 3;
+				// Arrange and store Y plane
+				dstLineY[0] = samples[1]; // Y0
+				dstLineY[1] = samples[3]; // Y1
+				dstLineY[2] = samples[5]; // Y2
+				dstLineY[3] = samples[7]; // Y3
+				dstLineY[4] = samples[9]; // Y4
+				dstLineY[5] = samples[11]; // Y5
+
+				// Arrange and store UV interleaved plane
+				dstLineUV[0] = samples[0]; // U0
+				dstLineUV[1] = samples[2]; // V0
+				dstLineUV[2] = samples[4]; // U2
+				dstLineUV[3] = samples[6]; // V2
+				dstLineUV[4] = samples[8]; // U4
+				dstLineUV[5] = samples[10]; // V4
+
+				dstLineY += 6;
+				dstLineUV += 6;
+				srcLine += 4;
 			}
 		}
-
 		return true;
 	}
 }
@@ -118,40 +93,40 @@ HRESULT v210_p210::WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame)
 
 	const auto width = srcFrame->GetVideoFormat().cx;
 	const auto height = srcFrame->GetVideoFormat().cy;
-	const auto pixelCount = width * height;
 
 	void* d;
 	srcFrame->Start(&d);
-	const uint32_t* sourceData = static_cast<const uint32_t*>(d);
+	const uint8_t* sourceData = static_cast<const uint8_t*>(d);
 
 	BYTE* outData;
 	dstFrame->GetPointer(&outData);
 	auto dstSize = dstFrame->GetSize();
 
 	// P210 format: 16-bit samples, full res Y plane, half-width U and V planes
-	auto ySize = pixelCount * sizeof(uint16_t);
-	auto uSize = pixelCount * sizeof(uint8_t);
-	auto vSize = pixelCount * sizeof(uint8_t);
-
 	auto outSpan = std::span(outData, dstSize);
-	uint16_t* yPlane = reinterpret_cast<uint16_t*>(outSpan.subspan(0, ySize).data());
-	uint16_t* uPlane = reinterpret_cast<uint16_t*>(outSpan.subspan(ySize, uSize).data());
-	uint16_t* vPlane = reinterpret_cast<uint16_t*>(outSpan.subspan(ySize + uSize, vSize).data());
+	auto planeSize = dstSize / 2;
+	// cut the destination into 2 halves, assumes that if the destination is larger than we expect it's because the renderer
+	// (aka JRVR) has padded the buffer for alignment reasons and we can just ignore writing to that region of memory
+	uint8_t* yPlane = outSpan.subspan(0, planeSize).data();
+	uint8_t* uvPlane = outSpan.subspan(planeSize, planeSize).data();
 
 	#ifndef NO_QUILL
-	auto delta = ySize + uSize + vSize - dstSize;
+	auto delta = planeSize * 2 - dstSize;
 	if (delta != 0)
 	{
-		LOG_TRACE_L2(mLogData.logger, "[{}] Plane length mismatch in V210 - P210 conversion {} + {} + {} - {} = {}",
-		             mLogData.prefix, ySize, uSize, vSize, dstSize, delta);
+		LOG_TRACE_L2(mLogData.logger, "[{}] Plane length mismatch in V210 - P210 conversion {} * 2 - {} = {}",
+		             mLogData.prefix, planeSize, dstSize, delta);
 	}
 	#endif
+
+	auto alignedWidth = (width + 47) / 48 * 48;
+	auto srcStride = alignedWidth * 8 / 3;
 
 	#ifndef NO_QUILL
 	const quill::StopWatchTsc swt;
 	#endif
 
-	convert(sourceData, yPlane, uPlane, vPlane, width, srcFrame->GetVideoFormat().cy);
+	convertScalar(sourceData, srcStride, yPlane, uvPlane, width, height);
 
 	#ifndef NO_QUILL
 	auto execTime = swt.elapsed_as<std::chrono::microseconds>().count() / 1000.0;

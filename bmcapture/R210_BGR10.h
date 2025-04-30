@@ -24,8 +24,5 @@ public:
 
 	~r210_bgr10() override = default;
 
-	HRESULT WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame) override
-	{
-		return S_OK;
-	}
+	HRESULT WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame) override;
 };

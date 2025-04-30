@@ -336,6 +336,7 @@
     <ClCompile Include="bmcapture.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="MediaSampleBackedDecklinkBuffer.cpp" />
+    <ClCompile Include="r210_bgr10.cpp" />
     <ClCompile Include="v210_p210.cpp" />
     <ClCompile Include="yuv2_yv16.cpp" />
   </ItemGroup>
