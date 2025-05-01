@@ -60,20 +60,20 @@ namespace
 				// Now samples array has: [U0, Y0, V0, Y1, U2, Y2, V2, Y3, U4, Y4, V4, Y5]
 
 				// Arrange and store Y plane
-				dstLineY[0] = samples[1]; // Y0
-				dstLineY[1] = samples[3]; // Y1
-				dstLineY[2] = samples[5]; // Y2
-				dstLineY[3] = samples[7]; // Y3
-				dstLineY[4] = samples[9]; // Y4
-				dstLineY[5] = samples[11]; // Y5
+				dstLineY[0] = samples[1] << 6; // Y0
+				dstLineY[1] = samples[3] << 6; // Y1
+				dstLineY[2] = samples[5] << 6; // Y2
+				dstLineY[3] = samples[7] << 6; // Y3
+				dstLineY[4] = samples[9] << 6; // Y4
+				dstLineY[5] = samples[11] << 6; // Y5
 
 				// Arrange and store UV interleaved plane
-				dstLineUV[0] = samples[0]; // U0
-				dstLineUV[1] = samples[2]; // V0
-				dstLineUV[2] = samples[4]; // U2
-				dstLineUV[3] = samples[6]; // V2
-				dstLineUV[4] = samples[8]; // U4
-				dstLineUV[5] = samples[10]; // V4
+				dstLineUV[0] = samples[0] << 6; // U0
+				dstLineUV[1] = samples[2] << 6; // V0
+				dstLineUV[2] = samples[4] << 6; // U2
+				dstLineUV[3] = samples[6] << 6; // V2
+				dstLineUV[4] = samples[8] << 6; // U4
+				dstLineUV[5] = samples[10] << 6; // V4
 
 				dstLineY += 6;
 				dstLineUV += 6;

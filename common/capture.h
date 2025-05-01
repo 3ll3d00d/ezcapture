@@ -334,7 +334,7 @@ protected:
 	bool ProposeBuffers(ALLOCATOR_PROPERTIES* pProperties) override;
 
 	void VideoFormatToMediaType(CMediaType* pmt, VIDEO_FORMAT* videoFormat) const;
-	bool ShouldChangeMediaType(VIDEO_FORMAT* newVideoFormat);
+	bool ShouldChangeMediaType(VIDEO_FORMAT* newVideoFormat, bool pixelFallBackIsActive = false);
 	HRESULT DoChangeMediaType(const CMediaType* pNewMt, const VIDEO_FORMAT* newVideoFormat);
 
 	virtual void OnChangeMediaType()

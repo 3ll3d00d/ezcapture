@@ -995,7 +995,7 @@ void VideoCapturePin::VideoFormatToMediaType(CMediaType* pmt, VIDEO_FORMAT* vide
 	pmt->SetSubtype(&subTypeGUID);
 }
 
-bool VideoCapturePin::ShouldChangeMediaType(VIDEO_FORMAT* newVideoFormat)
+bool VideoCapturePin::ShouldChangeMediaType(VIDEO_FORMAT* newVideoFormat, bool pixelFallBackIsActive)
 {
 	auto reconnect = false;
 	if (newVideoFormat->cx != mVideoFormat.cx || newVideoFormat->cy != mVideoFormat.cy)
@@ -1027,7 +1027,7 @@ bool VideoCapturePin::ShouldChangeMediaType(VIDEO_FORMAT* newVideoFormat)
 		         mLogData.prefix, mVideoFormat.fps, newVideoFormat->fps);
 		#endif
 	}
-	if (mVideoFormat.pixelFormat.format != newVideoFormat->pixelFormat.format)
+	if (mVideoFormat.pixelFormat.format != newVideoFormat->pixelFormat.format && !pixelFallBackIsActive)
 	{
 		reconnect = true;
 

@@ -1367,96 +1367,87 @@ HRESULT BlackmagicVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, RE
 			LogHdrMetaIfPresent(&newVideoFormat);
 			#endif
 
-			if (ShouldChangeMediaType(&newVideoFormat))
+			if (ShouldChangeMediaType(&newVideoFormat, IsFallbackActive(&newVideoFormat)))
 			{
-				if (IsFallbackActive(&newVideoFormat))
+				#ifndef NO_QUILL
+				LOG_WARNING(mLogData.logger, "[{}] VideoFormat changed! Attempting to reconnect", mLogData.prefix);
+				#endif
+
+				CMediaType proposedMediaType(m_mt);
+				VideoFormatToMediaType(&proposedMediaType, &newVideoFormat);
+
+				auto hr = DoChangeMediaType(&proposedMediaType, &newVideoFormat);
+				auto reconnected = SUCCEEDED(hr);
+				auto signalledFormat = newVideoFormat.pixelFormat;
+				if (reconnected)
 				{
-					#ifndef NO_QUILL
-					LOG_TRACE_L3(mLogData.logger, "[{}] Fallback is active", mLogData.prefix);
-					#endif
+					auto search = pixelConverters.find(mVideoFormat.pixelFormat);
+					UpdateFrameWriter(search == pixelConverters.end() ? STRAIGHT_THROUGH : search->second,
+					                  signalledFormat);
 				}
 				else
 				{
-					#ifndef NO_QUILL
-					LOG_WARNING(mLogData.logger, "[{}] VideoFormat changed! Attempting to reconnect", mLogData.prefix);
-					#endif
-
-					CMediaType proposedMediaType(m_mt);
-					VideoFormatToMediaType(&proposedMediaType, &newVideoFormat);
-
-					auto hr = DoChangeMediaType(&proposedMediaType, &newVideoFormat);
-					auto reconnected = SUCCEEDED(hr);
-					auto signalledFormat = newVideoFormat.pixelFormat;
-					if (reconnected)
+					auto search = pixelFormatFallbacks.find(newVideoFormat.pixelFormat);
+					if (search != pixelFormatFallbacks.end())
 					{
-						auto search = pixelConverters.find(mVideoFormat.pixelFormat);
-						UpdateFrameWriter(search == pixelConverters.end() ? STRAIGHT_THROUGH : search->second,
-						                  signalledFormat);
-					}
-					else
-					{
-						auto search = pixelFormatFallbacks.find(newVideoFormat.pixelFormat);
-						if (search != pixelFormatFallbacks.end())
+						auto fallbackPixelFormat = search->second.first;
+
+						#ifndef NO_QUILL
+						LOG_WARNING(mLogData.logger,
+						            "[{}] VideoFormat changed but not able to reconnect! [Result: {:#08x}] Attempting fallback format {}",
+						            mLogData.prefix, static_cast<unsigned long>(hr), fallbackPixelFormat.name);
+						#endif
+
+						auto fallbackVideoFormat = std::move(newVideoFormat);
+						fallbackVideoFormat.pixelFormat = std::move(fallbackPixelFormat);
+						fallbackVideoFormat.CalculateDimensions();
+
+						CMediaType fallbackMediaType(m_mt);
+						VideoFormatToMediaType(&fallbackMediaType, &fallbackVideoFormat);
+
+						hr = DoChangeMediaType(&fallbackMediaType, &fallbackVideoFormat);
+						reconnected = SUCCEEDED(hr);
+						if (reconnected)
 						{
-							auto fallbackPixelFormat = search->second.first;
+							auto strategy = search->second.second;
 
 							#ifndef NO_QUILL
 							LOG_WARNING(mLogData.logger,
-							            "[{}] VideoFormat changed but not able to reconnect! [Result: {:#08x}] Attempting fallback format {}",
-							            mLogData.prefix, static_cast<unsigned long>(hr), fallbackPixelFormat.name);
+							            "[{}] VideoFormat changed and fallback format {} required to reconnect, updating frame conversion strategy to {}",
+							            mLogData.prefix, fallbackVideoFormat.pixelFormat.name, to_string(strategy));
 							#endif
 
-							auto fallbackVideoFormat = std::move(newVideoFormat);
-							fallbackVideoFormat.pixelFormat = std::move(fallbackPixelFormat);
-							fallbackVideoFormat.CalculateDimensions();
-
-							CMediaType fallbackMediaType(m_mt);
-							VideoFormatToMediaType(&fallbackMediaType, &fallbackVideoFormat);
-
-							hr = DoChangeMediaType(&fallbackMediaType, &fallbackVideoFormat);
-							reconnected = SUCCEEDED(hr);
-							if (reconnected)
-							{
-								auto strategy = search->second.second;
-
-								#ifndef NO_QUILL
-								LOG_WARNING(mLogData.logger,
-								            "[{}] VideoFormat changed and fallback format {} required to reconnect, updating frame conversion strategy to {}",
-								            mLogData.prefix, fallbackVideoFormat.pixelFormat.name, to_string(strategy));
-								#endif
-
-								UpdateFrameWriter(strategy, signalledFormat);
-							}
-							else
-							{
-								#ifndef NO_QUILL
-								LOG_WARNING(mLogData.logger,
-								            "[{}] VideoFormat changed but fallback format also not able to reconnect! Will retry after backoff [Result: {:#08x}]",
-								            mLogData.prefix, static_cast<unsigned long>(hr),
-								            fallbackVideoFormat.pixelFormat.name);
-								#endif
-							}
+							UpdateFrameWriter(strategy, signalledFormat);
 						}
 						else
 						{
 							#ifndef NO_QUILL
-							LOG_ERROR(mLogData.logger,
-							          "[{}] VideoFormat changed but not able to reconnect! Will retry after backoff [Result: {:#08x}]",
-							          mLogData.prefix, static_cast<unsigned long>(hr));
+							LOG_WARNING(mLogData.logger,
+							            "[{}] VideoFormat changed but fallback format also not able to reconnect! Will retry after backoff [Result: {:#08x}]",
+							            mLogData.prefix, static_cast<unsigned long>(hr),
+							            fallbackVideoFormat.pixelFormat.name);
 							#endif
 						}
 					}
-
-					if (!reconnected)
+					else
 					{
-						mCurrentFrame.reset();
-						BACKOFF;
-
-						continue;
+						#ifndef NO_QUILL
+						LOG_ERROR(mLogData.logger,
+						          "[{}] VideoFormat changed but not able to reconnect! Will retry after backoff [Result: {:#08x}]",
+						          mLogData.prefix, static_cast<unsigned long>(hr));
+						#endif
 					}
-
-					mFilter->OnVideoFormatLoaded(&mVideoFormat);
 				}
+
+				if (!reconnected)
+				{
+					mCurrentFrame.reset();
+					BACKOFF;
+
+					continue;
+				}
+
+				mFilter->OnVideoFormatLoaded(&mVideoFormat);
 			}
 
 			retVal = VideoCapturePin::GetDeliveryBuffer(ppSample, pStartTime, pEndTime, dwFlags);
