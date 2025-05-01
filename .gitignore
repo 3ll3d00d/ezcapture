@@ -275,3 +275,5 @@ git_hash.h
 venv/
 
 vcpkg_installed/
+
+converter/demo.*
