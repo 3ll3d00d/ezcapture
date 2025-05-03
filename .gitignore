@@ -277,3 +277,5 @@ venv/
 vcpkg_installed/
 
 converter/demo.*
+converter/*.scalar
+converter/*.avx2

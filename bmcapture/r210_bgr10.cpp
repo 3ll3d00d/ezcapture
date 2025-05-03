@@ -63,7 +63,6 @@ HRESULT r210_bgr10::WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame)
 
 	const auto width = srcFrame->GetVideoFormat().cx;
 	const auto height = srcFrame->GetVideoFormat().cy;
-	const auto pixelCount = width * height;
 
 	void* d;
 	srcFrame->Start(&d);

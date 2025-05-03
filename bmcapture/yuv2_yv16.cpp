@@ -80,18 +80,21 @@ HRESULT yuv2_yv16::WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame)
 	// YV16 format: 
 	auto ySize = pixelCount;
 	auto uvSize = pixelCount / 2;
+	// split the dst buffer into chunks for alignment purposes (to account for possible padding by the renderer)
+	auto yChunk = dstSize / 2;
+	auto uvChunk = yChunk / 2;
 
 	auto outSpan = std::span(outData, dstSize);
 	uint8_t* yPlane = outSpan.subspan(0, ySize).data();
-	uint8_t* uPlane = outSpan.subspan(ySize, uvSize).data();
-	uint8_t* vPlane = outSpan.subspan(ySize + uvSize, uvSize).data();
+	uint8_t* uPlane = outSpan.subspan(yChunk, uvSize).data();
+	uint8_t* vPlane = outSpan.subspan(yChunk + uvChunk, uvSize).data();
 
 	#ifndef NO_QUILL
-	auto delta = ySize + uvSize + uvSize - dstSize;
+	auto delta = yChunk + uvChunk * 2 - dstSize;
 	if (delta != 0)
 	{
-		LOG_TRACE_L2(mLogData.logger, "[{}] Plane length mismatch in YUV2 - YV16 conversion {} + {} + {} - {} = {}",
-		             mLogData.prefix, ySize, uvSize, uvSize, dstSize, delta);
+		LOG_TRACE_L2(mLogData.logger, "[{}] Plane length mismatch in YUV2 - YV16 conversion {} + {} * 2 - {} = {}",
+		             mLogData.prefix, yChunk, uvChunk, dstSize, delta);
 	}
 	#endif
 
