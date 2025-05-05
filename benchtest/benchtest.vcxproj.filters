@@ -15,7 +15,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="converter.cpp">
+    <ClCompile Include="v210_p210_bench.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

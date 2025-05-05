@@ -36,7 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        configuration: [ Debug, Release, ReleaseTrace, ReleaseWarn ]
+        configuration: [ Debug, Release, ReleaseTrace ]
 
     steps:
     - uses: actions/checkout@v4
@@ -93,10 +93,6 @@ jobs:
         then
           MW_ZIP_NAME="mwcapture-${{ github.ref_name }}-release-trace-logging.zip"
           BM_ZIP_NAME="bmcapture-${{ github.ref_name }}-release-trace-logging.zip"
-        elif [[ ${{ matrix.configuration }} == "ReleaseWarn" ]]
-        then
-          MW_ZIP_NAME="mwcapture-${{ github.ref_name }}-release-warn-logging.zip"
-          BM_ZIP_NAME="bmcapture-${{ github.ref_name }}-release-warn-logging.zip"
         fi
         7z a ${MW_ZIP_NAME} COPYING 
         7z a ${BM_ZIP_NAME} COPYING 

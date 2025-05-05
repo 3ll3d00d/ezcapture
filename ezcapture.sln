@@ -17,7 +17,7 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "common", "common\common.vcx
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DeckLink", "DeckLink\DeckLink.vcxproj", "{190D7867-B81F-4A86-88B2-3F12D1BC7DC4}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "converter", "converter\converter.vcxproj", "{72BFE3CA-5B30-47A0-AA4B-75B244DE6E02}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "benchtest", "benchtest\benchtest.vcxproj", "{72BFE3CA-5B30-47A0-AA4B-75B244DE6E02}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
