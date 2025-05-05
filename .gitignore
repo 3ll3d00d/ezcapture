@@ -279,3 +279,4 @@ vcpkg_installed/
 converter/demo.*
 converter/*.scalar
 converter/*.avx2
+converter/bench.v210
