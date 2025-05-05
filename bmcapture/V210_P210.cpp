@@ -35,30 +35,28 @@ namespace
 	// uv plane : U0 V0 U2 V2 U4 V4
 	// each line of video is aligned on a 128 byte boundary & 6 pixels fit into 16 bytes so 48 pixels fit in 128 bytes
 	#ifdef __AVX__
-
 	bool convert(const uint8_t* src, int srcStride, uint8_t* dstY, uint8_t* dstUV, int width, int height)
 	{
 		const int groupsPerLine = width / 12;
 
-		// Pre-compute constants once outside the loops
-		const __m256i mask10 = _mm256_set1_epi32(0x3FF);
-		const __m256i zeroes = _mm256_setzero_si256();
-		const __m256i s2_shuffleMask = _mm256_setr_epi8(
-			-1, -1, 0, 1, 4, 5, -1, -1, 8, 9, 12, 13, -1, -1, -1, -1,
-			-1, -1, 0, 1, 4, 5, -1, -1, 8, 9, 12, 13, -1, -1, -1, -1
+		const __m256i mask_s0_s2 = _mm256_set1_epi32(0x3FF003FF);
+		const __m256i shift_s0_s2 = _mm256_set1_epi32(0x00040040);
+
+		const __m256i mask_s1 = _mm256_set1_epi32(0x000FFC00);
+
+		const uint8_t y_blend_mask = 0b01010101;
+		const __m256i y_shuffle_mask = _mm256_setr_epi8(
+			0, 1, 4, 5, 6, 7, 8, 9, 12, 13, 14, 15, -1, -1, -1, -1,
+			0, 1, 4, 5, 6, 7, 8, 9, 12, 13, 14, 15, -1, -1, -1, -1
 		);
-		const __m256i s1_shuffleMask = _mm256_setr_epi8(
-			0, 1, -1, -1, 4, 5, 8, 9, -1, -1, 12, 13, -1, -1, -1, -1,
-			0, 1, -1, -1, 4, 5, 8, 9, -1, -1, 12, 13, -1, -1, -1, -1
+
+		const uint8_t uv_blend_mask = 0b10101010;
+		const __m256i uv_shuffle_mask = _mm256_setr_epi8(
+			0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13, -1, -1, -1, -1,
+			0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13, -1, -1, -1, -1
 		);
-		const __m256i s0_shuffleMask = _mm256_setr_epi8(
-			0, 1, 4, 5, -1, -1, 8, 9, 12, 13, -1, -1, -1, -1, -1, -1,
-			0, 1, 4, 5, -1, -1, 8, 9, 12, 13, -1, -1, -1, -1, -1, -1
-		);
-		const uint8_t y_blend_mask_1 = 0b00001001;
-		const uint8_t y_blend_mask_2 = 0b00011011;
-		const uint8_t uv_blend_mask_1 = 0b00110110;
-		const uint8_t uv_blend_mask_2 = 0b00101101;
+
+		const __m256i lower_192_perm = _mm256_setr_epi32(0, 1, 2, 4, 5, 6, 7, 7);
 
 		// Process all lines with a single loop implementation
 		for (int lineNo = 0; lineNo < height; ++lineNo)
@@ -74,56 +72,18 @@ namespace
 				// Load 8 dwords
 				__m256i dwords = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(srcLine));
 
-				// transpose to extract a 10-bit component into a 32bit slot spread across 3 registers
-				//     s2  s1  s0
-				//     ----------
-				// 0:  V0  Y0  U0
-				// 1:  xx  xx  xx
-				// 2:  Y2  U2  Y1
-				// 3:  xx  xx  xx
-				// 4:  U4  Y3  V2
-				// 5:  xx  xx  xx
-				// 6:  Y5  V4  Y4
-				// 7:  xx  xx  xx
-				// 8:  V6  Y6  U6
-				// 9:  xx  xx  xx
-				// 10: Y8  U8  Y7
-				// 11: xx  xx  xx
-				// 12: U10 Y9  V8
-				// 13: xx  xx  xx
-				// 14: Y11 V10 Y10
-				// 15: xx  xx  xx
-				//
-				__m256i s0_32 = _mm256_and_si256(dwords, mask10);                         // bits 0–9
-				__m256i s1_32 = _mm256_and_si256(_mm256_srli_epi32(dwords, 10), mask10);  // bits 10–19
-				__m256i s2_32 = _mm256_and_si256(_mm256_srli_epi32(dwords, 20), mask10);  // bits 20–29
+				// extract & align 10-bit components across 2 vectors
+				__m256i s0_s2 = _mm256_mullo_epi16(_mm256_and_si256(dwords, mask_s0_s2), shift_s0_s2);
+				__m256i s1 = _mm256_srli_epi32(_mm256_and_si256(dwords, mask_s1), 4);
 
-				// shuffle to prepare for blending
-				__m256i s0_16_shuffled = _mm256_shuffle_epi8(s0_32, s0_shuffleMask);
-				__m256i s1_16_shuffled = _mm256_shuffle_epi8(s1_32, s1_shuffleMask);
-				__m256i s2_16_shuffled = _mm256_shuffle_epi8(s2_32, s2_shuffleMask);
+				// blend & shuffle & permute to align samples in lower 192bits
+				__m256i y_s = _mm256_shuffle_epi8(_mm256_blend_epi32(s0_s2, s1, y_blend_mask), y_shuffle_mask);
+				__m256i y = _mm256_permutevar8x32_epi32(y_s, lower_192_perm);
+				_mm256_storeu_si256(reinterpret_cast<__m256i*>(dstLineY), y);
 
-				// blend to y and uv
-				__m256i y_tmp = _mm256_blend_epi16(s0_16_shuffled, s1_16_shuffled, y_blend_mask_1);
-				__m256i uv_tmp = _mm256_blend_epi16(s0_16_shuffled, s1_16_shuffled, uv_blend_mask_1);
-				__m256i y = _mm256_blend_epi16(s2_16_shuffled, y_tmp, y_blend_mask_2);
-				__m256i uv = _mm256_blend_epi16(s2_16_shuffled, uv_tmp, uv_blend_mask_2);
-
-				// scale
-				__m256i y_scaled = _mm256_slli_epi16(y, 6);
-				// write 96 bits from each lane
-				__m128i y_lo = _mm256_extracti128_si256(y_scaled, 0);
-				__m128i y_hi = _mm256_extracti128_si256(y_scaled, 1);
-				_mm_storeu_si128(reinterpret_cast<__m128i*>(dstLineY), y_lo);
-				_mm_storeu_si128(reinterpret_cast<__m128i*>(dstLineY + 6), y_hi);
-
-				// scale
-				__m256i uv_scaled = _mm256_slli_epi16(uv, 6);
-				// write 96 bits from each lane
-				__m128i uv_lo = _mm256_extracti128_si256(uv_scaled, 0);
-				__m128i uv_hi = _mm256_extracti128_si256(uv_scaled, 1);
-				_mm_storeu_si128(reinterpret_cast<__m128i*>(dstLineUV), uv_lo);
-				_mm_storeu_si128(reinterpret_cast<__m128i*>(dstLineUV + 6), uv_hi);
+				__m256i uv_s = _mm256_shuffle_epi8(_mm256_blend_epi32(s0_s2, s1, uv_blend_mask), uv_shuffle_mask);
+				__m256i uv = _mm256_permutevar8x32_epi32(uv_s, lower_192_perm);
+				_mm256_storeu_si256(reinterpret_cast<__m256i*>(dstLineUV), uv);
 
 				dstLineY += 12;
 				dstLineUV += 12;
@@ -136,40 +96,20 @@ namespace
 				// Load 8 dwords
 				__m256i dwords = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(srcLine));
 
-				// transpose to extract a 10-bit component into a 32bit slot spread across 3 registers
-				__m256i s0_32 = _mm256_and_si256(dwords, mask10);                         // bits 0–9
-				__m256i s1_32 = _mm256_and_si256(_mm256_srli_epi32(dwords, 10), mask10);  // bits 10–19
-				__m256i s2_32 = _mm256_and_si256(_mm256_srli_epi32(dwords, 20), mask10);  // bits 20–29
+				// extract & align 10-bit components across 2 vectors
+				__m256i s0_s2 = _mm256_mullo_epi16(_mm256_and_si256(dwords, mask_s0_s2), shift_s0_s2);
+				__m256i s1 = _mm256_srli_epi32(_mm256_and_si256(dwords, mask_s1), 4);
 
-				// shuffle to prepare for blending
-				__m256i s0_16_shuffled = _mm256_shuffle_epi8(s0_32, s0_shuffleMask);
-				__m256i s1_16_shuffled = _mm256_shuffle_epi8(s1_32, s1_shuffleMask);
-				__m256i s2_16_shuffled = _mm256_shuffle_epi8(s2_32, s2_shuffleMask);
-
-				// blend to y and uv
-				__m256i y_tmp = _mm256_blend_epi16(s0_16_shuffled, s1_16_shuffled, y_blend_mask_1);
-				__m256i uv_tmp = _mm256_blend_epi16(s0_16_shuffled, s1_16_shuffled, uv_blend_mask_1);
-				__m256i y = _mm256_blend_epi16(s2_16_shuffled, y_tmp, y_blend_mask_2);
-				__m256i uv = _mm256_blend_epi16(s2_16_shuffled, uv_tmp, uv_blend_mask_2);
-
-				// scale
-				__m256i y_scaled = _mm256_slli_epi16(y, 6);
-				// write 96 bits from each lane
-				__m128i y_lo = _mm256_extracti128_si256(y_scaled, 0);
-				__m128i y_hi = _mm256_extracti128_si256(y_scaled, 1);
-
+				// blend & shuffle & permute to align samples in lower 192bits
+				__m256i y_s = _mm256_shuffle_epi8(_mm256_blend_epi32(s0_s2, s1, y_blend_mask), y_shuffle_mask);
+				__m256i y = _mm256_permutevar8x32_epi32(y_s, lower_192_perm);
 				alignas(32) uint16_t tmpY[16] = { 0 };
-				_mm_storeu_si128(reinterpret_cast<__m128i*>(tmpY), y_lo);
-				_mm_storeu_si128(reinterpret_cast<__m128i*>(tmpY + 6), y_hi);
+				_mm256_storeu_si256(reinterpret_cast<__m256i*>(tmpY), y);
 
-				// scale
-				__m256i uv_scaled = _mm256_slli_epi16(uv, 6);
-				// write 96 bits from each lane
-				__m128i uv_lo = _mm256_extracti128_si256(uv_scaled, 0);
-				__m128i uv_hi = _mm256_extracti128_si256(uv_scaled, 1);
+				__m256i uv_s = _mm256_shuffle_epi8(_mm256_blend_epi32(s0_s2, s1, uv_blend_mask), uv_shuffle_mask);
+				__m256i uv = _mm256_permutevar8x32_epi32(uv_s, lower_192_perm);
 				alignas(32) uint16_t tmpUV[16] = { 0 };
-				_mm_storeu_si128(reinterpret_cast<__m128i*>(tmpUV), uv_lo);
-				_mm_storeu_si128(reinterpret_cast<__m128i*>(tmpUV + 6), uv_hi);
+				_mm256_storeu_si256(reinterpret_cast<__m256i*>(tmpUV), uv);
 
 				// Calculate remaining pixels to avoid writing past the end of the buffer
 				const int remainingPixels = width - g * 12;

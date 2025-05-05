@@ -77,73 +77,40 @@ namespace
 	// uv plane : U0 V0 U2 V2 U4 V4
 	// each line of video is aligned on a 128 byte boundary & 6 pixels fit into 16 bytes so 48 pixels fit in 128 bytes
 	#ifdef __AVX__
-
-    bool convert(const uint8_t* src, int srcStride, uint8_t* dstY, uint8_t* dstUV, int width, int height)
-    {
-        const int groupsPerLine = width / 12;
+	bool convert(const uint8_t* src, int srcStride, uint8_t* dstY, uint8_t* dstUV, int width, int height)
+	{
+		const int groupsPerLine = width / 12;
 
 		const __m256i mask_s0_s2 = _mm256_set1_epi32(0x3FF003FF);
 		const __m256i shift_s0_s2 = _mm256_set1_epi32(0x00040040);
 
-    	const __m256i mask_s1 = _mm256_set1_epi32(0x000FFC00);
+		const __m256i mask_s1 = _mm256_set1_epi32(0x000FFC00);
 
 		const uint8_t y_blend_mask = 0b01010101;
 		const __m256i y_shuffle_mask = _mm256_setr_epi8(
 			0, 1, 4, 5, 6, 7, 8, 9, 12, 13, 14, 15, -1, -1, -1, -1,
 			0, 1, 4, 5, 6, 7, 8, 9, 12, 13, 14, 15, -1, -1, -1, -1
 		);
+
 		const uint8_t uv_blend_mask = 0b10101010;
 		const __m256i uv_shuffle_mask = _mm256_setr_epi8(
 			0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13, -1, -1, -1, -1,
 			0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13, -1, -1, -1, -1
 		);
 
-        // Process all lines with a single loop implementation
-        for (int lineNo = 0; lineNo < height; ++lineNo)
-        {
-            const uint32_t* srcLine = reinterpret_cast<const uint32_t*>(src + lineNo * srcStride);
-            uint16_t* dstLineY = reinterpret_cast<uint16_t*>(dstY + lineNo * width * 2);
-            uint16_t* dstLineUV = reinterpret_cast<uint16_t*>(dstUV + lineNo * width * 2);
+		const __m256i lower_192_perm = _mm256_setr_epi32(0, 1, 2, 4, 5, 6, 7, 7);
 
-            // Process all complete groups
-            int g = 0;
-            for (; g < groupsPerLine - (lineNo == height - 1 ? 1 : 0); ++g)
-            {
-                // Load 8 dwords
-                __m256i dwords = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(srcLine));
+		// Process all lines with a single loop implementation
+		for (int lineNo = 0; lineNo < height; ++lineNo)
+		{
+			const uint32_t* srcLine = reinterpret_cast<const uint32_t*>(src + lineNo * srcStride);
+			uint16_t* dstLineY = reinterpret_cast<uint16_t*>(dstY + lineNo * width * 2);
+			uint16_t* dstLineUV = reinterpret_cast<uint16_t*>(dstUV + lineNo * width * 2);
 
-                // extract & align 10-bit components across 2 vectors
-				__m256i s0_s2 = _mm256_mullo_epi16(_mm256_and_si256(dwords, mask_s0_s2), shift_s0_s2);
-				__m256i s1 = _mm256_srli_epi32(_mm256_and_si256(dwords, mask_s1), 4);
-
-				// blend & shuffle to align y samples in lower 96bits per lane
-				__m256i y_s = _mm256_blend_epi32(s0_s2, s1, y_blend_mask);
-				__m256i y = _mm256_shuffle_epi8(y_s, y_shuffle_mask);
-
-            	// extract and store lower 96bits
-				__m128i y_lo = _mm256_extracti128_si256(y, 0);
-				__m128i y_hi = _mm256_extracti128_si256(y, 1);
-				_mm_storeu_si128(reinterpret_cast<__m128i*>(dstLineY), y_lo);
-				_mm_storeu_si128(reinterpret_cast<__m128i*>(dstLineY + 6), y_hi);
-
-				// blend & shuffle to align uv samples in lower 96bits per lane
-				__m256i uv_s = _mm256_blend_epi32(s0_s2, s1, uv_blend_mask);
-				__m256i uv = _mm256_shuffle_epi8(uv_s, uv_shuffle_mask);
-
-				// extract and store lower 96bits
-				__m128i uv_lo = _mm256_extracti128_si256(uv, 0);
-				__m128i uv_hi = _mm256_extracti128_si256(uv, 1);
-				_mm_storeu_si128(reinterpret_cast<__m128i*>(dstLineUV), uv_lo);
-				_mm_storeu_si128(reinterpret_cast<__m128i*>(dstLineUV + 6), uv_hi);
-
-				dstLineY += 12;
-				dstLineUV += 12;
-                srcLine += 8;
-            }
-
-            // Handle last group for the last line with potential overflow
-            if (lineNo == height - 1 && g < groupsPerLine)
-            {
+			// Process all complete groups
+			int g = 0;
+			for (; g < groupsPerLine - (lineNo == height - 1 ? 1 : 0); ++g)
+			{
 				// Load 8 dwords
 				__m256i dwords = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(srcLine));
 
@@ -151,42 +118,56 @@ namespace
 				__m256i s0_s2 = _mm256_mullo_epi16(_mm256_and_si256(dwords, mask_s0_s2), shift_s0_s2);
 				__m256i s1 = _mm256_srli_epi32(_mm256_and_si256(dwords, mask_s1), 4);
 
-				// blend & shuffle to align y samples in lower 96bits per lane then extract and store
-				__m256i y_s = _mm256_blend_epi32(s0_s2, s1, y_blend_mask);
-				__m256i y = _mm256_shuffle_epi8(y_s, y_shuffle_mask);
+				// blend & shuffle & permute to align samples in lower 192bits
+				__m256i y_s = _mm256_shuffle_epi8(_mm256_blend_epi32(s0_s2, s1, y_blend_mask), y_shuffle_mask);
+				__m256i y = _mm256_permutevar8x32_epi32(y_s, lower_192_perm);
+				_mm256_storeu_si256(reinterpret_cast<__m256i*>(dstLineY), y);
 
-				__m128i y_lo = _mm256_extracti128_si256(y, 0);
-				__m128i y_hi = _mm256_extracti128_si256(y, 1);
+				__m256i uv_s = _mm256_shuffle_epi8(_mm256_blend_epi32(s0_s2, s1, uv_blend_mask), uv_shuffle_mask);
+				__m256i uv = _mm256_permutevar8x32_epi32(uv_s, lower_192_perm);
+				_mm256_storeu_si256(reinterpret_cast<__m256i*>(dstLineUV), uv);
 
-            	alignas(32) uint16_t tmpY[16] = { 0 };
-				_mm_storeu_si128(reinterpret_cast<__m128i*>(tmpY), y_lo);
-				_mm_storeu_si128(reinterpret_cast<__m128i*>(tmpY + 6), y_hi);
+				dstLineY += 12;
+				dstLineUV += 12;
+				srcLine += 8;
+			}
 
-				__m256i uv_s = _mm256_blend_epi32(s0_s2, s1, uv_blend_mask);
-				__m256i uv = _mm256_shuffle_epi8(uv_s, uv_shuffle_mask);
+			// Handle last group for the last line with potential overflow
+			if (lineNo == height - 1 && g < groupsPerLine)
+			{
+				// Load 8 dwords
+				__m256i dwords = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(srcLine));
 
-				__m128i uv_lo = _mm256_extracti128_si256(uv, 0);
-				__m128i uv_hi = _mm256_extracti128_si256(uv, 1);
+				// extract & align 10-bit components across 2 vectors
+				__m256i s0_s2 = _mm256_mullo_epi16(_mm256_and_si256(dwords, mask_s0_s2), shift_s0_s2);
+				__m256i s1 = _mm256_srli_epi32(_mm256_and_si256(dwords, mask_s1), 4);
 
-            	alignas(32) uint16_t tmpUV[16] = { 0 };
-            	_mm_storeu_si128(reinterpret_cast<__m128i*>(tmpUV), uv_lo);
-				_mm_storeu_si128(reinterpret_cast<__m128i*>(tmpUV + 6), uv_hi);
+				// blend & shuffle & permute to align samples in lower 192bits
+				__m256i y_s = _mm256_shuffle_epi8(_mm256_blend_epi32(s0_s2, s1, y_blend_mask), y_shuffle_mask);
+				__m256i y = _mm256_permutevar8x32_epi32(y_s, lower_192_perm);
+				alignas(32) uint16_t tmpY[16] = { 0 };
+				_mm256_storeu_si256(reinterpret_cast<__m256i*>(tmpY), y);
 
-            	// Calculate remaining pixels to avoid writing past the end of the buffer
+				__m256i uv_s = _mm256_shuffle_epi8(_mm256_blend_epi32(s0_s2, s1, uv_blend_mask), uv_shuffle_mask);
+				__m256i uv = _mm256_permutevar8x32_epi32(uv_s, lower_192_perm);
+				alignas(32) uint16_t tmpUV[16] = { 0 };
+				_mm256_storeu_si256(reinterpret_cast<__m256i*>(tmpUV), uv);
+
+				// Calculate remaining pixels to avoid writing past the end of the buffer
 				const int remainingPixels = width - g * 12;
 				const size_t bytesToCopy = std::min(24, remainingPixels * 2); // 2 bytes per pixel
 
 				std::memcpy(dstLineY, tmpY, bytesToCopy);
 				std::memcpy(dstLineUV, tmpUV, bytesToCopy);
 
-            	dstLineY += 12;
+				dstLineY += 12;
 				dstLineUV += 12;
 				srcLine += 8;
 			}
-        }
+		}
 
-        return true;
-    }
+		return true;
+	}
 	#else
 	bool convert(const uint8_t* src, int srcStride, uint8_t* dstY, uint8_t* dstUV, int width, int height)
 	{
