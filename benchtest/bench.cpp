@@ -858,27 +858,86 @@ namespace
 		*t2 = std::chrono::high_resolution_clock::now();
 		return true;
 	}
+
+	bool convert_scalar_rgb(const uint8_t* src, uint16_t* dst, size_t width, size_t height,
+	                        std::chrono::time_point<std::chrono::steady_clock>* t1,
+	                        std::chrono::time_point<std::chrono::steady_clock>* t2)
+	{
+		// Each row starts on 256-byte boundary
+		size_t srcStride = (width * 4 + 255) / 256 * 256;
+		const uint8_t* srcRow = src;
+		uint16_t* dstPix = dst;
+
+		*t1 = std::chrono::high_resolution_clock::now();
+		for (size_t y = 0; y < height; ++y)
+		{
+			const uint32_t* srcPixelBE = reinterpret_cast<const uint32_t*>(srcRow);
+
+			for (size_t x = 0; x < width; ++x)
+			{
+				// r210 is simply BGR once swapped to little endian
+				const auto r210Pixel = srcPixelBE[x];
+				const auto srcPixel = _byteswap_ulong(r210Pixel);
+
+				const auto red = (srcPixel & 0xFFC) << 4;
+				*dstPix = red;
+				dstPix++;
+
+				const auto green = (srcPixel & 0x3FF000) >> 6;
+				*dstPix = green;
+				dstPix++;
+
+				const auto blue = (srcPixel & 0xFFC00000) >> 16;
+				*dstPix = blue;
+				dstPix++;
+			}
+
+			srcRow += srcStride;
+		}
+		*t2 = std::chrono::high_resolution_clock::now();
+		return true;
+	}
+}
+
+enum bench_fmt:uint8_t
+{
+	v210,
+	r210,
+	yuv2
+};
+
+const char* to_string(bench_fmt e)
+{
+	switch (e)
+	{
+	case v210: return "v210";
+	case r210: return "r210";
+	case yuv2: return "yuv2";
+	default: return "unknown";
+	}
 }
 
 enum bench_mode:uint8_t
 {
-	avx_pack,
-	avx_no_pack,
-	avx_so1,
-	avx_so2,
-	avx_naive,
-	scalar
+	scalar,
+	v210_avx_pack,
+	v210_avx_no_pack,
+	v210_avx_so1,
+	v210_avx_so2,
+	v210_avx_naive,
+	r210_avx
 };
 
 const char* to_string(bench_mode e)
 {
 	switch (e)
 	{
-	case avx_pack: return "avx_pack";
-	case avx_no_pack: return "avx_no_pack";
-	case avx_so1: return "avx_so1";
-	case avx_so2: return "avx_so2";
-	case avx_naive: return "avx_naive";
+	case v210_avx_pack: return "v210_avx_pack";
+	case v210_avx_no_pack: return "v210_avx_no_pack";
+	case v210_avx_so1: return "v210_avx_so1";
+	case v210_avx_so2: return "v210_avx_so2";
+	case v210_avx_naive: return "v210_avx_naive";
+	case r210_avx: return "r210_avx";
 	case scalar: return "scalar";
 	default: return "unknown";
 	}
@@ -890,8 +949,9 @@ public:
 	static bool bench(const std::filesystem::path& inputFile,
 	                  const std::filesystem::path& outputFile_y,
 	                  const std::filesystem::path& outputFile_uv,
+	                  const std::filesystem::path& outputFile_rgb,
 	                  const std::filesystem::path& outputFile_stats,
-	                  int width, int height, bench_mode mode)
+	                  int width, int height, bench_mode mode, bench_fmt bfmt)
 	{
 		if (width <= 0 || height <= 0)
 		{
@@ -900,23 +960,6 @@ public:
 
 		try
 		{
-			strides strides = CalculateAlignedV210P210Strides(width);
-			size_t v210Size = CalculateV210BufferSize(width, height);
-
-			std::vector<uint8_t> v210Buffer(v210Size);
-			auto planeSize = strides.dstYStride * height * 2;
-			std::vector<uint8_t> p210Buffer(planeSize);
-			auto p210buffer_y = std::span(p210Buffer).subspan(0, planeSize / 2);
-			uint8_t* p210Y = p210buffer_y.data();
-			auto p210buffer_uv = std::span(p210Buffer).subspan(planeSize / 2, planeSize / 2);
-			uint8_t* p210UV = p210buffer_uv.data();
-
-			// Read input file using standard file streams
-			std::ifstream inFile(inputFile, std::ios::binary);
-			if (!inFile)
-			{
-				throw std::runtime_error(std::format("Failed to open input file: {}", inputFile.string()));
-			}
 			using std::chrono::high_resolution_clock;
 			using std::chrono::duration_cast;
 			using std::chrono::microseconds;
@@ -924,63 +967,124 @@ public:
 			stats << "mode,frame,micros\n";
 			auto frame = 0;
 			uint64_t total = 0;
-			while (!inFile.eof())
+			// Read input file using standard file streams
+			std::ifstream inFile(inputFile, std::ios::binary);
+			if (!inFile)
 			{
-				inFile.read(reinterpret_cast<char*>(v210Buffer.data()), v210Size);
-				std::streamsize s = inFile.gcount();
-				if (s == 0)
-				{
-					break;
-				}
-				if (s != v210Size)
-				{
-					throw std::runtime_error("Failed to read V210 data");
-				}
-				std::chrono::time_point<std::chrono::steady_clock> t1;
-				std::chrono::time_point<std::chrono::steady_clock> t2;
-				switch (mode)
-				{
-				case avx_no_pack:
-					convert_avx_no_pack(v210Buffer.data(), strides.srcStride, p210Y, p210UV, width, height, &t1, &t2);
-					break;
-				case avx_pack:
-					convert_avx_pack(v210Buffer.data(), strides.srcStride, p210Y, p210UV, width, height, &t1, &t2);
-					break;
-				case avx_so1:
-					convert_avx_so1(v210Buffer.data(), strides.srcStride, p210Y, p210UV, width, height, &t1, &t2);
-					break;
-				case avx_so2:
-					convert_avx_so2(v210Buffer.data(), strides.srcStride, p210Y, p210UV, width, height, &t1, &t2);
-					break;
-				case avx_naive:
-					convert_avx_naive(v210Buffer.data(), strides.srcStride, p210Y, p210UV, width, height, &t1, &t2);
-					break;
-				case scalar:
-					convert_scalar(v210Buffer.data(), strides.srcStride, p210Y, p210UV, width, height, &t1, &t2);
-					break;
-				}
-				auto mics = duration_cast<microseconds>(t2 - t1);
-				if (frame > 50) total += mics.count();
-				stats << mode << "," << frame++ << "," << mics.count() << "\n";
-
-				// Write output files
-				std::ofstream outFile_y(outputFile_y, std::ios::binary);
-				if (!outFile_y)
-				{
-					throw std::runtime_error(std::format("Failed to open output file: {}", outputFile_y.string()));
-				}
-				std::ofstream outFile_uv(outputFile_uv, std::ios::binary);
-				if (!outFile_uv)
-				{
-					throw std::runtime_error(std::format("Failed to open output file: {}", outputFile_uv.string()));
-				}
-
-				outFile_y.write(reinterpret_cast<const char*>(p210buffer_y.data()), p210buffer_y.size());
-				outFile_uv.write(reinterpret_cast<const char*>(p210buffer_uv.data()), p210buffer_uv.size());
+				throw std::runtime_error(std::format("Failed to open input file: {}", inputFile.string()));
 			}
+			if (bfmt == v210)
+			{
+				strides strides = CalculateAlignedV210P210Strides(width);
+				size_t v210Size = CalculateV210BufferSize(width, height);
 
-			fprintf(stdout, "Mean: %.3f\n", static_cast<double>(total) / (frame - 50));
-			return true;
+				std::vector<uint8_t> v210Buffer(v210Size);
+				auto planeSize = strides.dstYStride * height * 2;
+				std::vector<uint8_t> p210Buffer(planeSize);
+				auto p210buffer_y = std::span(p210Buffer).subspan(0, planeSize / 2);
+				uint8_t* p210Y = p210buffer_y.data();
+				auto p210buffer_uv = std::span(p210Buffer).subspan(planeSize / 2, planeSize / 2);
+				uint8_t* p210UV = p210buffer_uv.data();
+
+				while (!inFile.eof())
+				{
+					inFile.read(reinterpret_cast<char*>(v210Buffer.data()), v210Size);
+					std::streamsize s = inFile.gcount();
+					if (s == 0)
+					{
+						break;
+					}
+					if (s != v210Size)
+					{
+						throw std::runtime_error("Failed to read V210 data");
+					}
+					std::chrono::time_point<std::chrono::steady_clock> t1;
+					std::chrono::time_point<std::chrono::steady_clock> t2;
+					switch (mode)
+					{
+					case v210_avx_no_pack:
+						convert_avx_no_pack(v210Buffer.data(), strides.srcStride, p210Y, p210UV, width, height, &t1,
+						                    &t2);
+						break;
+					case v210_avx_pack:
+						convert_avx_pack(v210Buffer.data(), strides.srcStride, p210Y, p210UV, width, height, &t1, &t2);
+						break;
+					case v210_avx_so1:
+						convert_avx_so1(v210Buffer.data(), strides.srcStride, p210Y, p210UV, width, height, &t1, &t2);
+						break;
+					case v210_avx_so2:
+						convert_avx_so2(v210Buffer.data(), strides.srcStride, p210Y, p210UV, width, height, &t1, &t2);
+						break;
+					case v210_avx_naive:
+						convert_avx_naive(v210Buffer.data(), strides.srcStride, p210Y, p210UV, width, height, &t1, &t2);
+						break;
+					case scalar:
+						convert_scalar(v210Buffer.data(), strides.srcStride, p210Y, p210UV, width, height, &t1, &t2);
+						break;
+					}
+					auto mics = duration_cast<microseconds>(t2 - t1);
+					if (frame > 50) total += mics.count();
+					stats << mode << "," << frame++ << "," << mics.count() << "\n";
+
+					// Write output files
+					std::ofstream outFile_y(outputFile_y, std::ios::binary);
+					if (!outFile_y)
+					{
+						throw std::runtime_error(std::format("Failed to open output file: {}", outputFile_y.string()));
+					}
+					std::ofstream outFile_uv(outputFile_uv, std::ios::binary);
+					if (!outFile_uv)
+					{
+						throw std::runtime_error(std::format("Failed to open output file: {}", outputFile_uv.string()));
+					}
+
+					outFile_y.write(reinterpret_cast<const char*>(p210buffer_y.data()), p210buffer_y.size());
+					outFile_uv.write(reinterpret_cast<const char*>(p210buffer_uv.data()), p210buffer_uv.size());
+				}
+			}
+			else if (bfmt == r210)
+			{
+				size_t r210Size = (width + 63) / 64 * 256 * height;
+
+				std::vector<uint8_t> r210Buffer(r210Size);
+				std::vector<uint16_t> rgbBuffer(width * height * 6);
+
+				while (!inFile.eof())
+				{
+					inFile.read(reinterpret_cast<char*>(r210Buffer.data()), r210Size);
+					std::streamsize s = inFile.gcount();
+					if (s == 0)
+					{
+						break;
+					}
+					if (s != r210Size)
+					{
+						throw std::runtime_error("Failed to read R210 data");
+					}
+					std::chrono::time_point<std::chrono::steady_clock> t1;
+					std::chrono::time_point<std::chrono::steady_clock> t2;
+					switch (mode)
+					{
+					case scalar:
+						convert_scalar_rgb(r210Buffer.data(), rgbBuffer.data(), width, height, &t1, &t2);
+						break;
+					}
+					auto mics = duration_cast<microseconds>(t2 - t1);
+					if (frame > 50) total += mics.count();
+					stats << mode << "," << frame++ << "," << mics.count() << "\n";
+
+					// Write output files
+					std::ofstream outFile_rgb(outputFile_rgb, std::ios::binary);
+					if (!outFile_rgb)
+					{
+						throw std::runtime_error(std::format("Failed to open output file: {}", outputFile_y.string()));
+					}
+
+					outFile_rgb.write(reinterpret_cast<const char*>(rgbBuffer.data()), rgbBuffer.size());
+				}
+				fprintf(stdout, "Mean: %.3f\n", static_cast<double>(total) / (frame - 50));
+				return true;
+			}
 		}
 		catch (const std::exception& e)
 		{
@@ -993,25 +1097,30 @@ public:
 
 int main(int argc, char* argv[])
 {
-	auto bench_mode = avx_so1;
-	if (argc > 1)
+	auto bench_fmt = r210;
+	auto bench_mode = scalar;
+	std::size_t pos;
+	bench_fmt = static_cast<::bench_fmt>(std::stoi(argv[1], &pos));
+	auto i = std::stoi(argv[2], &pos);
+	if (bench_fmt == r210 && i != 0)
 	{
-		std::size_t pos;
-		bench_mode = static_cast<::bench_mode>(std::stoi(argv[1], &pos));
+		i += 5;
 	}
+	bench_mode = static_cast<::bench_mode>(i);
+	auto width = std::stoi(argv[3], &pos);
+	auto height = std::stoi(argv[4], &pos);
 	// auto inp = "demo.dat";
-	auto inp = "bench.v210";
-	auto suffix = std::string(to_string(bench_mode));
-	auto out_y = "bench." + suffix;
-	auto out_uv = "uv." + suffix;
+	auto inp = "bench." + std::string(to_string(bench_fmt));
+	auto suffix = "-" + std::string(to_string(bench_fmt)) + "." + std::string(to_string(bench_mode));
+	auto out_y = "y" + suffix;
+	auto out_rgb = "rgb" + suffix;
+	auto out_uv = "uv" + suffix;
 	auto cwd = std::filesystem::current_path();
 	const auto inputFile = std::filesystem::path(inp);
 	const auto outputFile_y = std::filesystem::path(out_y);
 	const auto outputFile_uv = std::filesystem::path(out_uv);
+	const auto outputFile_rgb = std::filesystem::path(out_rgb);
 	const auto statsFile = std::filesystem::path("stats_" + suffix + ".csv");
-
-	auto width = 3840;
-	auto height = 2160;
 
 	if (width <= 0 || height <= 0)
 	{
@@ -1021,7 +1130,8 @@ int main(int argc, char* argv[])
 
 	printf("Converting %s using %s\n", inputFile.string().c_str(), suffix.c_str());
 
-	if (Benchmark::bench(inputFile, outputFile_y, outputFile_uv, statsFile, width, height, bench_mode))
+	if (Benchmark::bench(inputFile, outputFile_y, outputFile_uv, outputFile_rgb, statsFile, width, height,
+	                     bench_mode, bench_fmt))
 	{
 		printf("Successfully converted %s to %s %s\n", inputFile.string().c_str(), outputFile_y.string().c_str(),
 		       outputFile_uv.string().c_str());

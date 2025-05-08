@@ -13,16 +13,22 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 #pragma once
+
 #include "VideoFrameWriter.h"
 
-class r210_bgr10 : public IVideoFrameWriter
+class r210_rgb48 : public IVideoFrameWriter
 {
 public:
-	r210_bgr10(const log_data& pLogData, uint32_t pX, uint32_t pY) : IVideoFrameWriter(pLogData, pX, pY, &BGR10)
+	r210_rgb48(const log_data& pLogData, uint32_t pX, uint32_t pY) : IVideoFrameWriter(pLogData, pX, pY, &RGB48)
 	{
 	}
 
-	~r210_bgr10() override = default;
+	~r210_rgb48() override = default;
 
 	HRESULT WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame) override;
+
+private:
+	#ifdef RECORD_RAW
+	uint32_t mFrameCounter;
+	#endif
 };

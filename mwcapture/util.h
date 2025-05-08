@@ -31,6 +31,7 @@ const pixel_format pixelFormats[3][4] = {
 	{BGR10, P210, AYUV, P010},
 	// 12 bit
 	{BGR10, P210, AYUV, P010}
+	// BGR10 not supported, need to revise this to something else
 };
 
 // utility functions

@@ -167,7 +167,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_DEBUG;BMCAPTURE_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_DEBUG;BMCAPTURE_EXPORTS;_WINDOWS;_USRDLL;RECORD_RAW;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>
@@ -235,8 +235,8 @@
       <AdditionalIncludeDirectories>$(SolutionDir)directshow_baseclasses;$(SolutionDir)DeckLink;$(SolutionDir)common</AdditionalIncludeDirectories>
       <PrecompiledHeaderOutputFile>
       </PrecompiledHeaderOutputFile>
-      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -256,7 +256,7 @@
     <ClCompile Include="bmcapture.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="MediaSampleBackedDecklinkBuffer.cpp" />
-    <ClCompile Include="r210_bgr10.cpp" />
+    <ClCompile Include="r210_rgb48.cpp" />
     <ClCompile Include="v210_p210.cpp" />
     <ClCompile Include="yuv2_yv16.cpp" />
   </ItemGroup>
@@ -280,7 +280,7 @@
     <ClInclude Include="bmdomain.h" />
     <ClInclude Include="MediaSampleBackedDecklinkBuffer.h" />
     <ClInclude Include="StraightThrough.h" />
-    <ClInclude Include="r210_bgr10.h" />
+    <ClInclude Include="r210_rgb48.h" />
     <ClInclude Include="v210_p210.h" />
     <ClInclude Include="VideoFrameWriter.h" />
     <ClInclude Include="yuv2_yv16.h" />

@@ -24,7 +24,7 @@
 #include "VideoFrameWriter.h"
 
 #include "any_rgb.h"
-#include "r210_bgr10.h"
+#include "r210_rgb48.h"
 #include "StraightThrough.h"
 #include "v210_p210.h"
 #include "yuv2_yv16.h"
@@ -72,7 +72,7 @@ enum frame_writer_strategy :uint8_t
 	ANY_RGB,
 	YUV2_YV16,
 	V210_P210,
-	R210_BGR10,
+	R210_BGR48,
 	STRAIGHT_THROUGH
 };
 
@@ -83,7 +83,7 @@ inline const char* to_string(frame_writer_strategy e)
 	case ANY_RGB: return "ANY_RGB";
 	case YUV2_YV16: return "YUV2_YV16";
 	case V210_P210: return "V210_P210";
-	case R210_BGR10: return "R210_BGR10";
+	case R210_BGR48: return "R210_BGR48";
 	case STRAIGHT_THROUGH: return "STRAIGHT_THROUGH";
 	default: return "unknown";
 	}
@@ -98,7 +98,7 @@ const pixel_format_fallbacks pixelFormatFallbacks{
 	// standard consumer formats
 	{YUV2, {YV16, YUV2_YV16}},
 	{V210, {P210, V210_P210}},   // supported natively by madvr
-	{R210, {BGR10, R210_BGR10}}, // supported natively by jrvr >= MC34
+	{R210, {RGB48, R210_BGR48}}, // supported natively by jrvr >= MC34
 	// unlikely to be seen in the wild so just fallback to RGB using decklink sdk
 	{AY10, {RGBA, ANY_RGB}},
 	{R12B, {RGBA, ANY_RGB}},
@@ -311,8 +311,8 @@ private:
 			case V210_P210:
 				mFrameWriter = std::make_unique<v210_p210>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
 				break;
-			case R210_BGR10:
-				mFrameWriter = std::make_unique<r210_bgr10>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
+			case R210_BGR48:
+				mFrameWriter = std::make_unique<r210_rgb48>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
 				break;
 			case STRAIGHT_THROUGH:
 				mFrameWriter = std::make_unique<StraightThrough>(mLogData, mVideoFormat.cx, mVideoFormat.cy,

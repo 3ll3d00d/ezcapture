@@ -33,7 +33,7 @@
     <ClCompile Include="yuv2_yv16.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="r210_bgr10.cpp">
+    <ClCompile Include="r210_rgb48.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -53,7 +53,7 @@
     <ClInclude Include="yuv2_yv16.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="r210_bgr10.h">
+    <ClInclude Include="r210_rgb48.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="StraightThrough.h">

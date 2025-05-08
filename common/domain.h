@@ -70,6 +70,7 @@ struct pixel_format
 		AYUV,
 		BGR24,
 		BGR10,
+		RGB48,
 		YUV2,
 		YV16,
 		V210,
@@ -140,6 +141,9 @@ struct pixel_format
 		case RGBA:
 			cbLine = cx * 4;
 			break;
+		case RGB48:
+			cbLine = cx * 6;
+			break;
 		case R12B:
 		case R12L:
 		default: // NOLINT(clang-diagnostic-covered-switch-default)
@@ -197,6 +201,7 @@ const inline pixel_format R10L{pixel_format::R10L, 'R', '1', '0', 'l', 10, 32, f
 const inline pixel_format R10B{pixel_format::R10B, 'R', '1', '0', 'b', 10, 32, false, RGB_444, 256};
 // jrvr
 const inline pixel_format YV16{pixel_format::YV16, 'Y', 'V', '1', '6', 8, 16, false, YUV_422};
+const inline pixel_format RGB48{pixel_format::RGB48, 'R', 'G', 'B', '0', 16, 48, false, RGB_444};
 
 const pixel_format ALL_PIXEL_FORMATS[] = {
 	NV12,
@@ -217,7 +222,8 @@ const pixel_format ALL_PIXEL_FORMATS[] = {
 	R12B,
 	R12L,
 	R10L,
-	R10B
+	R10B,
+	RGB48
 };
 
 struct DEVICE_STATUS
