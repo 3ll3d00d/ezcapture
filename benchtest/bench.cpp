@@ -879,16 +879,19 @@ namespace
 				const auto r210Pixel = srcPixelBE[x];
 				const auto srcPixel = _byteswap_ulong(r210Pixel);
 
-				const auto red = (srcPixel & 0xFFC) << 4;
-				*dstPix = red;
+				const auto red_10 = srcPixel & 0x3FF00000;
+				const uint16_t red_16 = red_10 >> 14;
+				*dstPix = red_16;
 				dstPix++;
 
-				const auto green = (srcPixel & 0x3FF000) >> 6;
-				*dstPix = green;
+				const auto green_10 = srcPixel & 0xFFC00;
+				const uint16_t green_16 = green_10 >> 4;
+				*dstPix = green_16;
 				dstPix++;
 
-				const auto blue = (srcPixel & 0xFFC00000) >> 16;
-				*dstPix = blue;
+				const auto blue_10 = srcPixel & 0x3FF;
+				const uint16_t blue_16 = blue_10 << 6;
+				*dstPix = blue_16;
 				dstPix++;
 			}
 
