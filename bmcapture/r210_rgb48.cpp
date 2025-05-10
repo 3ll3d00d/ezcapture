@@ -26,7 +26,7 @@
 namespace
 {
 	#ifdef __AVX2__
-	bool convert_scalar_avx_load_rgb(const uint8_t* src, uint16_t* dst, size_t width, size_t height)
+	bool convert(const uint8_t* src, uint16_t* dst, size_t width, size_t height)
 	{
 		__m128i pixelEndianSwap = _mm_setr_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
 
