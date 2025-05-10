@@ -899,7 +899,7 @@ namespace
 	                                 std::chrono::time_point<std::chrono::steady_clock>* t1,
 	                                 std::chrono::time_point<std::chrono::steady_clock>* t2)
 	{
-		__m128i pixelEndianSwap = _mm_setr_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+		__m128i pixelEndianSwap = _mm_set_epi8(12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3);
 
 		// Each row starts on 256-byte boundary
 		size_t srcStride = (width * 4 + 255) / 256 * 256;
@@ -1002,6 +1002,46 @@ namespace
 		*t2 = std::chrono::high_resolution_clock::now();
 		return true;
 	}
+
+	bool convert_yuv2_scalar(const uint8_t* src, uint8_t* yPlane, uint8_t* uPlane, uint8_t* vPlane, int width,
+	                         int height,
+	                         std::chrono::time_point<std::chrono::steady_clock>* t1,
+	                         std::chrono::time_point<std::chrono::steady_clock>* t2)
+	{
+		auto srcStride = width * 2;
+		auto yStride = width;
+		auto uvStride = width / 2;
+
+		*t1 = std::chrono::high_resolution_clock::now();
+		for (int y = 0; y < height; ++y)
+		{
+			const uint8_t* srcRow = src + y * srcStride;
+			uint8_t* y_row = yPlane + y * yStride;
+			uint8_t* u_row = uPlane + (y / 2) * uvStride;
+			uint8_t* v_row = vPlane + (y / 2) * uvStride;
+
+			for (int x = 0; x < width; x += 2)
+			{
+				const uint8_t* pixel = srcRow + x * 2;
+
+				// Extract Y values
+				y_row[x] = pixel[1];
+				if (x + 1 < width)
+				{
+					y_row[x + 1] = pixel[3];
+				}
+
+				// Process U and V only for even rows (vertical subsampling)
+				if (y % 2 == 0)
+				{
+					u_row[x / 2] = pixel[0];
+					v_row[x / 2] = pixel[2];
+				}
+			}
+		}
+		*t2 = std::chrono::high_resolution_clock::now();
+		return true;
+	}
 }
 
 enum bench_fmt:uint8_t
@@ -1056,6 +1096,8 @@ public:
 	static bool bench(const std::filesystem::path& inputFile,
 	                  const std::filesystem::path& outputFile_y,
 	                  const std::filesystem::path& outputFile_uv,
+	                  const std::filesystem::path& outputFile_u,
+	                  const std::filesystem::path& outputFile_v,
 	                  const std::filesystem::path& outputFile_rgb,
 	                  const std::filesystem::path& outputFile_stats,
 	                  int width, int height, bench_mode mode, bench_fmt bfmt)
@@ -1196,6 +1238,66 @@ public:
 					outFile_rgb.write(reinterpret_cast<const char*>(rgbBuffer.data()), rgbBuffer.size());
 				}
 			}
+			else if (bfmt == yuv2)
+			{
+				auto ySize = width * height;
+				auto uvSize = ySize / 2;
+
+				std::vector<uint8_t> yuv2Buffer(ySize * 2);
+				std::vector<uint8_t> yv16Buffer(ySize * 2);
+				auto yv16buffer_y = std::span(yv16Buffer).subspan(0, ySize);
+				uint8_t* yv16_y = yv16buffer_y.data();
+				auto yv16buffer_u = std::span(yv16Buffer).subspan(ySize, uvSize);
+				uint8_t* yv16_u = yv16buffer_u.data();
+				auto yv16buffer_v = std::span(yv16Buffer).subspan(ySize + uvSize, uvSize);
+				uint8_t* yv16_v = yv16buffer_v.data();
+
+				while (!inFile.eof())
+				{
+					inFile.read(reinterpret_cast<char*>(yuv2Buffer.data()), ySize * 2);
+					std::streamsize s = inFile.gcount();
+					if (s == 0)
+					{
+						break;
+					}
+					if (s != ySize * 2)
+					{
+						throw std::runtime_error("Failed to read yuv2 data");
+					}
+					std::chrono::time_point<std::chrono::steady_clock> t1;
+					std::chrono::time_point<std::chrono::steady_clock> t2;
+					switch (mode)
+					{
+					case scalar:
+						convert_yuv2_scalar(yuv2Buffer.data(), yv16_y, yv16_u, yv16_v, width, height, &t1, &t2);
+						break;
+					}
+					auto mics = duration_cast<microseconds>(t2 - t1);
+					if (frame > 50) total += mics.count();
+					stats << mode << "," << frame++ << "," << mics.count() << "\n";
+
+					// Write output files
+					std::ofstream outFile_y(outputFile_y, std::ios::binary);
+					if (!outFile_y)
+					{
+						throw std::runtime_error(std::format("Failed to open output file: {}", outputFile_y.string()));
+					}
+					std::ofstream outFile_u(outputFile_u, std::ios::binary);
+					if (!outFile_u)
+					{
+						throw std::runtime_error(std::format("Failed to open output file: {}", outputFile_u.string()));
+					}
+					std::ofstream outFile_v(outputFile_v, std::ios::binary);
+					if (!outFile_v)
+					{
+						throw std::runtime_error(std::format("Failed to open output file: {}", outputFile_v.string()));
+					}
+
+					outFile_y.write(reinterpret_cast<const char*>(yv16buffer_y.data()), yv16buffer_y.size());
+					outFile_u.write(reinterpret_cast<const char*>(yv16buffer_u.data()), yv16buffer_u.size());
+					outFile_v.write(reinterpret_cast<const char*>(yv16buffer_v.data()), yv16buffer_v.size());
+				}
+			}
 		}
 		catch (const std::exception& e)
 		{
@@ -1219,6 +1321,10 @@ int main(int argc, char* argv[])
 	{
 		i += 5;
 	}
+	if (bench_fmt == yuv2 && i != 0)
+	{
+		i += 5 + 2;
+	}
 	bench_mode = static_cast<::bench_mode>(i);
 	auto width = std::stoi(argv[3], &pos);
 	auto height = std::stoi(argv[4], &pos);
@@ -1228,10 +1334,14 @@ int main(int argc, char* argv[])
 	auto out_y = "y-" + suffix;
 	auto out_rgb = "rgb-" + suffix;
 	auto out_uv = "uv-" + suffix;
+	auto out_u = "u-" + suffix;
+	auto out_v = "v-" + suffix;
 	auto cwd = std::filesystem::current_path();
 	const auto inputFile = std::filesystem::path(inp);
 	const auto outputFile_y = std::filesystem::path(out_y);
 	const auto outputFile_uv = std::filesystem::path(out_uv);
+	const auto outputFile_u = std::filesystem::path(out_u);
+	const auto outputFile_v = std::filesystem::path(out_v);
 	const auto outputFile_rgb = std::filesystem::path(out_rgb);
 	const auto statsFile = std::filesystem::path("stats_" + suffix + ".csv");
 
@@ -1243,8 +1353,8 @@ int main(int argc, char* argv[])
 
 	printf("Converting %s using %s\n", inputFile.string().c_str(), suffix.c_str());
 
-	if (Benchmark::bench(inputFile, outputFile_y, outputFile_uv, outputFile_rgb, statsFile, width, height,
-	                     bench_mode, bench_fmt))
+	if (Benchmark::bench(inputFile, outputFile_y, outputFile_uv, outputFile_u, outputFile_v,
+	                     outputFile_rgb, statsFile, width, height, bench_mode, bench_fmt))
 	{
 		printf("Successfully converted %s\n", inputFile.string().c_str());
 		return 0;

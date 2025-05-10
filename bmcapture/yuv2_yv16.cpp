@@ -22,6 +22,7 @@
 
 namespace
 {
+	#ifdef __AVX2__
 	bool convert(const uint8_t* src, uint8_t* yPlane, uint8_t* uPlane, uint8_t* vPlane, int width, int height)
 	{
 		auto srcStride = width * 2;
@@ -56,6 +57,42 @@ namespace
 		}
 		return true;
 	}
+	#else
+	bool convert(const uint8_t* src, uint8_t* yPlane, uint8_t* uPlane, uint8_t* vPlane, int width, int height)
+	{
+		auto srcStride = width * 2;
+		auto yStride = width;
+		auto uvStride = width / 2;
+
+		for (int y = 0; y < height; ++y)
+		{
+			const uint8_t* srcRow = src + y * srcStride;
+			uint8_t* y_row = yPlane + y * yStride;
+			uint8_t* u_row = uPlane + (y / 2) * uvStride;
+			uint8_t* v_row = vPlane + (y / 2) * uvStride;
+
+			for (int x = 0; x < width; x += 2)
+			{
+				const uint8_t* pixel = srcRow + x * 2;
+
+				// Extract Y values
+				y_row[x] = pixel[1];
+				if (x + 1 < width)
+				{
+					y_row[x + 1] = pixel[3];
+				}
+
+				// Process U and V only for even rows (vertical subsampling)
+				if (y % 2 == 0)
+				{
+					u_row[x / 2] = pixel[0];
+					v_row[x / 2] = pixel[2];
+				}
+			}
+		}
+		return true;
+	}
+	#endif
 }
 
 HRESULT yuv2_yv16::WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame)
