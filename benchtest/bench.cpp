@@ -567,6 +567,7 @@ namespace
 		return true;
 	}
 
+	// terrible implementation just to illustrate how much slower you can make it
 	bool convert_avx_naive(const uint8_t* src, int srcStride, uint8_t* dstY, uint8_t* dstUV, int width, int height,
 	                       std::chrono::time_point<std::chrono::steady_clock>* t1,
 	                       std::chrono::time_point<std::chrono::steady_clock>* t2)
@@ -867,7 +868,6 @@ namespace
 		size_t srcStride = (width * 4 + 255) / 256 * 256;
 		const uint8_t* srcRow = src;
 		uint16_t* dstPix = dst;
-
 		*t1 = std::chrono::high_resolution_clock::now();
 		for (size_t y = 0; y < height; ++y)
 		{
@@ -876,23 +876,123 @@ namespace
 			for (size_t x = 0; x < width; ++x)
 			{
 				// r210 is simply BGR once swapped to little endian
-				const auto r210Pixel = srcPixelBE[x];
-				const auto srcPixel = _byteswap_ulong(r210Pixel);
+				const auto srcPixel = _byteswap_ulong(srcPixelBE[x]);
 
-				const auto red_10 = srcPixel & 0x3FF00000;
-				const uint16_t red_16 = red_10 >> 14;
-				*dstPix = red_16;
-				dstPix++;
+				const uint16_t red_16 = (srcPixel & 0x3FF00000) >> 14;
+				const uint16_t green_16 = (srcPixel & 0xFFC00) >> 4;
+				const uint16_t blue_16 = (srcPixel & 0x3FF) << 6;
 
-				const auto green_10 = srcPixel & 0xFFC00;
-				const uint16_t green_16 = green_10 >> 4;
-				*dstPix = green_16;
-				dstPix++;
+				dstPix[0] = red_16;
+				dstPix[1] = green_16;
+				dstPix[2] = blue_16;
+				dstPix += 3;
+			}
 
-				const auto blue_10 = srcPixel & 0x3FF;
-				const uint16_t blue_16 = blue_10 << 6;
-				*dstPix = blue_16;
-				dstPix++;
+			srcRow += srcStride;
+		}
+
+		*t2 = std::chrono::high_resolution_clock::now();
+		return true;
+	}
+
+	bool convert_scalar_avx_load_rgb(const uint8_t* src, uint16_t* dst, size_t width, size_t height,
+	                                 std::chrono::time_point<std::chrono::steady_clock>* t1,
+	                                 std::chrono::time_point<std::chrono::steady_clock>* t2)
+	{
+		// Each row starts on 256-byte boundary
+		size_t srcStride = (width * 4 + 255) / 256 * 256;
+		const uint8_t* srcRow = src;
+		uint16_t* dstPix = dst;
+		__m128i pixelEndianSwap = _mm_setr_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+		size_t blocks = width / 4;
+		*t1 = std::chrono::high_resolution_clock::now();
+		for (size_t y = 0; y < height; ++y)
+		{
+			const uint32_t* srcPixelBE = reinterpret_cast<const uint32_t*>(srcRow);
+
+			for (size_t x = 0; x < blocks; ++x)
+			{
+				// xmm is physically the lower lane of ymm so we can treat this as a ymm register going forward
+				__m128i pixelBlockBE = _mm_loadu_si128(reinterpret_cast<const __m128i*>(srcPixelBE));
+				// swap to produce 10bit BGR
+				__m128i pixelBlockLE = _mm_shuffle_epi8(pixelBlockBE, pixelEndianSwap);
+				const uint32_t* p = reinterpret_cast<const uint32_t*>(&pixelBlockLE);
+
+				dstPix[0] = (p[0] & 0x3FF00000) >> 14;
+				dstPix[1] = (p[0] & 0xFFC00) >> 4;
+				dstPix[2] = (p[0] & 0x3FF) << 6;
+				dstPix[3] = (p[0] & 0x3FF00000) >> 14;
+				dstPix[4] = (p[0] & 0xFFC00) >> 4;
+				dstPix[5] = (p[0] & 0x3FF) << 6;
+				dstPix[6] = (p[0] & 0x3FF00000) >> 14;
+				dstPix[7] = (p[0] & 0xFFC00) >> 4;
+				dstPix[8] = (p[0] & 0x3FF) << 6;
+				dstPix[9] = (p[0] & 0x3FF00000) >> 14;
+				dstPix[10] = (p[0] & 0xFFC00) >> 4;
+				dstPix[11] = (p[0] & 0x3FF) << 6;
+				dstPix += 12;
+				srcPixelBE += 4;
+			}
+
+			srcRow += srcStride;
+		}
+		*t2 = std::chrono::high_resolution_clock::now();
+		return true;
+	}
+
+	bool convert_avx2_rgb(const uint8_t* src, uint16_t* dst, size_t width, size_t height,
+	                      std::chrono::time_point<std::chrono::steady_clock>* t1,
+	                      std::chrono::time_point<std::chrono::steady_clock>* t2)
+	{
+		// Each row starts on 256-byte boundary 
+		size_t srcStride = (width * 4 + 255) / 256 * 256;
+
+		__m128i pixelEndianSwap = _mm_setr_epi8(3, 2, 1, 0, 7, 6, 5, 4, 11, 10, 9, 8, 15, 14, 13, 12);
+		const __m256i mask_R_B = _mm256_set1_epi32(0x3FF003FF);
+		const __m256i shift_R_B = _mm256_set1_epi32(0x00040040);
+		const __m256i mask_G = _mm256_set1_epi32(0x000FFC00);
+		const int lane_cross = 0b11011000; // shift upper 64bit of lower lane into lower 64bit of upper lane
+		const __m256i split_red_blue = _mm256_setr_epi8(
+			0, 1, -1, -1, 2, 3, 4, 5, -1, -1, 6, 7, -1, -1, -1, -1,
+			0, 1, -1, -1, 2, 3, 4, 5, -1, -1, 6, 7, -1, -1, -1, -1
+		);
+		const __m256i shift_green = _mm256_setr_epi8(
+			-1, -1, 0, 1, -1, -1, -1, -1, 4, 5, -1, -1, -1, -1, -1, -1,
+			-1, -1, 0, 1, -1, -1, -1, -1, 4, 5, -1, -1, -1, -1, -1, -1
+		);
+		const int blend_rgb = 0b11010010;
+
+		// process in 4 pixel (128 bit) blocks which produces 192 bits of output
+		const int blocks = width / 4;
+		*t1 = std::chrono::high_resolution_clock::now();
+		for (size_t y = 0; y < height; ++y)
+		{
+			const uint32_t* srcRow = reinterpret_cast<const uint32_t*>(src + y * srcStride);
+
+			for (int x = 0; x < blocks; ++x)
+			{
+				// xmm is physically the lower lane of ymm so we can treat this as a ymm register going forward
+				__m128i pixelBlockBE = _mm_loadu_si128(reinterpret_cast<const __m128i*>(srcRow));
+				// swap to produce 10bit BGR
+				__m256i pixelBlockLE = _mm256_castsi128_si256(_mm_shuffle_epi8(pixelBlockBE, pixelEndianSwap));
+				// extract & align 10-bit components across 2 vectors shifted to 16bit values
+				__m256i r_b = _mm256_mullo_epi16(_mm256_and_si256(pixelBlockLE, mask_R_B), shift_R_B);
+				// R - B interleaved 16bit values
+				__m256i g = _mm256_srli_epi32(_mm256_and_si256(pixelBlockLE, mask_G), 4); // G 
+				// blend & shuffle & permute to align samples in lower 96bits of each lane
+				__m256i r_b_split = _mm256_permute4x64_epi64(r_b, lane_cross);
+				__m256i g_split = _mm256_permute4x64_epi64(g, lane_cross);
+				__m256i r_b_align = _mm256_shuffle_epi8(r_b_split, split_red_blue);
+				__m256i g_align = _mm256_shuffle_epi8(g_split, shift_green);
+				__m256i rgb = _mm256_blend_epi16(r_b_align, g_align, blend_rgb);
+
+				// write 96 bits from each lane
+				__m128i rgb_lo = _mm256_extracti128_si256(rgb, 0);
+				__m128i rgb_hi = _mm256_extracti128_si256(rgb, 1);
+				_mm_storeu_si128(reinterpret_cast<__m128i*>(dst), rgb_lo);
+				_mm_storeu_si128(reinterpret_cast<__m128i*>(dst + 6), rgb_hi);
+				srcRow += 4;
+				dst += 12;
 			}
 
 			srcRow += srcStride;
@@ -928,7 +1028,8 @@ enum bench_mode:uint8_t
 	v210_avx_so1,
 	v210_avx_so2,
 	v210_avx_naive,
-	r210_avx
+	r210_avx,
+	r210_avx_load_only,
 };
 
 const char* to_string(bench_mode e)
@@ -941,6 +1042,7 @@ const char* to_string(bench_mode e)
 	case v210_avx_so2: return "v210_avx_so2";
 	case v210_avx_naive: return "v210_avx_naive";
 	case r210_avx: return "r210_avx";
+	case r210_avx_load_only: return "r210_avx_load";
 	case scalar: return "scalar";
 	default: return "unknown";
 	}
@@ -960,6 +1062,8 @@ public:
 		{
 			return false;
 		}
+		auto frame = 0;
+		uint64_t total = 0;
 
 		try
 		{
@@ -968,8 +1072,6 @@ public:
 			using std::chrono::microseconds;
 			std::ofstream stats(outputFile_stats);
 			stats << "mode,frame,micros\n";
-			auto frame = 0;
-			uint64_t total = 0;
 			// Read input file using standard file streams
 			std::ifstream inFile(inputFile, std::ios::binary);
 			if (!inFile)
@@ -1071,6 +1173,12 @@ public:
 					case scalar:
 						convert_scalar_rgb(r210Buffer.data(), rgbBuffer.data(), width, height, &t1, &t2);
 						break;
+					case r210_avx:
+						convert_avx2_rgb(r210Buffer.data(), rgbBuffer.data(), width, height, &t1, &t2);
+						break;
+					case r210_avx_load_only:
+						convert_scalar_avx_load_rgb(r210Buffer.data(), rgbBuffer.data(), width, height, &t1, &t2);
+						break;
 					}
 					auto mics = duration_cast<microseconds>(t2 - t1);
 					if (frame > 50) total += mics.count();
@@ -1085,8 +1193,6 @@ public:
 
 					outFile_rgb.write(reinterpret_cast<const char*>(rgbBuffer.data()), rgbBuffer.size());
 				}
-				fprintf(stdout, "Mean: %.3f\n", static_cast<double>(total) / (frame - 50));
-				return true;
 			}
 		}
 		catch (const std::exception& e)
@@ -1095,6 +1201,8 @@ public:
 			fprintf(stderr, "Error: %s\n", e.what());
 			return false;
 		}
+		fprintf(stdout, "Mean: %.3f\n", static_cast<double>(total) / (frame - 50));
+		return true;
 	}
 };
 
@@ -1114,10 +1222,10 @@ int main(int argc, char* argv[])
 	auto height = std::stoi(argv[4], &pos);
 	// auto inp = "demo.dat";
 	auto inp = "bench." + std::string(to_string(bench_fmt));
-	auto suffix = "-" + std::string(to_string(bench_fmt)) + "." + std::string(to_string(bench_mode));
-	auto out_y = "y" + suffix;
-	auto out_rgb = "rgb" + suffix;
-	auto out_uv = "uv" + suffix;
+	auto suffix = std::string(to_string(bench_fmt)) + "." + std::string(to_string(bench_mode));
+	auto out_y = "y-" + suffix;
+	auto out_rgb = "rgb-" + suffix;
+	auto out_uv = "uv-" + suffix;
 	auto cwd = std::filesystem::current_path();
 	const auto inputFile = std::filesystem::path(inp);
 	const auto outputFile_y = std::filesystem::path(out_y);
@@ -1136,8 +1244,7 @@ int main(int argc, char* argv[])
 	if (Benchmark::bench(inputFile, outputFile_y, outputFile_uv, outputFile_rgb, statsFile, width, height,
 	                     bench_mode, bench_fmt))
 	{
-		printf("Successfully converted %s to %s %s\n", inputFile.string().c_str(), outputFile_y.string().c_str(),
-		       outputFile_uv.string().c_str());
+		printf("Successfully converted %s\n", inputFile.string().c_str());
 		return 0;
 	}
 	fprintf(stderr, "Conversion failed\n");

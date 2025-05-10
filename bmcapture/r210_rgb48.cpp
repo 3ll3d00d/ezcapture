@@ -38,24 +38,16 @@ namespace
 
 			for (size_t x = 0; x < width; ++x)
 			{
-				// r210 is simply BGR once swapped to little endian
-				const auto r210Pixel = srcPixelBE[x];
-				const auto srcPixel = _byteswap_ulong(r210Pixel);
+				const auto srcPixel = _byteswap_ulong(srcPixelBE[x]);
 
-				const auto red_10 = srcPixel & 0x3FF00000;
-				const uint16_t red_16 = red_10 >> 14;
-				*dstPix = red_16;
-				dstPix++;
+				const uint16_t red_16 = (srcPixel & 0x3FF00000) >> 14;
+				const uint16_t green_16 = (srcPixel & 0xFFC00) >> 4;
+				const uint16_t blue_16 = (srcPixel & 0x3FF) << 6;
 
-				const auto green_10 = srcPixel & 0xFFC00;
-				const uint16_t green_16 = green_10 >> 4;
-				*dstPix = green_16;
-				dstPix++;
-
-				const auto blue_10 = srcPixel & 0x3FF;
-				const uint16_t blue_16 = blue_10 << 6;
-				*dstPix = blue_16;
-				dstPix++;
+				dstPix[0] = red_16;
+				dstPix[1] = green_16;
+				dstPix[2] = blue_16;
+				dstPix += 3;
 			}
 
 			srcRow += srcStride;
