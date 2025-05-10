@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        configuration: [ Debug, Release, ReleaseWithLog, ReleaseNoArch, ReleaseWithLogNoArch ]
+        configuration: [ Debug, Release, ReleaseTrace, ReleaseNoArch, ReleaseTraceNoArch ]
 
     steps:
     - uses: actions/checkout@v4

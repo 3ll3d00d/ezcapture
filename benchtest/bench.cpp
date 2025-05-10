@@ -899,11 +899,12 @@ namespace
 	                                 std::chrono::time_point<std::chrono::steady_clock>* t1,
 	                                 std::chrono::time_point<std::chrono::steady_clock>* t2)
 	{
+		__m128i pixelEndianSwap = _mm_setr_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+
 		// Each row starts on 256-byte boundary
 		size_t srcStride = (width * 4 + 255) / 256 * 256;
 		const uint8_t* srcRow = src;
 		uint16_t* dstPix = dst;
-		__m128i pixelEndianSwap = _mm_setr_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
 		size_t blocks = width / 4;
 		*t1 = std::chrono::high_resolution_clock::now();
 		for (size_t y = 0; y < height; ++y)

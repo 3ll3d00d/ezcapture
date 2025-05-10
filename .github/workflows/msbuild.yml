@@ -36,7 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        configuration: [ Release, ReleaseWithLog, ReleaseNoArch, ReleaseWithLogNoArch ]
+        configuration: [ Release, ReleaseTrace, ReleaseNoArch, ReleaseTraceNoArch ]
 
     steps:
     - uses: actions/checkout@v4
@@ -87,12 +87,12 @@ jobs:
         then
           MW_ZIP_NAME="mwcapture-${{ github.ref_name }}-release-noarch.zip"
           BM_ZIP_NAME="bmcapture-${{ github.ref_name }}-release-noarch.zip"
-        elif [[ ${{ matrix.configuration }} == "ReleaseWithLog" ]]
+        elif [[ ${{ matrix.configuration }} == "ReleaseTrace" ]]
         then
           MW_ZIP_NAME="mwcapture-${{ github.ref_name }}-release-with-logging.zip"
           BM_ZIP_NAME="bmcapture-${{ github.ref_name }}-release-with-logging.zip"
           AX_SUFFIX="-trace"
-        elif [[ ${{ matrix.configuration }} == "ReleaseWithLogNoArch" ]]
+        elif [[ ${{ matrix.configuration }} == "ReleaseTraceNoArch" ]]
         then
           MW_ZIP_NAME="mwcapture-${{ github.ref_name }}-release-with-logging-noarch.zip"
           BM_ZIP_NAME="bmcapture-${{ github.ref_name }}-release-with-logging-noarch.zip"
