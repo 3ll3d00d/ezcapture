@@ -921,15 +921,15 @@ namespace
 				dstPix[0] = (p[0] & 0x3FF00000) >> 14;
 				dstPix[1] = (p[0] & 0xFFC00) >> 4;
 				dstPix[2] = (p[0] & 0x3FF) << 6;
-				dstPix[3] = (p[0] & 0x3FF00000) >> 14;
-				dstPix[4] = (p[0] & 0xFFC00) >> 4;
-				dstPix[5] = (p[0] & 0x3FF) << 6;
-				dstPix[6] = (p[0] & 0x3FF00000) >> 14;
-				dstPix[7] = (p[0] & 0xFFC00) >> 4;
-				dstPix[8] = (p[0] & 0x3FF) << 6;
-				dstPix[9] = (p[0] & 0x3FF00000) >> 14;
-				dstPix[10] = (p[0] & 0xFFC00) >> 4;
-				dstPix[11] = (p[0] & 0x3FF) << 6;
+				dstPix[3] = (p[1] & 0x3FF00000) >> 14;
+				dstPix[4] = (p[1] & 0xFFC00) >> 4;
+				dstPix[5] = (p[1] & 0x3FF) << 6;
+				dstPix[6] = (p[2] & 0x3FF00000) >> 14;
+				dstPix[7] = (p[2] & 0xFFC00) >> 4;
+				dstPix[8] = (p[2] & 0x3FF) << 6;
+				dstPix[9] = (p[3] & 0x3FF00000) >> 14;
+				dstPix[10] = (p[3] & 0xFFC00) >> 4;
+				dstPix[11] = (p[3] & 0x3FF) << 6;
 				dstPix += 12;
 				srcPixelBE += 4;
 			}
