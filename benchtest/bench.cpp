@@ -913,6 +913,7 @@ namespace
 
 			for (size_t x = 0; x < blocks; ++x)
 			{
+				// NB: 256bit avx2 load seems marginally slower than 128bit
 				// xmm is physically the lower lane of ymm so we can treat this as a ymm register going forward
 				__m128i pixelBlockBE = _mm_loadu_si128(reinterpret_cast<const __m128i*>(srcPixelBE));
 				// swap to produce 10bit BGR
