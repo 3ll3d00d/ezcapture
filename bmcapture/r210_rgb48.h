@@ -12,4 +12,23 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-#define EZ_VERSION_BUILD 0
+#pragma once
+
+#include "VideoFrameWriter.h"
+
+class r210_rgb48 : public IVideoFrameWriter
+{
+public:
+	r210_rgb48(const log_data& pLogData, uint32_t pX, uint32_t pY) : IVideoFrameWriter(pLogData, pX, pY, &RGB48)
+	{
+	}
+
+	~r210_rgb48() override = default;
+
+	HRESULT WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame) override;
+
+private:
+	#ifdef RECORD_RAW
+	uint32_t mFrameCounter;
+	#endif
+};

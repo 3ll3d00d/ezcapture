@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2025 Matt Khan
- *      https://github.com/3ll3d00d/mwcapture
+ *      https://github.com/3ll3d00d/ezcapture
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of
  * the GNU General Public License as published by the Free Software Foundation, version 3.
@@ -17,9 +17,21 @@
 #include <functional>
 #include <utility>
 #include <atlcomcli.h>
+#include <map>
 
 #include "capture.h"
-#include "DeckLinkAPI_h.h"
+#include "bmdomain.h"
+#include "VideoFrameWriter.h"
+
+#include "any_rgb.h"
+#include "r210_rgb48.h"
+#include "StraightThrough.h"
+#include "v210_p210.h"
+#include "yuv2_yv16.h"
+
+#ifdef NO_QUILL
+#include <memory>
+#endif
 
 EXTERN_C const GUID CLSID_BMCAPTURE_FILTER;
 EXTERN_C const GUID MEDIASUBTYPE_PCM_IN24;
@@ -55,185 +67,48 @@ inline bool isInCieRange(double value)
 	return value >= 0 && value <= 1.1;
 }
 
+enum frame_writer_strategy :uint8_t
+{
+	ANY_RGB,
+	YUV2_YV16,
+	V210_P210,
+	R210_BGR48,
+	STRAIGHT_THROUGH
+};
+
+inline const char* to_string(frame_writer_strategy e)
+{
+	switch (e)
+	{
+	case ANY_RGB: return "ANY_RGB";
+	case YUV2_YV16: return "YUV2_YV16";
+	case V210_P210: return "V210_P210";
+	case R210_BGR48: return "R210_BGR48";
+	case STRAIGHT_THROUGH: return "STRAIGHT_THROUGH";
+	default: return "unknown";
+	}
+}
+
+typedef std::map<pixel_format, std::pair<pixel_format, frame_writer_strategy>> pixel_format_fallbacks;
+typedef std::map<pixel_format, frame_writer_strategy> pixel_conversion_strategies;
+const pixel_conversion_strategies pixelConverters{
+	{RGBA, STRAIGHT_THROUGH},
+};
+const pixel_format_fallbacks pixelFormatFallbacks{
+	// standard consumer formats
+	{YUV2, {YV16, YUV2_YV16}},
+	{V210, {P210, V210_P210}},   // supported natively by madvr
+	{R210, {RGB48, R210_BGR48}}, // supported natively by jrvr >= MC34
+	// unlikely to be seen in the wild so just fallback to RGB using decklink sdk
+	{AY10, {RGBA, ANY_RGB}},
+	{R12B, {RGBA, ANY_RGB}},
+	{R12L, {RGBA, ANY_RGB}},
+	{R10B, {RGBA, ANY_RGB}},
+	{R10L, {RGBA, ANY_RGB}},
+};
+
 constexpr int64_t invalidFrameTime = std::numeric_limits<int64_t>::lowest();
 constexpr BMDAudioSampleType audioBitDepth = bmdAudioSampleType16bitInteger;
-
-struct DEVICE_INFO
-{
-	std::string name{};
-	int apiVersion[3]{0, 0, 0};
-	uint8_t audioChannelCount{0};
-	bool inputFormatDetection{false};
-	bool hdrMetadata{false};
-	bool colourspaceMetadata{false};
-	bool dynamicRangeMetadata{false};
-};
-
-struct VIDEO_SIGNAL
-{
-	BMDPixelFormat pixelFormat{bmdFormat8BitARGB};
-	BMDDisplayMode displayMode{bmdMode4K2160p2398};
-	std::string colourFormat{"YUV"};
-	std::string displayModeName{"4K2160p23.98"};
-	uint8_t bitDepth{8};
-	uint32_t frameDuration{1001};
-	uint16_t frameDurationScale{24000};
-	uint16_t cx{3840};
-	uint16_t cy{2160};
-	uint8_t aspectX{16};
-	uint8_t aspectY{9};
-};
-
-struct AUDIO_SIGNAL
-{
-	uint8_t channelCount{0};
-	uint8_t bitDepth{0};
-};
-
-class AudioFrame
-{
-public:
-	AudioFrame(log_data logData, int64_t captureTime, int64_t frameTime, void* data, long len, AUDIO_FORMAT fmt,
-	           uint64_t frameIndex, IDeckLinkAudioInputPacket* packet):
-		mCaptureTime(captureTime),
-		mFrameTime(frameTime),
-		mData(data),
-		mLength(len),
-		mFormat(std::move(fmt)),
-		mLogData(std::move(logData)),
-		mFrameIndex(frameIndex),
-		mPacket(packet)
-	{
-		auto ct = packet->AddRef();
-
-		#ifndef NO_QUILL
-		LOG_TRACE_L3(mLogData.logger, "[{}] AudioFrame Access (new) {} {}", mLogData.prefix, mFrameIndex, ct);
-		#endif
-	}
-
-	~AudioFrame()
-	{
-		auto ct = mPacket->Release();
-
-		#ifndef NO_QUILL
-		LOG_TRACE_L3(mLogData.logger, "[{}] AudioFrame Access (del) {} {}", mLogData.prefix, mFrameIndex, ct);
-		#endif
-	}
-
-	AudioFrame& operator=(const AudioFrame& rhs)
-	{
-		if (this == &rhs)
-			return *this;
-
-		mPacket = rhs.mPacket;
-		auto ct = mPacket->AddRef();
-
-		#ifndef NO_QUILL
-		LOG_TRACE_L3(mLogData.logger, "[{}] AudioFrame Access (assign) {} {}", mLogData.prefix, mFrameIndex, ct);
-		#endif
-
-		mLogData = rhs.mLogData;
-		mCaptureTime = rhs.mCaptureTime;
-		mFrameTime = rhs.mFrameTime;
-		mData = rhs.mData;
-		mLength = rhs.mLength;
-		mFormat = rhs.mFormat;
-		mFrameIndex = rhs.mFrameIndex;
-
-		return *this;
-	}
-
-	int64_t GetCaptureTime() const { return mCaptureTime; }
-
-	int64_t GetFrameTime() const { return mFrameTime; }
-
-	void* GetData() const { return mData; }
-
-	long GetLength() const { return mLength; }
-
-	AUDIO_FORMAT GetFormat() const { return mFormat; }
-
-private:
-	int64_t mCaptureTime{0};
-	int64_t mFrameTime{0};
-	void* mData = nullptr;
-	long mLength{0};
-	AUDIO_FORMAT mFormat{};
-	log_data mLogData;
-	uint64_t mFrameIndex{0};
-	IDeckLinkAudioInputPacket* mPacket;
-};
-
-class VideoFrame
-{
-public:
-	VideoFrame(log_data logData, VIDEO_FORMAT format, int64_t captureTime, int64_t frameTime, int64_t duration,
-	           uint64_t index, IDeckLinkVideoFrame* frame) :
-		mFormat(std::move(format)),
-		mCaptureTime(captureTime),
-		mFrameTime(frameTime),
-		mFrameDuration(duration),
-		mFrameIndex(index),
-		mLogData(std::move(logData))
-	{
-		frame->QueryInterface(IID_IDeckLinkVideoBuffer, reinterpret_cast<void**>(&mBuffer));
-		#ifndef NO_QUILL
-		// hack to get current ref count
-		frame->AddRef();
-		auto ct = frame->Release();
-		LOG_TRACE_L3(mLogData.logger, "[{}] VideoFrame Access (new) {} {}", mLogData.prefix, index, ct);
-		#endif
-
-		mLength = frame->GetRowBytes() * mFormat.cy;
-	}
-
-	~VideoFrame()
-	{
-		auto ct = mBuffer->Release();
-		#ifndef NO_QUILL
-		LOG_TRACE_L3(mLogData.logger, "[{}] VideoFrame Access (del) {} {}", mLogData.prefix, mFrameIndex, ct);
-		#endif
-	}
-
-	void CopyData(BYTE* dst) const
-	{
-		mBuffer->StartAccess(bmdBufferAccessRead);
-
-		void* data;
-		mBuffer->GetBytes(&data);
-		memcpy(dst, data, mLength);
-
-		mBuffer->EndAccess(bmdBufferAccessRead);
-	}
-
-	void WithData(void** dst) const
-	{
-		mBuffer->StartAccess(bmdBufferAccessRead);
-		mBuffer->GetBytes(dst);
-	}
-
-	uint64_t GetFrameIndex() const { return mFrameIndex; }
-
-	int64_t GetCaptureTime() const { return mCaptureTime; }
-
-	int64_t GetFrameTime() const { return mFrameTime; }
-
-	int64_t GetFrameDuration() const { return mFrameDuration; }
-
-	VIDEO_FORMAT GetVideoFormat() const { return mFormat; }
-
-	long GetLength() const { return mLength; }
-
-private:
-	VIDEO_FORMAT mFormat{};
-	int64_t mCaptureTime{0};
-	int64_t mFrameTime{0};
-	int64_t mFrameDuration{0};
-	uint64_t mFrameIndex{0};
-	long mLength{0};
-	IDeckLinkVideoBuffer* mBuffer = nullptr;
-	log_data mLogData;
-};
 
 class BMReferenceClock final :
 	public CBaseReferenceClock
@@ -250,8 +125,6 @@ public:
 		BMDTimeValue tv, tif, tpf;
 		mInput->GetHardwareReferenceClock(dshowTicksPerSecond, &tv, &tif, &tpf);
 		return tv;
-		// return std::chrono::duration_cast<std::chrono::microseconds>(
-		// std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 	}
 
 private:
@@ -346,7 +219,6 @@ private:
 	CComQIPtr<IDeckLinkNotification> mDeckLinkNotification;
 	CComQIPtr<IDeckLinkStatus> mDeckLinkStatus;
 	CComQIPtr<IDeckLinkHDMIInputEDID> mDeckLinkHDMIInputEDID;
-	CComPtr<IDeckLinkVideoConversion> mDeckLinkFrameConverter;
 	CCritSec mFrameSec;
 	CCritSec mDeckLinkSec;
 
@@ -359,7 +231,6 @@ private:
 	std::shared_ptr<VideoFrame> mVideoFrame;
 	HANDLE mVideoFrameEvent;
 
-	int64_t mPreviousAudioFrameTime{invalidFrameTime};
 	uint64_t mCurrentAudioFrameIndex{0};
 	std::shared_ptr<AudioFrame> mAudioFrame;
 	HANDLE mAudioFrameEvent;
@@ -387,6 +258,7 @@ public:
 	//////////////////////////////////////////////////////////////////////////
 	HRESULT FillBuffer(IMediaSample* pms) override;
 	HRESULT OnThreadCreate(void) override;
+	HRESULT CheckMediaType(const CMediaType*) override;
 
 protected:
 	void DoThreadDestroy() override;
@@ -395,6 +267,70 @@ protected:
 	void OnChangeMediaType() override;
 
 	std::shared_ptr<VideoFrame> mCurrentFrame;
+
+private:
+	boolean IsFallbackActive(const VIDEO_FORMAT* newVideoFormat) const
+	{
+		if (newVideoFormat->pixelFormat.format != mVideoFormat.pixelFormat.format)
+		{
+			auto search = pixelFormatFallbacks.find(newVideoFormat->pixelFormat);
+			if (search != pixelFormatFallbacks.end())
+			{
+				auto fallbackPixelFormat = search->second.first;
+				if (fallbackPixelFormat.format == mVideoFormat.pixelFormat.format)
+				{
+					if (newVideoFormat->cx == mVideoFormat.cx && newVideoFormat->cy == mVideoFormat.cy)
+					{
+						return true;
+					}
+				}
+			}
+		}
+		return false;
+	}
+
+	void UpdateFrameWriter(frame_writer_strategy strategy, const pixel_format& signalledFormat)
+	{
+		mSignalledFormat = signalledFormat;
+		if (mFrameWriterStrategy != strategy || strategy == ANY_RGB)
+		{
+			#ifndef NO_QUILL
+			LOG_TRACE_L1(mLogData.logger, "[{}] Updating conversion strategy from {} to {}", mLogData.prefix,
+			             to_string(mFrameWriterStrategy), to_string(strategy));
+			#endif
+
+			mFrameWriterStrategy = strategy;
+			switch (mFrameWriterStrategy)
+			{
+			case ANY_RGB:
+				mFrameWriter = std::make_unique<any_rgb>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
+				break;
+			case YUV2_YV16:
+				mFrameWriter = std::make_unique<yuv2_yv16>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
+				break;
+			case V210_P210:
+				mFrameWriter = std::make_unique<v210_p210>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
+				break;
+			case R210_BGR48:
+				mFrameWriter = std::make_unique<r210_rgb48>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
+				break;
+			case STRAIGHT_THROUGH:
+				mFrameWriter = std::make_unique<StraightThrough>(mLogData, mVideoFormat.cx, mVideoFormat.cy,
+				                                                 &mVideoFormat.pixelFormat);
+			}
+		}
+		else
+		{
+			#ifndef NO_QUILL
+			LOG_TRACE_L1(mLogData.logger, "[{}] No change to conversion strategy required {}", mLogData.prefix,
+			             to_string(mFrameWriterStrategy));
+			#endif
+		}
+	}
+
+	frame_writer_strategy mFrameWriterStrategy;
+	std::unique_ptr<IVideoFrameWriter> mFrameWriter;
+	pixel_format mSignalledFormat;
 };
 
 /**

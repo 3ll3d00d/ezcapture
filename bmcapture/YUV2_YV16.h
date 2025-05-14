@@ -12,4 +12,17 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-#define EZ_VERSION_BUILD 0
+#pragma once
+#include "VideoFrameWriter.h"
+
+class yuv2_yv16 : public IVideoFrameWriter
+{
+public:
+	yuv2_yv16(const log_data& pLogData, int pX, int pY) : IVideoFrameWriter(pLogData, pX, pY, &YV16)
+	{
+	}
+
+	~yuv2_yv16() override = default;
+
+	HRESULT WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame) override;
+};

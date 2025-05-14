@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2025 Matt Khan
- *      https://github.com/3ll3d00d/mwcapture
+ *      https://github.com/3ll3d00d/ezcapture
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of
  * the GNU General Public License as published by the Free Software Foundation, version 3.
@@ -21,50 +21,209 @@
 constexpr auto not_present = 1024;
 constexpr LONGLONG dshowTicksPerSecond = 10LL * 1000 * 1000; // 100ns
 
-// packed formats
-constexpr DWORD FOURCC_NV12 = MAKEFOURCC('N', 'V', '1', '2');
-constexpr uint8_t BITS_NV12 = 12;
-constexpr DWORD FOURCC_NV16 = MAKEFOURCC('N', 'V', '1', '6');
-constexpr uint8_t BITS_NV16 = 16;
-constexpr DWORD FOURCC_P010 = MAKEFOURCC('P', '0', '1', '0');
-constexpr uint8_t BITS_P010 = 24;
-constexpr DWORD FOURCC_P210 = MAKEFOURCC('P', '2', '1', '0');
-constexpr uint8_t BITS_P210 = 32;
-// unpacked formats
-constexpr DWORD FOURCC_BGR24 = MAKEFOURCC('B', 'G', 'R', ' ');
-constexpr uint8_t BITS_BGR24 = 24;
-constexpr DWORD FOURCC_BGR10 = MAKEFOURCC('B', 'G', '1', '0');
-constexpr uint8_t BITS_BGR10 = 32;
-constexpr DWORD FOURCC_AYUV = MAKEFOURCC('A', 'Y', 'U', 'V');
-constexpr uint8_t BITS_AYUV = 32;
-// blackmagic
-constexpr DWORD FOURCC_R210 = MAKEFOURCC('r', '2', '1', '0');
-constexpr uint8_t BITS_R210 = 32;
-constexpr DWORD FOURCC_RGBA = MAKEFOURCC('R', 'G', 'B', 'A');
-constexpr uint8_t BITS_RGBA = 32;
+enum colour_format :std::uint8_t
+{
+	COLOUR_FORMAT_UNKNOWN = 0, ///<unknown color format
+	RGB = 1, ///<RGB
+	REC601 = 2, ///<REC601
+	REC709 = 3, ///<REC709
+	BT2020 = 4, ///<BT2020
+	BT2020C = 5, ///<BT2020C
+	P3D65 = 6 ///<P3D65
+};
 
-// bit depth -> pixel encoding -> fourcc
-// RGB444, YUV422, YUV444, YUY420
-constexpr DWORD fourcc[3][4] = {
-	// 8 bit
-	{FOURCC_BGR24, FOURCC_NV16, FOURCC_AYUV, FOURCC_NV12},
-	// 10 bit
-	{FOURCC_BGR10, FOURCC_P210, FOURCC_AYUV, FOURCC_P010},
-	// 12 bit
-	{FOURCC_BGR10, FOURCC_P210, FOURCC_AYUV, FOURCC_P010},
+enum pixel_encoding :std::uint8_t
+{
+	RGB_444 = 0, ///<RGB444
+	YUV_422 = 1, ///<YUV422
+	YUV_444 = 2, ///<YUV444
+	YUV_420 = 3 ///<YUV420
 };
-constexpr std::string_view fourccName[3][4] = {
-	{"BGR24", "NV16", "AYUV", "NV12"},
-	{"BGR10", "P210", "AYUV", "P010"},
-	{"BGR10", "P210", "AYUV", "P010"},
+
+enum quantisation_range : std::uint8_t
+{
+	QUANTISATION_UNKNOWN = 0x00, ///<the default quantisation range
+	QUANTISATION_FULL = 0x01,
+	///<Full range, which has 8-bit data. The black-white color range is 0-255/1023/4095/65535.
+	QUANTISATION_LIMITED = 0x02
+	///<Limited range, which has 8-bit data. The black-white color range is 16/64/256/4096-235(240)/940(960)/3760(3840)/60160(61440).
 };
-constexpr uint8_t fourccBitCount[3][4] = {
-	// 8 bit
-	{BITS_BGR24, BITS_NV16, BITS_AYUV, BITS_NV12},
-	// 10 bit
-	{BITS_BGR10, BITS_P210, BITS_AYUV, BITS_P010},
-	// 12 bit
-	{BITS_BGR10, BITS_P210, BITS_AYUV, BITS_P010},
+
+enum saturation_range : std::uint8_t
+{
+	SATURATION_UNKNOWN = 0x00, ///<The default saturation range
+	SATURATION_FULL = 0x01, ///<Full range, which has 8-bit data. The black-white color range is 0-255/1023/4095/65535
+	SATURATION_LIMITED = 0x02,
+	///<Limited range, which has 8-bit data. The black-white color range is 16/64/256/4096-235(240)/940(960)/3760(3840)/60160(61440)
+	EXTENDED_GAMUT = 0x03
+	///<Extended range, which has 8-bit data. The black-white color range is 1/4/16/256-254/1019/4079/65279
+};
+
+struct pixel_format
+{
+	enum format:uint8_t
+	{
+		NV12,
+		NV16,
+		P010,
+		P210,
+		AYUV,
+		BGR24,
+		BGR10,
+		RGB48,
+		YUV2,
+		YV16,
+		V210,
+		AY10,
+		ARGB,
+		BGRA,
+		RGBA,
+		R210,
+		R12B,
+		R12L,
+		R10B,
+		R10L
+	};
+
+	pixel_format(format pf, char a, char b, char c, char d, uint8_t pBitDepth, uint8_t pBitsPerPixel, bool pRgb,
+	             pixel_encoding pPixelEncoding, DWORD pByteAlignment = 2)
+	{
+		format = pf;
+		fourcc = MAKEFOURCC(a, b, c, d);
+		bitDepth = pBitDepth;
+		bitsPerPixel = pBitsPerPixel;
+		name = std::string{a, b, c, d};
+		rgb = pRgb;
+		byteAlignment = pByteAlignment;
+		subsampling = pPixelEncoding;
+	}
+
+	format format;
+	DWORD fourcc;
+	uint8_t bitDepth;
+	uint8_t bitsPerPixel;
+	std::string name;
+	bool rgb;
+	DWORD byteAlignment;
+	pixel_encoding subsampling;
+
+	void GetImageDimensions(int cx, int cy, DWORD* rowBytes, DWORD* imageBytes) const
+	{
+		DWORD cbLine;
+		switch (format)
+		{
+		case R210:
+		case AY10:
+		case R10B:
+		case R10L:
+			cbLine = (cx + 63) / 64 * 256;
+			break;
+		case V210:
+			cbLine = (cx + 47) / 48 * 128;
+			break;
+		case YUV2:
+		case P010:
+		case P210:
+			cbLine = cx * 2;
+			break;
+		case BGR24:
+			cbLine = cx * 3;
+			break;
+		case NV16:
+		case YV16:
+		case NV12:
+			cbLine = cx;
+			break;
+		case AYUV:
+		case BGR10:
+		case ARGB:
+		case BGRA:
+		case RGBA:
+			cbLine = cx * 4;
+			break;
+		case RGB48:
+			cbLine = cx * 6;
+			break;
+		case R12B:
+		case R12L:
+		default: // NOLINT(clang-diagnostic-covered-switch-default)
+			cbLine = cx * bitsPerPixel / 8;
+		}
+
+		*rowBytes = (cbLine + byteAlignment - 1) & ~(byteAlignment - 1);
+		*imageBytes = *rowBytes * cy;
+
+		if (format == NV12 || format == P010)
+		{
+			*imageBytes = *imageBytes * 3 / 2;
+		} else if (format == YV16 || format == NV16 || format == P210)
+		{
+			*imageBytes = *imageBytes * 2;
+		}
+	}
+
+	DWORD GetBiCompression() const
+	{
+		return rgb ? BI_RGB : fourcc;
+	}
+
+	// required to allow use in a std::map
+	bool operator<(const pixel_format& rhs) const noexcept
+	{
+		return this->format < rhs.format;
+	}
+
+	bool operator==(const pixel_format& rhs) const noexcept
+	{
+		return this->format == rhs.format;
+	}
+};
+
+// magewell
+const inline pixel_format NV12{pixel_format::NV12, 'N', 'V', '1', '2', 8, 12, false, YUV_420};
+const inline pixel_format NV16{pixel_format::NV16, 'N', 'V', '1', '6', 8, 16, false, YUV_422};
+const inline pixel_format P010{pixel_format::P010, 'P', '0', '1', '0', 10, 24, false, YUV_420};
+const inline pixel_format P210{pixel_format::P210, 'P', '2', '1', '0', 10, 32, false, YUV_422};
+const inline pixel_format AYUV{pixel_format::AYUV, 'A', 'Y', 'U', 'V', 8, 32, false, YUV_444};
+const inline pixel_format BGR24{pixel_format::BGR24, 'B', 'G', 'R', ' ', 8, 24, true, RGB_444};
+const inline pixel_format BGR10{pixel_format::BGR10, 'B', 'G', '1', '0', 10, 32, true, RGB_444};
+// blackmagic, generally require conversion due to lack of native renderer support
+const inline pixel_format YUV2{pixel_format::YUV2, '2', 'V', 'U', 'Y', 8, 16, false, YUV_422};
+const inline pixel_format V210{pixel_format::V210, 'v', '2', '1', '0', 10, 16, false, YUV_422, 128};
+const inline pixel_format AY10{pixel_format::AY10, 'A', 'y', '1', '0', 10, 32, false, YUV_422, 256};
+const inline pixel_format ARGB{pixel_format::ARGB, 'A', 'R', 'G', 'B', 8, 32, true, RGB_444};
+const inline pixel_format BGRA{pixel_format::BGRA, 'B', 'G', 'R', 'A', 8, 32, true, RGB_444};
+const inline pixel_format RGBA{pixel_format::RGBA, 'R', 'G', 'B', 'A', 8, 32, true, RGB_444};
+const inline pixel_format R210{pixel_format::R210, 'r', '2', '1', '0', 10, 32, false, RGB_444, 256};
+const inline pixel_format R12B{pixel_format::R12B, 'R', '1', '2', 'B', 12,36, false, RGB_444};
+const inline pixel_format R12L{pixel_format::R12L, 'R', '1', '2', 'L', 12, 36, false, RGB_444};
+const inline pixel_format R10L{pixel_format::R10L, 'R', '1', '0', 'l', 10, 32, false, RGB_444, 256};
+const inline pixel_format R10B{pixel_format::R10B, 'R', '1', '0', 'b', 10, 32, false, RGB_444, 256};
+// jrvr
+const inline pixel_format YV16{pixel_format::YV16, 'Y', 'V', '1', '6', 8, 16, false, YUV_422};
+const inline pixel_format RGB48{pixel_format::RGB48, 'R', 'G', 'B', '0', 16, 48, false, RGB_444};
+
+const pixel_format ALL_PIXEL_FORMATS[] = {
+	NV12,
+	NV16,
+	P010,
+	P210,
+	AYUV,
+	BGR24,
+	BGR10,
+	YUV2,
+	YV16,
+	V210,
+	AY10,
+	ARGB,
+	BGRA,
+	RGBA,
+	R210,
+	R12B,
+	R12L,
+	R10L,
+	R10B,
+	RGB48
 };
 
 struct DEVICE_STATUS
@@ -158,7 +317,7 @@ struct VIDEO_OUTPUT_STATUS
 	std::string outSaturation;
 	double outFps;
 	int outBitDepth{0};
-	std::string outPixelLayout;
+	std::string outSubsampling;
 	std::string outPixelStructure;
 	std::string outTransferFunction;
 };
@@ -180,49 +339,10 @@ struct HDR_STATUS
 	double hdrMaxFALL;
 };
 
-enum colour_format :std::uint8_t
-{
-	COLOUR_FORMAT_UNKNOWN = 0, ///<unknown color format
-	RGB = 1, ///<RGB
-	YUV601 = 2, ///<YUV601
-	YUV709 = 3, ///<YUV709
-	YUV2020 = 4, ///<YUV2020
-	YUV2020C = 5, ///<YUV2020C
-	P3D65 = 6 ///<P3D65
-};
-
-enum pixel_encoding:std::uint8_t
-{
-	RGB_444 = 0, ///<RGB444
-	YUV_422 = 1, ///<YUV422
-	YUV_444 = 2, ///<YUV444
-	YUV_420 = 3 ///<YUV420
-};
-
-enum quantisation_range : std::uint8_t
-{
-	QUANTISATION_UNKNOWN = 0x00, ///<the default quantisation range
-	QUANTISATION_FULL = 0x01,
-	///<Full range, which has 8-bit data. The black-white color range is 0-255/1023/4095/65535.
-	QUANTISATION_LIMITED = 0x02
-	///<Limited range, which has 8-bit data. The black-white color range is 16/64/256/4096-235(240)/940(960)/3760(3840)/60160(61440).
-};
-
-enum saturation_range : std::uint8_t
-{
-	SATURATION_UNKNOWN = 0x00, ///<The default saturation range
-	SATURATION_FULL = 0x01, ///<Full range, which has 8-bit data. The black-white color range is 0-255/1023/4095/65535
-	SATURATION_LIMITED = 0x02,
-	///<Limited range, which has 8-bit data. The black-white color range is 16/64/256/4096-235(240)/940(960)/3760(3840)/60160(61440)
-	EXTENDED_GAMUT = 0x03
-	///<Extended range, which has 8-bit data. The black-white color range is 1/4/16/256-254/1019/4079/65279
-};
-
 struct VIDEO_FORMAT
 {
-	colour_format colourFormat{YUV709};
-	pixel_encoding pixelEncoding{YUV_420};
-	byte bitDepth{8};
+	colour_format colourFormat{REC709};
+	pixel_format pixelFormat{NV12};
 	int cx{3840};
 	int cy{2160};
 	double fps{50.0};
@@ -230,15 +350,17 @@ struct VIDEO_FORMAT
 	HDR_META hdrMeta{};
 	int aspectX{16};
 	int aspectY{9};
-	quantisation_range quantisation{QUANTISATION_LIMITED};
-	saturation_range saturation{SATURATION_LIMITED};
+	quantisation_range quantisation{QUANTISATION_UNKNOWN};
+	saturation_range saturation{SATURATION_UNKNOWN};
 	// derived from the above attributes
-	byte bitCount;
-	DWORD pixelStructure; // fourcc
-	std::string pixelStructureName;
-	std::string colourFormatName{"YUV709"};
-	DWORD lineLength;
-	DWORD imageSize;
+	std::string colourFormatName{"REC709"};
+	DWORD lineLength{0};
+	DWORD imageSize{0};
+
+	void CalculateDimensions()
+	{
+		pixelFormat.GetImageDimensions(cx, cy, &lineLength, &imageSize);
+	}
 };
 
 enum Codec
@@ -286,52 +408,3 @@ struct AUDIO_FORMAT
 	// encoded content only
 	uint16_t dataBurstSize{0};
 };
-
-inline void GetImageDimensions(DWORD fourcc, int cx, int cy, DWORD* rowBytes, DWORD* imageBytes)
-{
-	DWORD byteAlignment = 2;
-	DWORD cbLine;
-
-	switch (fourcc)
-	{
-	case FOURCC_BGR24:
-		cbLine = (cx * BITS_BGR24) / 8;
-		break;
-	case FOURCC_RGBA:
-		cbLine = (cx * BITS_RGBA) / 8;
-		break;
-	case FOURCC_BGR10:
-		cbLine = (cx * BITS_BGR10) / 8;
-		break;
-	case FOURCC_AYUV:
-		cbLine = (cx * BITS_AYUV) / 8;
-		break;
-	case FOURCC_P010:
-	case FOURCC_P210:
-		cbLine = cx * 2;
-		break;
-	case FOURCC_R210:
-		cbLine = (cx + 63) / 64 * 256;
-		byteAlignment = 256;
-		break;
-	default:
-		cbLine = cx;
-		break;
-	}
-
-	*rowBytes = (cbLine + byteAlignment - 1) & ~(byteAlignment - 1);
-
-	switch (fourcc)
-	{
-	case FOURCC_NV12:
-	case FOURCC_P010:
-		*imageBytes = *rowBytes * cy * 3 / 2;
-		break;
-	case FOURCC_NV16:
-	case FOURCC_P210:
-		*imageBytes = *rowBytes * cy * 2;
-		break;
-	default:
-		*imageBytes = *rowBytes * cy;
-	}
-}

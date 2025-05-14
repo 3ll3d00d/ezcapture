@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2025 Matt Khan
- *      https://github.com/3ll3d00d/mwcapture
+ *      https://github.com/3ll3d00d/ezcapture
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of
  * the GNU General Public License as published by the Free Software Foundation, version 3.
@@ -13,10 +13,14 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 #pragma once
+#define NOMINMAX // quill does not compile without this
 
+#ifdef NO_QUILL
+#include <chrono>
+#endif
 #include "capture.h"
-#include "LibMWCapture/MWCapture.h"
 #include "util.h"
+#include "LibMWCapture/MWCapture.h"
 
 // HDMI Audio Bitstream Codec Identification metadata
 
@@ -205,7 +209,7 @@ protected:
     void DoThreadDestroy() override;
     void StopCapture();
 
-	static void LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL* videoSignal, USB_CAPTURE_FORMATS* captureFormats);
+	void LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL* videoSignal, USB_CAPTURE_FORMATS* captureFormats);
     // USB only
     static void CaptureFrame(BYTE* pbFrame, int cbFrame, UINT64 u64TimeStamp, void* pParam);
 

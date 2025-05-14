@@ -12,4 +12,17 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-#define EZ_VERSION_BUILD 0
+#pragma once
+#include "VideoFrameWriter.h"
+
+class v210_p210 : public IVideoFrameWriter
+{
+public:
+	v210_p210(const log_data& pLogData, int pX, int pY) : IVideoFrameWriter(pLogData, pX, pY, &P210)
+	{
+	}
+
+	~v210_p210() override = default;
+
+	HRESULT WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame) override;
+};

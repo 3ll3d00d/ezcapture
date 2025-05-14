@@ -12,4 +12,26 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-#define EZ_VERSION_BUILD 0
+#pragma once
+#include "VideoFrameWriter.h"
+
+class StraightThrough : public IVideoFrameWriter
+{
+public:
+	StraightThrough(const log_data& pLogData, int pX, int pY, const pixel_format* pPixelFormat)
+		: IVideoFrameWriter(pLogData, pX, pY, pPixelFormat)
+	{
+	}
+
+	~StraightThrough() override = default;
+
+	HRESULT WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame) override
+	{
+		if (CheckFrameSizes(srcFrame->GetFrameIndex(), srcFrame->GetLength(), dstFrame) != S_OK)
+		{
+			return S_FALSE;
+		}
+
+		return srcFrame->CopyData(dstFrame);
+	}
+};

@@ -36,7 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        configuration: [ Debug, Release, ReleaseTrace, ReleaseWarn ]
+        configuration: [ Release, ReleaseTrace, ReleaseNoArch, ReleaseTraceNoArch ]
 
     steps:
     - uses: actions/checkout@v4
@@ -79,28 +79,33 @@ jobs:
       id: create_dist
       shell: bash
       run: |
-        if [[ ${{ matrix.configuration }} == "Debug" ]]
-        then
-          MW_ZIP_NAME="mwcapture-${{ github.ref_name }}-debug-trace-logging.zip"
-          (cd x64/${{ matrix.configuration }}; 7z a ../../${MW_ZIP_NAME} mwcapture.exp)
-          BM_ZIP_NAME="bmcapture-${{ github.ref_name }}-debug-trace-logging.zip"
-          (cd x64/${{ matrix.configuration }}; 7z a ../../${MW_ZIP_NAME} bmcapture.exp)
-        elif [[ ${{ matrix.configuration }} == "Release" ]]
+        if [[ ${{ matrix.configuration }} == "Release" ]]
         then
           MW_ZIP_NAME="mwcapture-${{ github.ref_name }}.zip"
           BM_ZIP_NAME="bmcapture-${{ github.ref_name }}.zip"
+        elif [[ ${{ matrix.configuration }} == "ReleaseNoArch" ]]
+        then
+          MW_ZIP_NAME="mwcapture-${{ github.ref_name }}-release-noarch.zip"
+          BM_ZIP_NAME="bmcapture-${{ github.ref_name }}-release-noarch.zip"
         elif [[ ${{ matrix.configuration }} == "ReleaseTrace" ]]
         then
-          MW_ZIP_NAME="mwcapture-${{ github.ref_name }}-release-trace-logging.zip"
-          BM_ZIP_NAME="bmcapture-${{ github.ref_name }}-release-trace-logging.zip"
-        elif [[ ${{ matrix.configuration }} == "ReleaseWarn" ]]
+          MW_ZIP_NAME="mwcapture-${{ github.ref_name }}-release-with-logging.zip"
+          BM_ZIP_NAME="bmcapture-${{ github.ref_name }}-release-with-logging.zip"
+          AX_SUFFIX="-trace"
+        elif [[ ${{ matrix.configuration }} == "ReleaseTraceNoArch" ]]
         then
-          MW_ZIP_NAME="mwcapture-${{ github.ref_name }}-release-warn-logging.zip"
-          BM_ZIP_NAME="bmcapture-${{ github.ref_name }}-release-warn-logging.zip"
+          MW_ZIP_NAME="mwcapture-${{ github.ref_name }}-release-with-logging-noarch.zip"
+          BM_ZIP_NAME="bmcapture-${{ github.ref_name }}-release-with-logging-noarch.zip"
+          AX_SUFFIX="-trace"
         fi
         7z a ${MW_ZIP_NAME} COPYING 
         7z a ${BM_ZIP_NAME} COPYING 
-        (cd x64/${{ matrix.configuration }}; 7z a ../../${MW_ZIP_NAME} mwcapture.ax; 7z a ../../${BM_ZIP_NAME} bmcapture.ax)
+        if [[ -n "${AX_SUFFIX}" ]]
+        then
+            cp x64/${{ matrix.configuration }}/mwcapture.ax x64/${{ matrix.configuration }}/mwcapture${AX_SUFFIX}.ax
+            cp x64/${{ matrix.configuration }}/bmcapture.ax x64/${{ matrix.configuration }}/bmcapture${AX_SUFFIX}.ax
+        fi
+        (cd x64/${{ matrix.configuration }}; 7z a ../../${MW_ZIP_NAME} mwcapture${AX_SUFFIX}.ax; 7z a ../../${BM_ZIP_NAME} bmcapture${AX_SUFFIX}.ax)
         (cd mwsdk; 7z a ../${MW_ZIP_NAME} RedistLicense.rtf)
         (cd mwsdk; 7z a ../${MW_ZIP_NAME} MWCaptureRT.exe)
         echo "mw_binary_path=${MW_ZIP_NAME}" >> "$GITHUB_OUTPUT"

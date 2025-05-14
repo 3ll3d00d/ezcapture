@@ -12,4 +12,37 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-#define EZ_VERSION_BUILD 0
+#pragma once
+
+#include "MediaSampleBackedDecklinkBuffer.h"
+
+#include "capture.h"
+#include "combase.h"
+
+HRESULT MediaSampleBackedDecklinkBuffer::QueryInterface(const IID& riid, void** ppvObject)
+{
+	if (riid == _uuidof(IDeckLinkVideoBuffer))
+	{
+		return GetInterface(this, ppvObject);
+	}
+
+	if (riid == IID_IUnknown)
+	{
+		GetInterface(reinterpret_cast<LPUNKNOWN>(reinterpret_cast<PNDUNKNOWN>(this)), ppvObject);
+		return NOERROR;
+	}
+	*ppvObject = nullptr;
+	return E_NOINTERFACE;
+}
+
+HRESULT MediaSampleBackedDecklinkBuffer::GetBytes(void** buffer)
+{
+	BYTE* out;
+	auto hr = mSample->GetPointer(&out);
+	if (hr != S_OK)
+	{
+		return hr;
+	}
+	*buffer = &out;
+	return S_OK;
+}
