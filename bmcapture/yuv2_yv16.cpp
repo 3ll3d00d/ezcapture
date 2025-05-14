@@ -25,34 +25,33 @@ namespace
 	#ifdef __AVX2__
 	bool convert(const uint8_t* src, uint8_t* yPlane, uint8_t* uPlane, uint8_t* vPlane, int width, int height)
 	{
-		auto srcStride = width * 2;
-		auto yStride = width;
-		auto uvStride = width / 2;
-
+		const __m256i shuffle_1 = _mm256_setr_epi8(
+			2, 6, 10, 14, 0, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15,
+			2, 6, 10, 14, 0, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15
+		);
+		const __m256i permute = _mm256_setr_epi32(0, 4, 1, 5, 2, 3, 6, 7);
+		uint64_t* y_out = reinterpret_cast<uint64_t*>(yPlane);
+		uint64_t* u_out = reinterpret_cast<uint64_t*>(uPlane);
+		uint64_t* v_out = reinterpret_cast<uint64_t*>(vPlane);
 		for (int y = 0; y < height; ++y)
 		{
-			const uint8_t* srcRow = src + y * srcStride;
-			uint8_t* y_row = yPlane + y * yStride;
-			uint8_t* u_row = uPlane + (y / 2) * uvStride;
-			uint8_t* v_row = vPlane + (y / 2) * uvStride;
-
-			for (int x = 0; x < width; x += 2)
+			for (int x = 0; x < width; x += 16) // 16 bits per pixel in 256 bit chunks = 16 pixels per pass
 			{
-				const uint8_t* pixel = srcRow + x * 2;
+				__m256i pixels = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src));
+				__m256i shuffled = _mm256_shuffle_epi8(pixels, shuffle_1);
+				__m256i permuted = _mm256_permutevar8x32_epi32(shuffled, permute);
+				const uint64_t* vals = reinterpret_cast<const uint64_t*>(&permuted);
 
-				// Extract Y values
-				y_row[x] = pixel[1];
-				if (x + 1 < width)
-				{
-					y_row[x + 1] = pixel[3];
-				}
+				v_out[0] = vals[0]; // 8 bytes each of UV
+				v_out++;
+				u_out[0] = vals[1];
+				u_out++;
 
-				// Process U and V only for even rows (vertical subsampling)
-				if (y % 2 == 0)
-				{
-					u_row[x / 2] = pixel[0];
-					v_row[x / 2] = pixel[2];
-				}
+				y_out[0] = vals[2]; // 16 bytes of Y
+				y_out[1] = vals[3];
+				y_out += 2;
+
+				src += 32; // 32 bytes read
 			}
 		}
 		return true;
@@ -60,34 +59,19 @@ namespace
 	#else
 	bool convert(const uint8_t* src, uint8_t* yPlane, uint8_t* uPlane, uint8_t* vPlane, int width, int height)
 	{
-		auto srcStride = width * 2;
-		auto yStride = width;
-		auto uvStride = width / 2;
-
 		for (int y = 0; y < height; ++y)
 		{
-			const uint8_t* srcRow = src + y * srcStride;
-			uint8_t* y_row = yPlane + y * yStride;
-			uint8_t* u_row = uPlane + (y / 2) * uvStride;
-			uint8_t* v_row = vPlane + (y / 2) * uvStride;
-
-			for (int x = 0; x < width; x += 2)
+			for (int x = 0; x < width; x += 2) // 2 pixels per pass
 			{
-				const uint8_t* pixel = srcRow + x * 2;
+				uPlane[0] = src[0];
+				yPlane[0] = src[1];
+				vPlane[0] = src[2];
+				yPlane[1] = src[3];
 
-				// Extract Y values
-				y_row[x] = pixel[1];
-				if (x + 1 < width)
-				{
-					y_row[x + 1] = pixel[3];
-				}
-
-				// Process U and V only for even rows (vertical subsampling)
-				if (y % 2 == 0)
-				{
-					u_row[x / 2] = pixel[0];
-					v_row[x / 2] = pixel[2];
-				}
+				yPlane += 2;
+				uPlane++;
+				vPlane++;
+				src += 4;
 			}
 		}
 		return true;
@@ -123,8 +107,8 @@ HRESULT yuv2_yv16::WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame)
 
 	auto outSpan = std::span(outData, dstSize);
 	uint8_t* yPlane = outSpan.subspan(0, ySize).data();
-	uint8_t* uPlane = outSpan.subspan(yChunk, uvSize).data();
-	uint8_t* vPlane = outSpan.subspan(yChunk + uvChunk, uvSize).data();
+	uint8_t* vPlane = outSpan.subspan(yChunk, uvSize).data();
+	uint8_t* uPlane = outSpan.subspan(yChunk + uvChunk, uvSize).data();
 
 	#ifndef NO_QUILL
 	auto delta = yChunk + uvChunk * 2 - dstSize;

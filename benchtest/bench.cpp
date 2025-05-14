@@ -920,9 +920,9 @@ namespace
 				__m128i pixelBlockLE = _mm_shuffle_epi8(pixelBlockBE, pixelEndianSwap);
 				const uint32_t* p = reinterpret_cast<const uint32_t*>(&pixelBlockLE);
 
-				dstPix[0] = (p[0] & 0x3FF00000) >> 14;
-				dstPix[1] = (p[0] & 0xFFC00) >> 4;
-				dstPix[2] = (p[0] & 0x3FF) << 6;
+				dstPix[0] = (p[0] & 0x3FF00000) >> 14; // red
+				dstPix[1] = (p[0] & 0xFFC00) >> 4; // green
+				dstPix[2] = (p[0] & 0x3FF) << 6; // blue
 				dstPix[3] = (p[1] & 0x3FF00000) >> 14;
 				dstPix[4] = (p[1] & 0xFFC00) >> 4;
 				dstPix[5] = (p[1] & 0x3FF) << 6;
@@ -949,14 +949,14 @@ namespace
 		// Each row starts on 256-byte boundary 
 		size_t srcStride = (width * 4 + 255) / 256 * 256;
 
-		__m128i pixelEndianSwap = _mm_setr_epi8(3, 2, 1, 0, 7, 6, 5, 4, 11, 10, 9, 8, 15, 14, 13, 12);
+		__m128i pixelEndianSwap = _mm_set_epi8(12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3);
 		const __m256i mask_R_B = _mm256_set1_epi32(0x3FF003FF);
 		const __m256i shift_R_B = _mm256_set1_epi32(0x00040040);
 		const __m256i mask_G = _mm256_set1_epi32(0x000FFC00);
 		const int lane_cross = 0b11011000; // shift upper 64bit of lower lane into lower 64bit of upper lane
 		const __m256i split_red_blue = _mm256_setr_epi8(
-			0, 1, -1, -1, 2, 3, 4, 5, -1, -1, 6, 7, -1, -1, -1, -1,
-			0, 1, -1, -1, 2, 3, 4, 5, -1, -1, 6, 7, -1, -1, -1, -1
+			2, 3, -1, -1, 0, 1, 6, 7, -1, -1, 4, 5, -1, -1, -1, -1,
+			2, 3, -1, -1, 0, 1, 6, 7, -1, -1, 4, 5, -1, -1, -1, -1
 		);
 		const __m256i shift_green = _mm256_setr_epi8(
 			-1, -1, 0, 1, -1, -1, -1, -1, 4, 5, -1, -1, -1, -1, -1, -1,
@@ -996,8 +996,52 @@ namespace
 				srcRow += 4;
 				dst += 12;
 			}
+		}
+		*t2 = std::chrono::high_resolution_clock::now();
+		return true;
+	}
 
-			srcRow += srcStride;
+	bool convert_avx2_shift_rgb(const uint8_t* src, uint16_t* dst, size_t width, size_t height,
+	                            std::chrono::time_point<std::chrono::steady_clock>* t1,
+	                            std::chrono::time_point<std::chrono::steady_clock>* t2)
+	{
+		// Each row starts on 256-byte boundary 
+		size_t srcStride = (width * 4 + 255) / 256 * 256;
+
+		__m256i pixelEndianSwap = _mm256_set_epi8(
+			12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3,
+			12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3
+		);
+		const __m256i mask_R_B = _mm256_set1_epi32(0x3FF003FF);
+		const __m256i shift_R_B = _mm256_set1_epi32(0x00040040);
+		const __m256i mask_G = _mm256_set1_epi32(0x000FFC00);
+
+		const int blocks = width / 8;
+		*t1 = std::chrono::high_resolution_clock::now();
+		for (size_t y = 0; y < height; ++y)
+		{
+			const uint32_t* srcRow = reinterpret_cast<const uint32_t*>(src + y * srcStride);
+
+			for (int x = 0; x < blocks; ++x)
+			{
+				__m256i pixelBlockBE = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(srcRow));
+				// swap to produce 10bit BGR
+				__m256i pixelBlockLE = _mm256_shuffle_epi8(pixelBlockBE, pixelEndianSwap);
+				// extract & align 10-bit components across 2 vectors shifted to 16bit values
+				__m256i r_b_vector = _mm256_mullo_epi16(_mm256_and_si256(pixelBlockLE, mask_R_B), shift_R_B);
+				__m256i g_vector = _mm256_srli_epi32(_mm256_and_si256(pixelBlockLE, mask_G), 4);
+				const uint16_t* r_b = reinterpret_cast<const uint16_t*>(&r_b_vector);
+				const uint16_t* g = reinterpret_cast<const uint16_t*>(&g_vector);
+				// scalar write to the output
+				for (int z = 0; z < 16; z += 2)
+				{
+					dst[0] = r_b[z + 1]; // red
+					dst[1] = g[z];
+					dst[2] = r_b[z]; // blue
+					dst += 3;
+				}
+				srcRow += 8;
+			}
 		}
 		*t2 = std::chrono::high_resolution_clock::now();
 		return true;
@@ -1008,35 +1052,58 @@ namespace
 	                         std::chrono::time_point<std::chrono::steady_clock>* t1,
 	                         std::chrono::time_point<std::chrono::steady_clock>* t2)
 	{
-		auto srcStride = width * 2;
-		auto yStride = width;
-		auto uvStride = width / 2;
-
 		*t1 = std::chrono::high_resolution_clock::now();
 		for (int y = 0; y < height; ++y)
 		{
-			const uint8_t* srcRow = src + y * srcStride;
-			uint8_t* y_row = yPlane + y * yStride;
-			uint8_t* u_row = uPlane + (y / 2) * uvStride;
-			uint8_t* v_row = vPlane + (y / 2) * uvStride;
-
-			for (int x = 0; x < width; x += 2)
+			for (int x = 0; x < width; x += 2) // 2 pixels per pass
 			{
-				const uint8_t* pixel = srcRow + x * 2;
+				uPlane[0] = src[0];
+				yPlane[0] = src[1];
+				vPlane[0] = src[2]; 
+				yPlane[1] = src[3];
 
-				// Extract Y values
-				y_row[x] = pixel[1];
-				if (x + 1 < width)
-				{
-					y_row[x + 1] = pixel[3];
-				}
+				yPlane += 2;
+				uPlane++;
+				vPlane++;
+				src += 4; 
+			}
+		}
+		*t2 = std::chrono::high_resolution_clock::now();
+		return true;
+	}
 
-				// Process U and V only for even rows (vertical subsampling)
-				if (y % 2 == 0)
-				{
-					u_row[x / 2] = pixel[0];
-					v_row[x / 2] = pixel[2];
-				}
+	bool convert_yuv2_avx(const uint8_t* src, uint8_t* yPlane, uint8_t* uPlane, uint8_t* vPlane, int width,
+	                      int height, std::chrono::time_point<std::chrono::steady_clock>* t1,
+	                      std::chrono::time_point<std::chrono::steady_clock>* t2)
+	{
+		const __m256i shuffle_1 = _mm256_setr_epi8(
+			2, 6, 10, 14, 0, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15,
+			2, 6, 10, 14, 0, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15
+		);
+		const __m256i permute = _mm256_setr_epi32(0, 4, 1, 5, 2, 3, 6, 7);
+		uint64_t* y_out = reinterpret_cast<uint64_t*>(yPlane);
+		uint64_t* u_out = reinterpret_cast<uint64_t*>(uPlane);
+		uint64_t* v_out = reinterpret_cast<uint64_t*>(vPlane);
+		*t1 = std::chrono::high_resolution_clock::now();
+		for (int y = 0; y < height; ++y)
+		{
+			for (int x = 0; x < width; x += 16) // 16 bits per pixel in 256 bit chunks = 16 pixels per pass
+			{
+				__m256i pixels = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src));
+				__m256i shuffled = _mm256_shuffle_epi8(pixels, shuffle_1);
+				__m256i permuted = _mm256_permutevar8x32_epi32(shuffled, permute);
+				const uint64_t* vals = reinterpret_cast<const uint64_t*>(&permuted);
+
+				v_out[0] = vals[0]; // 8 bytes each of UV
+				v_out++;
+				u_out[0] = vals[1];
+				u_out++;
+
+				y_out[0] = vals[2]; // 16 bytes of Y
+				y_out[1] = vals[3];
+				y_out += 2;
+
+				src += 32; // 32 bytes read
 			}
 		}
 		*t2 = std::chrono::high_resolution_clock::now();
@@ -1072,6 +1139,8 @@ enum bench_mode:uint8_t
 	v210_avx_naive,
 	r210_avx,
 	r210_avx_load_only,
+	r210_avx_shift,
+	yuv2_avx
 };
 
 const char* to_string(bench_mode e)
@@ -1085,7 +1154,9 @@ const char* to_string(bench_mode e)
 	case v210_avx_naive: return "v210_avx_naive";
 	case r210_avx: return "r210_avx";
 	case r210_avx_load_only: return "r210_avx_load";
+	case r210_avx_shift: return "r210_shift";
 	case scalar: return "scalar";
+	case yuv2_avx: return "yuv2_avx";
 	default: return "unknown";
 	}
 }
@@ -1223,6 +1294,9 @@ public:
 					case r210_avx_load_only:
 						convert_scalar_avx_load_rgb(r210Buffer.data(), rgbBuffer.data(), width, height, &t1, &t2);
 						break;
+					case r210_avx_shift:
+						convert_avx2_shift_rgb(r210Buffer.data(), rgbBuffer.data(), width, height, &t1, &t2);
+						break;
 					}
 					auto mics = duration_cast<microseconds>(t2 - t1);
 					if (frame > 50) total += mics.count();
@@ -1244,6 +1318,7 @@ public:
 				auto uvSize = ySize / 2;
 
 				std::vector<uint8_t> yuv2Buffer(ySize * 2);
+				yuv2Buffer.reserve(ySize * 2);
 				std::vector<uint8_t> yv16Buffer(ySize * 2);
 				auto yv16buffer_y = std::span(yv16Buffer).subspan(0, ySize);
 				uint8_t* yv16_y = yv16buffer_y.data();
@@ -1254,15 +1329,25 @@ public:
 
 				while (!inFile.eof())
 				{
-					inFile.read(reinterpret_cast<char*>(yuv2Buffer.data()), ySize * 2);
-					std::streamsize s = inFile.gcount();
-					if (s == 0)
+					if (frame == -1)
 					{
-						break;
+						for (int i = 0; i < ySize * 2; ++i)
+						{
+							yuv2Buffer[i] = i % 255;
+						}
 					}
-					if (s != ySize * 2)
+					else
 					{
-						throw std::runtime_error("Failed to read yuv2 data");
+						inFile.read(reinterpret_cast<char*>(yuv2Buffer.data()), ySize * 2);
+						std::streamsize s = inFile.gcount();
+						if (s == 0)
+						{
+							break;
+						}
+						if (s != ySize * 2)
+						{
+							throw std::runtime_error("Failed to read yuv2 data");
+						}
 					}
 					std::chrono::time_point<std::chrono::steady_clock> t1;
 					std::chrono::time_point<std::chrono::steady_clock> t2;
@@ -1270,6 +1355,9 @@ public:
 					{
 					case scalar:
 						convert_yuv2_scalar(yuv2Buffer.data(), yv16_y, yv16_u, yv16_v, width, height, &t1, &t2);
+						break;
+					case yuv2_avx:
+						convert_yuv2_avx(yuv2Buffer.data(), yv16_y, yv16_u, yv16_v, width, height, &t1, &t2);
 						break;
 					}
 					auto mics = duration_cast<microseconds>(t2 - t1);
@@ -1323,7 +1411,7 @@ int main(int argc, char* argv[])
 	}
 	if (bench_fmt == yuv2 && i != 0)
 	{
-		i += 5 + 2;
+		i += 5 + 3;
 	}
 	bench_mode = static_cast<::bench_mode>(i);
 	auto width = std::stoi(argv[3], &pos);
