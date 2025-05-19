@@ -217,8 +217,7 @@ HRESULT v210_p210::WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame)
 	// P210 format: 16-bit samples, full res Y plane, half-width U and V planes
 	auto outSpan = std::span(outData, dstSize);
 	auto planeSize = dstSize / 2;
-	// cut the destination into 2 halves, assumes that if the destination is larger than we expect it's because the renderer
-	// (aka JRVR) has padded the buffer for alignment reasons and we can just ignore writing to that region of memory
+	// TODO deal with 1920 padding to 2048
 	uint8_t* yPlane = outSpan.subspan(0, planeSize).data();
 	uint8_t* uvPlane = outSpan.subspan(planeSize, planeSize).data();
 

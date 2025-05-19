@@ -29,6 +29,9 @@ struct DEVICE_INFO
 	bool hdrMetadata{false};
 	bool colourspaceMetadata{false};
 	bool dynamicRangeMetadata{false};
+	int64_t pcieLinkWidth;
+	int64_t pcieLinkSpeed;
+	int64_t temperature;
 };
 
 struct VIDEO_SIGNAL
@@ -44,12 +47,13 @@ struct VIDEO_SIGNAL
 	uint16_t cy{2160};
 	uint8_t aspectX{16};
 	uint8_t aspectY{9};
+	bool locked{false};
 };
 
 struct AUDIO_SIGNAL
 {
-	uint8_t channelCount{0};
-	uint8_t bitDepth{0};
+	uint8_t channelCount{2};
+	uint8_t bitDepth{16};
 };
 
 class AudioFrame

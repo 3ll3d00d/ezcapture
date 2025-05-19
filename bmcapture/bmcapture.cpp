@@ -981,10 +981,10 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			return E_FAIL;
 		}
 
+		// TODO only change this when the device changes
 		AUDIO_FORMAT newAudioFormat{};
-		newAudioFormat.inputChannelCount = mDeviceInfo.audioChannelCount;
-		newAudioFormat.outputChannelCount = mDeviceInfo.audioChannelCount;
-
+		AUDIO_SIGNAL newAudioSignal{mDeviceInfo.audioChannelCount, 16};
+		LoadFormat(&newAudioFormat, &newAudioSignal);
 		{
 			auto audioByteDepth = audioBitDepth / 8;
 			auto audioFrameLength = audioPacket->GetSampleFrameCount() * mDeviceInfo.audioChannelCount * audioByteDepth;
@@ -1007,6 +1007,65 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 	return S_OK;
 }
 
+void BlackmagicCaptureFilter::LoadFormat(AUDIO_FORMAT* audioFormat, const AUDIO_SIGNAL* audioSignal)
+{
+	auto audioIn = *audioSignal;
+	// https://ia903006.us.archive.org/11/items/CEA-861-E/CEA-861-E.pdf
+	switch (audioIn.channelCount)
+	{
+	case 2:
+		audioFormat->inputChannelCount = 2;
+		audioFormat->outputChannelCount = 2;
+		audioFormat->channelMask = KSAUDIO_SPEAKER_STEREO;
+		audioFormat->channelOffsets.fill(not_present);
+		audioFormat->channelOffsets[0] = 0;
+		audioFormat->channelOffsets[1] = 0;
+		audioFormat->lfeChannelIndex = not_present;
+		audioFormat->channelLayout = "FL FR";
+		break;
+	case 4:
+		audioFormat->inputChannelCount = 4;
+		audioFormat->outputChannelCount = 4;
+		audioFormat->channelMask = KSAUDIO_SPEAKER_3POINT1;
+		audioFormat->channelOffsets.fill(not_present);
+		audioFormat->channelOffsets[0] = 0;
+		audioFormat->channelOffsets[1] = 0;
+		audioFormat->channelOffsets[2] = 1;
+		audioFormat->channelOffsets[3] = -1;
+		audioFormat->lfeChannelIndex = 2;
+		audioFormat->channelLayout = "FL FR FC LFE";
+		break;
+	case 6:
+		audioFormat->inputChannelCount = 6;
+		audioFormat->outputChannelCount = 6;
+		audioFormat->channelMask = KSAUDIO_SPEAKER_5POINT1;
+		audioFormat->channelOffsets.fill(0);
+		audioFormat->channelOffsets[2] = 1;
+		audioFormat->channelOffsets[3] = -1;
+		audioFormat->channelOffsets[6] = not_present;
+		audioFormat->channelOffsets[7] = not_present;
+		audioFormat->lfeChannelIndex = 2;
+		audioFormat->channelLayout = "FL FR FC LFE BL BR";
+		break;
+	case 8:
+		audioFormat->inputChannelCount = 8;
+		audioFormat->outputChannelCount = 8;
+		audioFormat->channelMask = KSAUDIO_SPEAKER_7POINT1_SURROUND;
+		audioFormat->channelOffsets.fill(0);
+	// swap LFE and FC
+		audioFormat->channelOffsets[2] = 1;
+		audioFormat->channelOffsets[3] = -1;
+		audioFormat->lfeChannelIndex = 2;
+		audioFormat->channelLayout = "FL FR FC LFE BL BR SL SR";
+		break;
+	default:
+		audioFormat->inputChannelCount = 0;
+		audioFormat->outputChannelCount = 0;
+		audioFormat->channelOffsets.fill(not_present);
+		audioFormat->lfeChannelIndex = not_present;
+	}
+}
+
 HRESULT BlackmagicCaptureFilter::Notify(BMDNotifications topic, ULONGLONG param1, ULONGLONG param2)
 {
 	// only interested in status changes
@@ -1015,27 +1074,55 @@ HRESULT BlackmagicCaptureFilter::Notify(BMDNotifications topic, ULONGLONG param1
 		return S_OK;
 	}
 
-	switch (BMDDeckLinkStatusID statusId = static_cast<BMDDeckLinkStatusID>(param1))
+	int64_t intVal = -1;
+	BOOL boolVal = -1;
+	HRESULT hr = S_OK;
+	std::string desc;
+	const BMDDeckLinkStatusID statusId = static_cast<BMDDeckLinkStatusID>(param1);
+	switch (statusId)
 	{
 	case bmdDeckLinkStatusPCIExpressLinkWidth:
-		// TODO update device
-		// result = deckLinkStatus->GetInt(statusId, &intVal);
+		hr = mDeckLinkStatus->GetInt(statusId, &intVal);
+		if (intVal != -1) mDeviceInfo.pcieLinkWidth = intVal;
+		desc = "PCIe Link Width";
 		break;
 	case bmdDeckLinkStatusPCIExpressLinkSpeed:
-		// TODO update device
-		// result = deckLinkStatus->GetInt(statusId, &intVal);
+		hr = mDeckLinkStatus->GetInt(statusId, &intVal);
+		if (intVal != -1) mDeviceInfo.pcieLinkSpeed = intVal;
+		desc = "PCIe Link Speed";
 		break;
 	case bmdDeckLinkStatusDeviceTemperature:
-		// TODO update device
-		// result = deckLinkStatus->GetInt(statusId, &intVal);
+		hr = mDeckLinkStatus->GetInt(statusId, &intVal);
+		if (intVal != -1) mDeviceInfo.temperature = intVal;
+		desc = "Device Temperature";
 		break;
 	case bmdDeckLinkStatusVideoInputSignalLocked:
-		// TODO update signal
-		// result = deckLinkStatus->GetFlag(statusId, &boolVal);
+		hr = mDeckLinkStatus->GetFlag(statusId, &boolVal);
+		if (boolVal != -1)
+		{
+			bool isLocked = boolVal == TRUE;
+			if (isLocked != mVideoSignal.locked)
+			{
+				mVideoSignal.locked = isLocked;
+				OnVideoSignalLoaded(&mVideoSignal);
+			}
+		}
+		desc = "Signal Locked";
 		break;
 	default:
 		break;
 	}
+	#ifndef NO_QUILL
+	if (hr == S_OK)
+	{
+		LOG_TRACE_L1(mLogData.logger, "[{}] {} is {}", mLogData.prefix, desc, intVal > -1 ? intVal : boolVal);
+	}
+	else
+	{
+		LOG_TRACE_L1(mLogData.logger, "[{}] Failed to read {} {:#08x}", mLogData.prefix, desc,
+		             static_cast<unsigned long>(hr));
+	}
+	#endif
 	return S_OK;
 }
 
@@ -1062,13 +1149,12 @@ void BlackmagicCaptureFilter::OnVideoSignalLoaded(VIDEO_SIGNAL* vs)
 	mVideoInputStatus.inFps = static_cast<double>(vs->frameDurationScale) / static_cast<double>(vs->frameDuration);
 	mVideoInputStatus.inFrameDuration = vs->frameDuration;
 	mVideoInputStatus.inBitDepth = vs->bitDepth;
-	// TODO No Signal | Unsupported Signal | Locking | Locked
-	mVideoInputStatus.signalStatus = vs->displayModeName;
+	mVideoInputStatus.signalStatus = vs->locked ? "Locked" : "No Signal";
 	mVideoInputStatus.inColourFormat = vs->colourFormat;
-	mVideoInputStatus.inQuantisation = "?";
-	mVideoInputStatus.inSaturation = "?";
+	mVideoInputStatus.inQuantisation = "Full";
+	mVideoInputStatus.inSaturation = "Full";
 	mVideoInputStatus.inPixelLayout = vs->colourFormat;
-	mVideoInputStatus.validSignal = true;
+	mVideoInputStatus.validSignal = vs->locked;
 
 	if (mInfoCallback != nullptr)
 	{
@@ -1734,8 +1820,12 @@ HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
 
 		return S_FALSE;
 	}
+
 	BYTE* pmsData;
 	pms->GetPointer(&pmsData);
+	auto sampleSize = pms->GetSize();
+	auto bytesCaptured = 0L;
+	auto samplesCaptured = 0;
 
 	long size = mCurrentFrame->GetLength();
 	long maxSize = pms->GetSize();
@@ -1747,13 +1837,104 @@ HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
 		#endif
 	}
 	long actualSize = std::min(size, maxSize);
-	memcpy(pmsData, mCurrentFrame->GetData(), actualSize);
 
 	auto endTime = mCurrentFrame->GetFrameTime();
 	auto sampleLength = mAudioFormat.bitDepthInBytes * mAudioFormat.outputChannelCount;
 	auto sampleCount = size / sampleLength;
 	auto frameDuration = mAudioFormat.sampleInterval * sampleCount;
 	auto startTime = endTime - static_cast<int64_t>(frameDuration);
+
+	if (mAudioFormat.outputChannelCount == 2)
+	{
+		memcpy(pmsData, mCurrentFrame->GetData(), actualSize);
+	}
+	else
+	{
+		const uint16_t* inputSamples = static_cast<const uint16_t*>(mCurrentFrame->GetData());
+		uint16_t* outputSamples = reinterpret_cast<uint16_t*>(pmsData);
+		auto inputSampleCount = mCurrentFrame->GetLength() / sizeof(uint16_t);
+		auto i = 0;
+		#ifdef __AVX2__
+		if (mAudioFormat.outputChannelCount == 8 || mAudioFormat.outputChannelCount == 4)
+		{
+			auto chunks = inputSampleCount / 16;
+			const __m256i shuffle_mask = mAudioFormat.outputChannelCount == 8
+				?
+				_mm256_setr_epi8(
+					0, 1, 2, 3, 6, 7, 4, 5, 8, 9, 10, 11, 12, 13, 14, 15,
+					0, 1, 2, 3, 6, 7, 4, 5, 8, 9, 10, 11, 12, 13, 14, 15
+				)
+				:
+				_mm256_setr_epi8(
+					0, 1, 2, 3, 6, 7, 4, 5, 8, 9, 10, 11, 14, 15, 12, 13,
+					0, 1, 2, 3, 6, 7, 4, 5, 8, 9, 10, 11, 14, 15, 12, 13
+				)
+			;
+			for (auto j = 0; j < chunks; j++)
+			{
+				__m256i samples = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(inputSamples + i));
+				__m256i shuffled = _mm256_shuffle_epi8(samples, shuffle_mask);
+				_mm256_storeu_si256(reinterpret_cast<__m256i*>(outputSamples+i), shuffled);
+				i += 16;
+			}
+		}
+		else if (mAudioFormat.outputChannelCount == 6)
+		{
+			// ignore, alignment issues in writing 96 bytes from each lane, maybe use sse instead?
+		}
+		#endif
+		// input is 1 2 3 4 5 6 7 8 repeating but have to swap 3 and 4
+		if (mAudioFormat.outputChannelCount == 8)
+		{
+			for (; i < inputSampleCount - 7; i += mAudioFormat.outputChannelCount)
+			{
+				outputSamples[i] = inputSamples[i];
+				outputSamples[i + 1] = inputSamples[i + 1];
+				outputSamples[i + 2] = inputSamples[i + 3];
+				outputSamples[i + 3] = inputSamples[i + 2];
+				outputSamples[i + 4] = inputSamples[i + 4];
+				outputSamples[i + 5] = inputSamples[i + 5];
+				outputSamples[i + 6] = inputSamples[i + 6];
+				outputSamples[i + 7] = inputSamples[i + 7];
+			}
+		}
+		else if (mAudioFormat.outputChannelCount == 6)
+		{
+			for (; i < inputSampleCount - 5; i += mAudioFormat.outputChannelCount)
+			{
+				outputSamples[i] = inputSamples[i];
+				outputSamples[i + 1] = inputSamples[i + 1];
+				outputSamples[i + 2] = inputSamples[i + 3];
+				outputSamples[i + 3] = inputSamples[i + 2];
+				outputSamples[i + 4] = inputSamples[i + 4];
+				outputSamples[i + 5] = inputSamples[i + 5];
+			}
+		}
+		else if (mAudioFormat.outputChannelCount == 4)
+		{
+			for (; i < inputSampleCount - 3; i += mAudioFormat.outputChannelCount)
+			{
+				outputSamples[i] = inputSamples[i];
+				outputSamples[i + 1] = inputSamples[i + 1];
+				outputSamples[i + 2] = inputSamples[i + 3];
+				outputSamples[i + 3] = inputSamples[i + 2];
+			}
+		}
+	}
+
+	#ifndef NO_QUILL
+	REFERENCE_TIME now;
+	mFilter->GetReferenceTime(&now);
+	if (mFrameCounter == 1)
+	{
+		LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame H|f_idx,lat,ft_0,ft_1,ft_d,s_sz,s_ct",
+		             mLogData.prefix);
+	}
+	LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame D|{},{},{},{},{},{},{}",
+	             mLogData.prefix, codecNames[mAudioFormat.codec],
+	             mFrameCounter, now - mCurrentFrameTime, mPreviousFrameTime, mCurrentFrameTime,
+	             mCurrentFrameTime - mPreviousFrameTime, bytesCaptured, samplesCaptured);
+	#endif
 
 	pms->SetTime(&startTime, &endTime);
 	pms->SetSyncPoint(true);
@@ -1769,27 +1950,8 @@ HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
 		AM_MEDIA_TYPE* sendMediaType = CreateMediaType(&cmt);
 		pms->SetMediaType(sendMediaType);
 		DeleteMediaType(sendMediaType);
-		mSendMediaType = FALSE;
+		mSendMediaType = false;
 	}
-
-	#ifndef NO_QUILL
-	REFERENCE_TIME now;
-	mFilter->GetReferenceTime(&now);
-
-	if (mFrameCounter == 1)
-	{
-		LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame H|f_idx,lat,ft_0,ft_1,ft_d,s_sz,s_ct",
-		             mLogData.prefix);
-	}
-	LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame D|{},{},{},{},{},{},{}", mLogData.prefix,
-	             mFrameCounter, now - mCurrentFrame->GetCaptureTime(), mPreviousFrameTime,
-	             mCurrentFrameTime, mCurrentFrameTime - mPreviousFrameTime, mCurrentFrame->GetLength(),
-	             sampleCount);
-	#endif
-
-	mCurrentFrame.reset();
-	mCurrentFrame = nullptr;
-
 	if (S_FALSE == HandleStreamStateChange(pms))
 	{
 		retVal = S_FALSE;

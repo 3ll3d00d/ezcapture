@@ -28,6 +28,7 @@
 #include "quill/Backend.h"
 #include "quill/sinks/FileSink.h"
 #include "quill/std/WideString.h"
+#include <quill/StopWatch.h>
 #endif
 
 #include "mwcapture.h"
@@ -43,6 +44,13 @@
 constexpr auto bitstreamDetectionWindowSecs = 0.075;
 constexpr auto bitstreamDetectionRetryAfter = 1.0 / bitstreamDetectionWindowSecs;
 constexpr auto bitstreamBufferSize = 6144;
+
+#ifdef __AVX__
+const __m256i endianSwap = _mm256_set_epi8(
+	12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3,
+	12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3
+);
+#endif
 
 //////////////////////////////////////////////////////////////////////////
 // MagewellCaptureFilter
@@ -599,15 +607,38 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 	{
 		if (pin->mVideoFormat.pixelFormat.format == pixel_format::AYUV)
 		{
+			#ifndef NO_QUILL
+			const quill::StopWatchTsc swt;
+			#endif
+
 			// endianness is wrong on a per pixel basis
-			BYTE* pixelStart = pmsData;
-			BYTE* frameEnd = pixelStart + pin->mVideoFormat.imageSize;
-			while (pixelStart < frameEnd)
+			uint32_t sampleIdx = 0;
+			#ifdef __AVX__
+			__m256i pixelEndianSwap = _mm256_set_epi8(
+				12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3,
+				12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3
+			);
+			const uint32_t chunks = pin->mVideoFormat.imageSize / 32;
+			__m256i* chunkToProcess = reinterpret_cast<__m256i*>(pmsData);
+			for (uint32_t i = 0; i < chunks; ++i)
 			{
-				BYTE* pixelEnd = pixelStart + 4;
-				std::reverse(pixelStart, pixelEnd);
-				pixelStart = pixelEnd;
+				__m256i swapped = _mm256_shuffle_epi8(_mm256_loadu_si256(chunkToProcess), pixelEndianSwap);
+				_mm256_storeu_si256(chunkToProcess, swapped);
+				sampleIdx += 8;
+				chunkToProcess++;
 			}
+			#endif
+			uint32_t* sampleToProcess = reinterpret_cast<uint32_t*>(pmsData);
+			const uint32_t sz = pin->mVideoFormat.imageSize / 4;
+			for (; sampleIdx < sz; sampleIdx++)
+			{
+				sampleToProcess[sampleIdx] = _byteswap_ulong(sampleToProcess[sampleIdx]);
+			}
+
+			#ifndef NO_QUILL
+			auto execTime = swt.elapsed_as<std::chrono::microseconds>().count() / 1000.0;
+			LOG_TRACE_L2(mLogData.logger, "[{}] Converted VUYA to AYUV in {:.3f} ms", mLogData.prefix, execTime);
+			#endif
 		}
 
 		pin->mPreviousFrameTime = pin->mCurrentFrameTime;
@@ -3088,7 +3119,8 @@ HRESULT MagewellAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 				{
 					#ifndef NO_QUILL
 					LOG_TRACE_L2(mLogData.logger, "[{}] Detected bitstream in frame {} {} (res: {:#08x})",
-					             mLogData.prefix, mFrameCounter, codecNames[mDetectedCodec], static_cast<unsigned long>(res));
+					             mLogData.prefix, mFrameCounter, codecNames[mDetectedCodec],
+					             static_cast<unsigned long>(res));
 					#endif
 					mProbeOnTimer = false;
 					if (mDetectedCodec == *detectedCodec)
