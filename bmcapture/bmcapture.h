@@ -232,6 +232,8 @@ private:
 	std::shared_ptr<VideoFrame> mVideoFrame;
 	HANDLE mVideoFrameEvent;
 
+	AUDIO_SIGNAL mAudioSignal{};
+	AUDIO_FORMAT mAudioFormat{};
 	uint64_t mCurrentAudioFrameIndex{0};
 	std::shared_ptr<AudioFrame> mAudioFrame;
 	HANDLE mAudioFrameEvent;

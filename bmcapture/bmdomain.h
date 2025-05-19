@@ -39,6 +39,7 @@ struct VIDEO_SIGNAL
 	BMDPixelFormat pixelFormat{bmdFormat8BitARGB};
 	BMDDisplayMode displayMode{bmdMode4K2160p2398};
 	std::string colourFormat{"RGB"};
+	std::string pixelLayout{"ARGB"};
 	std::string displayModeName{"4K2160p23.98"};
 	uint8_t bitDepth{8};
 	uint32_t frameDuration{1001};

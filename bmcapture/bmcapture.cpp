@@ -67,6 +67,8 @@ void BlackmagicCaptureFilter::LoadFormat(VIDEO_FORMAT* videoFormat, const VIDEO_
 	videoFormat->fps = static_cast<double>(videoSignal->frameDurationScale) / static_cast<double>(videoSignal->
 		frameDuration);
 	videoFormat->frameInterval = videoSignal->frameDuration;
+	videoFormat->quantisation = QUANTISATION_FULL;
+	videoFormat->saturation = SATURATION_FULL;
 	switch (videoSignal->pixelFormat)
 	{
 	case bmdFormat8BitYUV:
@@ -485,6 +487,12 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 
 	if (mDeviceInfo.audioChannelCount > 0)
 	{
+		mAudioSignal.bitDepth = 16;
+		mAudioSignal.channelCount = mDeviceInfo.audioChannelCount;
+		LoadFormat(&mAudioFormat, &mAudioSignal);
+		OnAudioSignalLoaded(&mAudioSignal);
+		OnAudioFormatLoaded(&mAudioFormat);
+
 		new BlackmagicAudioCapturePin(phr, this, false);
 		new BlackmagicAudioCapturePin(phr, this, true);
 	}
@@ -542,14 +550,16 @@ HRESULT BlackmagicCaptureFilter::VideoInputFormatChanged(BMDVideoInputFormatChan
 
 		if (detectedSignalFlags & bmdDetectedVideoInputYCbCr422)
 		{
-			newSignal.colourFormat = "YCbCr";
+			newSignal.colourFormat = "YUV 4:2:2";
 			if (detectedSignalFlags & bmdDetectedVideoInput8BitDepth)
 			{
+				newSignal.pixelLayout = "2VUY";
 				newSignal.pixelFormat = bmdFormat8BitYUV;
 				newSignal.bitDepth = 8;
 			}
 			else if (detectedSignalFlags & bmdDetectedVideoInput10BitDepth)
 			{
+				newSignal.pixelLayout = "V210";
 				newSignal.pixelFormat = bmdFormat10BitYUV;
 				newSignal.bitDepth = 10;
 			}
@@ -560,19 +570,22 @@ HRESULT BlackmagicCaptureFilter::VideoInputFormatChanged(BMDVideoInputFormatChan
 		}
 		else if (detectedSignalFlags & bmdDetectedVideoInputRGB444)
 		{
-			newSignal.colourFormat = "RGB";
+			newSignal.colourFormat = "RGB 4:4:4";
 			if (detectedSignalFlags & bmdDetectedVideoInput8BitDepth)
 			{
+				newSignal.pixelLayout = "ARGB";
 				newSignal.pixelFormat = bmdFormat8BitARGB;
 				newSignal.bitDepth = 8;
 			}
 			else if (detectedSignalFlags & bmdDetectedVideoInput10BitDepth)
 			{
+				newSignal.pixelLayout = "R210";
 				newSignal.pixelFormat = bmdFormat10BitRGB;
 				newSignal.bitDepth = 10;
 			}
 			else if (detectedSignalFlags & bmdDetectedVideoInput12BitDepth)
 			{
+				newSignal.pixelLayout = "R12B";
 				newSignal.pixelFormat = bmdFormat12BitRGB;
 				newSignal.bitDepth = 12;
 			}
@@ -981,17 +994,13 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			return E_FAIL;
 		}
 
-		// TODO only change this when the device changes
-		AUDIO_FORMAT newAudioFormat{};
-		AUDIO_SIGNAL newAudioSignal{mDeviceInfo.audioChannelCount, 16};
-		LoadFormat(&newAudioFormat, &newAudioSignal);
 		{
 			auto audioByteDepth = audioBitDepth / 8;
 			auto audioFrameLength = audioPacket->GetSampleFrameCount() * mDeviceInfo.audioChannelCount * audioByteDepth;
 
 			CAutoLock lock(&mFrameSec);
 			mAudioFrame = std::make_shared<AudioFrame>(mLogData, now, frameTime, audioData, audioFrameLength,
-			                                           newAudioFormat, ++mCurrentAudioFrameIndex, audioPacket);
+			                                           mAudioFormat, ++mCurrentAudioFrameIndex, audioPacket);
 		}
 
 		// signal listeners
@@ -1153,7 +1162,7 @@ void BlackmagicCaptureFilter::OnVideoSignalLoaded(VIDEO_SIGNAL* vs)
 	mVideoInputStatus.inColourFormat = vs->colourFormat;
 	mVideoInputStatus.inQuantisation = "Full";
 	mVideoInputStatus.inSaturation = "Full";
-	mVideoInputStatus.inPixelLayout = vs->colourFormat;
+	mVideoInputStatus.inPixelLayout = vs->pixelLayout;
 	mVideoInputStatus.validSignal = vs->locked;
 
 	if (mInfoCallback != nullptr)
