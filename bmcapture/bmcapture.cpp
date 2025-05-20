@@ -1061,9 +1061,13 @@ void BlackmagicCaptureFilter::LoadFormat(AUDIO_FORMAT* audioFormat, const AUDIO_
 		audioFormat->outputChannelCount = 8;
 		audioFormat->channelMask = KSAUDIO_SPEAKER_7POINT1_SURROUND;
 		audioFormat->channelOffsets.fill(0);
-	// swap LFE and FC
+		// swap LFE and FC
 		audioFormat->channelOffsets[2] = 1;
 		audioFormat->channelOffsets[3] = -1;
+		audioFormat->channelOffsets[4] = 2;
+		audioFormat->channelOffsets[5] = 2;
+		audioFormat->channelOffsets[6] = -2;
+		audioFormat->channelOffsets[7] = -2;
 		audioFormat->lfeChannelIndex = 2;
 		audioFormat->channelLayout = "FL FR FC LFE BL BR SL SR";
 		break;
