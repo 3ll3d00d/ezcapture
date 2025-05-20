@@ -1870,8 +1870,8 @@ HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
 			const __m256i shuffle_mask = mAudioFormat.outputChannelCount == 8
 				?
 				_mm256_setr_epi8(
-					0, 1, 2, 3, 6, 7, 4, 5, 8, 9, 10, 11, 12, 13, 14, 15,
-					0, 1, 2, 3, 6, 7, 4, 5, 8, 9, 10, 11, 12, 13, 14, 15
+					0, 1, 2, 3, 6, 7, 4, 5, 12, 13, 14, 15, 8, 9, 10, 11,
+					0, 1, 2, 3, 6, 7, 4, 5, 12, 13, 14, 15, 8, 9, 10, 11
 				)
 				:
 				_mm256_setr_epi8(
@@ -1892,19 +1892,19 @@ HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
 			// ignore, alignment issues in writing 96 bytes from each lane, maybe use sse instead?
 		}
 		#endif
-		// input is 1 2 3 4 5 6 7 8 repeating but have to swap 3 and 4
+		// input is 1 2 3 4 5 6 7 8 repeating but have to swap 3 and 4 & 5/6 7/8
 		if (mAudioFormat.outputChannelCount == 8)
 		{
 			for (; i < inputSampleCount - 7; i += mAudioFormat.outputChannelCount)
 			{
-				outputSamples[i] = inputSamples[i];
-				outputSamples[i + 1] = inputSamples[i + 1];
-				outputSamples[i + 2] = inputSamples[i + 3];
-				outputSamples[i + 3] = inputSamples[i + 2];
-				outputSamples[i + 4] = inputSamples[i + 4];
-				outputSamples[i + 5] = inputSamples[i + 5];
-				outputSamples[i + 6] = inputSamples[i + 6];
-				outputSamples[i + 7] = inputSamples[i + 7];
+				outputSamples[i] = inputSamples[i];			 // L
+				outputSamples[i + 1] = inputSamples[i + 1];  // R
+				outputSamples[i + 2] = inputSamples[i + 3];  // C
+				outputSamples[i + 3] = inputSamples[i + 2];  // LFE
+				outputSamples[i + 4] = inputSamples[i + 6];  // SL
+				outputSamples[i + 5] = inputSamples[i + 7];  // SR
+				outputSamples[i + 6] = inputSamples[i + 4];  // BL
+				outputSamples[i + 7] = inputSamples[i + 5];  // BR
 			}
 		}
 		else if (mAudioFormat.outputChannelCount == 6)
