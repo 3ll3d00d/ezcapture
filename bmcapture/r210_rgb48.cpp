@@ -17,7 +17,6 @@
 #include "r210_rgb48.h"
 #include <atlcomcli.h>
 #include <cstdint>
-#include <dvdmedia.h>
 #include <quill/StopWatch.h>
 #include <span>
 #ifdef RECORD_RAW
@@ -36,7 +35,7 @@ namespace
 		const uint8_t* srcRow = src;
 		uint16_t* dstPix = dst;
 		size_t blocks = width / 4;
-		const int dstPadding = pixelsToPad * 6;
+		const int dstPadding = pixelsToPad * 3;
 
 		for (size_t y = 0; y < height; ++y)
 		{
@@ -77,7 +76,7 @@ namespace
 		size_t srcStride = (width * 4 + 255) / 256 * 256;
 		const uint8_t* srcRow = src;
 		uint16_t* dstPix = dst;
-		const int dstPadding = pixelsToPad * 6;
+		const int dstPadding = pixelsToPad * 3;
 
 		for (size_t y = 0; y < height; ++y)
 		{

@@ -17,7 +17,6 @@
 #include "v210_p210.h"
 #include <atlcomcli.h>
 #include <cstdint>
-#include <dvdmedia.h>
 #include <quill/StopWatch.h>
 #include <span>
 #include <immintrin.h>

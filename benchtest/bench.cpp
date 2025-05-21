@@ -802,13 +802,14 @@ namespace
 	{
 		// Each group of 16 bytes contains 6 pixels (YUVYUV)
 		const int groupsPerLine = width / 6;
-		uint16_t* dstLineY = reinterpret_cast<uint16_t*>(dstY);
-		uint16_t* dstLineUV = reinterpret_cast<uint16_t*>(dstUV);
+		auto effectiveWidth = width + padWidth;
 
 		*t1 = std::chrono::high_resolution_clock::now();
 		for (int y = 0; y < height; y++)
 		{
 			const uint32_t* srcLine = reinterpret_cast<const uint32_t*>(src + y * srcStride);
+			uint16_t* dstLineY = reinterpret_cast<uint16_t*>(dstY + y * effectiveWidth * 2);
+			uint16_t* dstLineUV = reinterpret_cast<uint16_t*>(dstUV + y * effectiveWidth * 2);
 			for (int g = 0; g < groupsPerLine; ++g)
 			{
 				// Load 4 dwords (16 bytes = 128 bits)
@@ -877,6 +878,7 @@ namespace
 		const uint8_t* srcRow = src;
 		uint16_t* dstPix = dst;
 		*t1 = std::chrono::high_resolution_clock::now();
+		const int dstPadding = padWidth * 3;
 		for (size_t y = 0; y < height; ++y)
 		{
 			const uint32_t* srcPixelBE = reinterpret_cast<const uint32_t*>(srcRow);
@@ -897,6 +899,7 @@ namespace
 			}
 
 			srcRow += srcStride;
+			dstPix += dstPadding;
 		}
 
 		*t2 = std::chrono::high_resolution_clock::now();
@@ -916,6 +919,7 @@ namespace
 		uint16_t* dstPix = dst;
 		size_t blocks = width / 4;
 		*t1 = std::chrono::high_resolution_clock::now();
+		const int dstPadding = padWidth * 3;
 		for (size_t y = 0; y < height; ++y)
 		{
 			const uint32_t* srcPixelBE = reinterpret_cast<const uint32_t*>(srcRow);
@@ -944,7 +948,7 @@ namespace
 				dstPix += 12;
 				srcPixelBE += 4;
 			}
-
+			dstPix += dstPadding;
 			srcRow += srcStride;
 		}
 		*t2 = std::chrono::high_resolution_clock::now();
@@ -973,6 +977,7 @@ namespace
 			-1, -1, 0, 1, -1, -1, -1, -1, 4, 5, -1, -1, -1, -1, -1, -1
 		);
 		const int blend_rgb = 0b11010010;
+		const int dstPadding = padWidth * 6;
 
 		// process in 4 pixel (128 bit) blocks which produces 192 bits of output
 		const int blocks = width / 4;
@@ -1006,6 +1011,7 @@ namespace
 				srcRow += 4;
 				dst += 12;
 			}
+			dst += dstPadding;
 		}
 		*t2 = std::chrono::high_resolution_clock::now();
 		return true;
@@ -1028,6 +1034,7 @@ namespace
 		const __m256i mask_G = _mm256_set1_epi32(0x000FFC00);
 
 		const int blocks = width / 8;
+		const int dstPadding = padWidth * 6;
 		*t1 = std::chrono::high_resolution_clock::now();
 		for (size_t y = 0; y < height; ++y)
 		{
@@ -1053,6 +1060,7 @@ namespace
 				}
 				srcRow += 8;
 			}
+			dst += dstPadding;
 		}
 		*t2 = std::chrono::high_resolution_clock::now();
 		return true;
@@ -1066,7 +1074,7 @@ namespace
 		*t1 = std::chrono::high_resolution_clock::now();
 		for (int y = 0; y < height; ++y)
 		{
-			auto offset = (y * (width + padWidth));
+			auto offset = y * (width + padWidth);
 			uint8_t* yOut = yPlane + offset;
 			uint8_t* uOut = uPlane + offset / 2;
 			uint8_t* vOut = vPlane + offset / 2;
@@ -1368,9 +1376,9 @@ public:
 						{
 							break;
 						}
-						if (s != ySize * 2)
+						if (s < ySize * 2)
 						{
-							throw std::runtime_error("Failed to read yuv2 data");
+							break;
 						}
 					}
 					std::chrono::time_point<std::chrono::steady_clock> t1;

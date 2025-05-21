@@ -18,6 +18,7 @@
 
 #include <intsafe.h>
 #include <strmif.h>
+#include <dvdmedia.h>
 
 #include "bmdomain.h"
 

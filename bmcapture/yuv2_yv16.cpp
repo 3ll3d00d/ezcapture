@@ -17,7 +17,6 @@
 #include "yuv2_yv16.h"
 #include <atlcomcli.h>
 #include <cstdint>
-#include <dvdmedia.h>
 #include <quill/StopWatch.h>
 #include <span>
 
