@@ -106,33 +106,13 @@ namespace
 
 HRESULT r210_rgb48::WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame)
 {
-	auto hr = CheckFrameSizes(srcFrame->GetFrameIndex(), mExpectedImageSize, dstFrame);
-	if (S_FALSE == hr)
-	{
-		return S_FALSE;
-	}
 	const auto width = srcFrame->GetVideoFormat().cx;
 	const auto height = srcFrame->GetVideoFormat().cy;
 
-	if (S_PADDING_POSSIBLE == hr)
+	auto hr = DetectPadding(srcFrame->GetFrameIndex(), width, dstFrame);
+	if (S_FALSE == hr)
 	{
-		AM_MEDIA_TYPE* mt;
-		dstFrame->GetMediaType(&mt);
-		if (mt)
-		{
-			auto header = reinterpret_cast<VIDEOINFOHEADER2*>(mt->pbFormat);
-			int paddedWidth = header->bmiHeader.biWidth;
-			mPixelsToPad = std::max(paddedWidth - width, 0);
-
-			#ifndef NO_QUILL
-			if (mPixelsToPad > 0)
-			{
-				LOG_TRACE_L2(mLogData.logger,
-					"[{}] Padding requested by render, image width is {} but renderer requests padding to {}",
-					mLogData.prefix, width, paddedWidth);
-			}
-			#endif
-		}
+		return S_FALSE;
 	}
 
 	void* d;

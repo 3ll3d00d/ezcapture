@@ -55,6 +55,36 @@ protected:
 		return S_OK;
 	}
 
+	HRESULT DetectPadding(uint64_t frameIndex, int expectedWidth, IMediaSample* dstFrame)
+	{
+		auto hr = CheckFrameSizes(frameIndex, mExpectedImageSize, dstFrame);
+		if (S_FALSE == hr)
+		{
+			return S_FALSE;
+		}
+		if (S_PADDING_POSSIBLE == hr)
+		{
+			AM_MEDIA_TYPE* mt;
+			dstFrame->GetMediaType(&mt);
+			if (mt)
+			{
+				auto header = reinterpret_cast<VIDEOINFOHEADER2*>(mt->pbFormat);
+				int paddedWidth = header->bmiHeader.biWidth;
+				mPixelsToPad = std::max(paddedWidth - expectedWidth, 0);
+
+				#ifndef NO_QUILL
+				if (mPixelsToPad > 0)
+				{
+					LOG_TRACE_L2(mLogData.logger,
+						"[{}] Padding requested by render, image width is {} but renderer requests padding to {}",
+						mLogData.prefix, expectedWidth, paddedWidth);
+				}
+				#endif
+			}
+		}
+		return S_OK;
+	}
+
 	log_data mLogData;
 	DWORD mExpectedImageSize{0};
 	DWORD mExpectedRowLength{0};
