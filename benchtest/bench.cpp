@@ -34,12 +34,12 @@ inline int Align(int value, int align)
 	return (value + align - 1) & ~(align - 1);
 }
 
-inline strides CalculateAlignedV210P210Strides(int width)
+inline strides CalculateAlignedV210P210Strides(int inWidth, int outWidth)
 {
 	strides s;
-	int rawSrcStride = ((width + 5) / 6) * 16;
-	int rawDstYStride = width * 2;
-	int rawDstUVStride = width * 2;
+	int rawSrcStride = ((inWidth + 5) / 6) * 16;
+	int rawDstYStride = outWidth * 2;
+	int rawDstUVStride = outWidth * 2;
 
 	s.srcStride = Align(rawSrcStride, ALIGNMENT);
 	s.dstYStride = Align(rawDstYStride, ALIGNMENT);
@@ -51,6 +51,7 @@ inline strides CalculateAlignedV210P210Strides(int width)
 namespace
 {
 	bool convert_avx_pack(const uint8_t* src, int srcStride, uint8_t* dstY, uint8_t* dstUV, int width, int height,
+	                      int padWidth,
 	                      std::chrono::time_point<std::chrono::steady_clock>* t1,
 	                      std::chrono::time_point<std::chrono::steady_clock>* t2)
 	{
@@ -216,6 +217,7 @@ namespace
 	}
 
 	bool convert_avx_no_pack(const uint8_t* src, int srcStride, uint8_t* dstY, uint8_t* dstUV, int width, int height,
+	                         int padWidth,
 	                         std::chrono::time_point<std::chrono::steady_clock>* t1,
 	                         std::chrono::time_point<std::chrono::steady_clock>* t2)
 	{
@@ -376,6 +378,7 @@ namespace
 	}
 
 	bool convert_avx_so1(const uint8_t* src, int srcStride, uint8_t* dstY, uint8_t* dstUV, int width, int height,
+	                     int padWidth,
 	                     std::chrono::time_point<std::chrono::steady_clock>* t1,
 	                     std::chrono::time_point<std::chrono::steady_clock>* t2)
 	{
@@ -401,13 +404,14 @@ namespace
 		const __m256i lower_192_perm = _mm256_setr_epi32(0, 1, 2, 4, 5, 6, 7, 7);
 
 		*t1 = std::chrono::high_resolution_clock::now();
+		auto effectiveWidth = width + padWidth;
 
 		// Process all lines with a single loop implementation
 		for (int lineNo = 0; lineNo < height; ++lineNo)
 		{
 			const uint32_t* srcLine = reinterpret_cast<const uint32_t*>(src + lineNo * srcStride);
-			uint16_t* dstLineY = reinterpret_cast<uint16_t*>(dstY + lineNo * width * 2);
-			uint16_t* dstLineUV = reinterpret_cast<uint16_t*>(dstUV + lineNo * width * 2);
+			uint16_t* dstLineY = reinterpret_cast<uint16_t*>(dstY + lineNo * effectiveWidth * 2);
+			uint16_t* dstLineUV = reinterpret_cast<uint16_t*>(dstUV + lineNo * effectiveWidth * 2);
 
 			// Process all complete groups
 			int g = 0;
@@ -473,6 +477,7 @@ namespace
 	}
 
 	bool convert_avx_so2(const uint8_t* src, int srcStride, uint8_t* dstY, uint8_t* dstUV, int width, int height,
+	                     int padWidth,
 	                     std::chrono::time_point<std::chrono::steady_clock>* t1,
 	                     std::chrono::time_point<std::chrono::steady_clock>* t2)
 	{
@@ -569,6 +574,7 @@ namespace
 
 	// terrible implementation just to illustrate how much slower you can make it
 	bool convert_avx_naive(const uint8_t* src, int srcStride, uint8_t* dstY, uint8_t* dstUV, int width, int height,
+	                       int padWidth,
 	                       std::chrono::time_point<std::chrono::steady_clock>* t1,
 	                       std::chrono::time_point<std::chrono::steady_clock>* t2)
 	{
@@ -790,6 +796,7 @@ namespace
 	}
 
 	bool convert_scalar(const uint8_t* src, int srcStride, uint8_t* dstY, uint8_t* dstUV, int width, int height,
+	                    int padWidth,
 	                    std::chrono::time_point<std::chrono::steady_clock>* t1,
 	                    std::chrono::time_point<std::chrono::steady_clock>* t2)
 	{
@@ -861,6 +868,7 @@ namespace
 	}
 
 	bool convert_scalar_rgb(const uint8_t* src, uint16_t* dst, size_t width, size_t height,
+	                        int padWidth,
 	                        std::chrono::time_point<std::chrono::steady_clock>* t1,
 	                        std::chrono::time_point<std::chrono::steady_clock>* t2)
 	{
@@ -896,6 +904,7 @@ namespace
 	}
 
 	bool convert_scalar_avx_load_rgb(const uint8_t* src, uint16_t* dst, size_t width, size_t height,
+	                                 int padWidth,
 	                                 std::chrono::time_point<std::chrono::steady_clock>* t1,
 	                                 std::chrono::time_point<std::chrono::steady_clock>* t2)
 	{
@@ -943,6 +952,7 @@ namespace
 	}
 
 	bool convert_avx2_rgb(const uint8_t* src, uint16_t* dst, size_t width, size_t height,
+	                      int padWidth,
 	                      std::chrono::time_point<std::chrono::steady_clock>* t1,
 	                      std::chrono::time_point<std::chrono::steady_clock>* t2)
 	{
@@ -1002,6 +1012,7 @@ namespace
 	}
 
 	bool convert_avx2_shift_rgb(const uint8_t* src, uint16_t* dst, size_t width, size_t height,
+	                            int padWidth,
 	                            std::chrono::time_point<std::chrono::steady_clock>* t1,
 	                            std::chrono::time_point<std::chrono::steady_clock>* t2)
 	{
@@ -1048,24 +1059,29 @@ namespace
 	}
 
 	bool convert_yuv2_scalar(const uint8_t* src, uint8_t* yPlane, uint8_t* uPlane, uint8_t* vPlane, int width,
-	                         int height,
+	                         int height, int padWidth,
 	                         std::chrono::time_point<std::chrono::steady_clock>* t1,
 	                         std::chrono::time_point<std::chrono::steady_clock>* t2)
 	{
 		*t1 = std::chrono::high_resolution_clock::now();
 		for (int y = 0; y < height; ++y)
 		{
+			auto offset = (y * (width + padWidth));
+			uint8_t* yOut = yPlane + offset;
+			uint8_t* uOut = uPlane + offset / 2;
+			uint8_t* vOut = vPlane + offset / 2;
+
 			for (int x = 0; x < width; x += 2) // 2 pixels per pass
 			{
-				uPlane[0] = src[0];
-				yPlane[0] = src[1];
-				vPlane[0] = src[2]; 
-				yPlane[1] = src[3];
+				uOut[0] = src[0];
+				yOut[0] = src[1];
+				vOut[0] = src[2];
+				yOut[1] = src[3];
 
-				yPlane += 2;
-				uPlane++;
-				vPlane++;
-				src += 4; 
+				yOut += 2;
+				uOut++;
+				vOut++;
+				src += 4;
 			}
 		}
 		*t2 = std::chrono::high_resolution_clock::now();
@@ -1073,7 +1089,7 @@ namespace
 	}
 
 	bool convert_yuv2_avx(const uint8_t* src, uint8_t* yPlane, uint8_t* uPlane, uint8_t* vPlane, int width,
-	                      int height, std::chrono::time_point<std::chrono::steady_clock>* t1,
+	                      int height, int padWidth, std::chrono::time_point<std::chrono::steady_clock>* t1,
 	                      std::chrono::time_point<std::chrono::steady_clock>* t2)
 	{
 		const __m256i shuffle_1 = _mm256_setr_epi8(
@@ -1081,12 +1097,14 @@ namespace
 			2, 6, 10, 14, 0, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15
 		);
 		const __m256i permute = _mm256_setr_epi32(0, 4, 1, 5, 2, 3, 6, 7);
-		uint64_t* y_out = reinterpret_cast<uint64_t*>(yPlane);
-		uint64_t* u_out = reinterpret_cast<uint64_t*>(uPlane);
-		uint64_t* v_out = reinterpret_cast<uint64_t*>(vPlane);
+		const int yWidth = width + padWidth;
+		const int uvWidth = yWidth / 2;
 		*t1 = std::chrono::high_resolution_clock::now();
 		for (int y = 0; y < height; ++y)
 		{
+			uint64_t* y_out = reinterpret_cast<uint64_t*>(yPlane + (y * yWidth));
+			uint64_t* u_out = reinterpret_cast<uint64_t*>(uPlane + (y * uvWidth));
+			uint64_t* v_out = reinterpret_cast<uint64_t*>(vPlane + (y * uvWidth));
 			for (int x = 0; x < width; x += 16) // 16 bits per pixel in 256 bit chunks = 16 pixels per pass
 			{
 				__m256i pixels = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src));
@@ -1171,7 +1189,7 @@ public:
 	                  const std::filesystem::path& outputFile_v,
 	                  const std::filesystem::path& outputFile_rgb,
 	                  const std::filesystem::path& outputFile_stats,
-	                  int width, int height, bench_mode mode, bench_fmt bfmt)
+	                  int width, int height, int padWidth, bench_mode mode, bench_fmt bfmt)
 	{
 		if (width <= 0 || height <= 0)
 		{
@@ -1195,7 +1213,7 @@ public:
 			}
 			if (bfmt == v210)
 			{
-				strides strides = CalculateAlignedV210P210Strides(width);
+				strides strides = CalculateAlignedV210P210Strides(width, width + padWidth);
 				size_t v210Size = CalculateV210BufferSize(width, height);
 
 				std::vector<uint8_t> v210Buffer(v210Size);
@@ -1223,23 +1241,28 @@ public:
 					switch (mode)
 					{
 					case v210_avx_no_pack:
-						convert_avx_no_pack(v210Buffer.data(), strides.srcStride, p210Y, p210UV, width, height, &t1,
-						                    &t2);
+						convert_avx_no_pack(v210Buffer.data(), strides.srcStride, p210Y, p210UV, width, height,
+						                    padWidth, &t1, &t2);
 						break;
 					case v210_avx_pack:
-						convert_avx_pack(v210Buffer.data(), strides.srcStride, p210Y, p210UV, width, height, &t1, &t2);
+						convert_avx_pack(v210Buffer.data(), strides.srcStride, p210Y, p210UV, width, height, padWidth,
+						                 &t1, &t2);
 						break;
 					case v210_avx_so1:
-						convert_avx_so1(v210Buffer.data(), strides.srcStride, p210Y, p210UV, width, height, &t1, &t2);
+						convert_avx_so1(v210Buffer.data(), strides.srcStride, p210Y, p210UV, width, height, padWidth,
+						                &t1, &t2);
 						break;
 					case v210_avx_so2:
-						convert_avx_so2(v210Buffer.data(), strides.srcStride, p210Y, p210UV, width, height, &t1, &t2);
+						convert_avx_so2(v210Buffer.data(), strides.srcStride, p210Y, p210UV, width, height, padWidth,
+						                &t1, &t2);
 						break;
 					case v210_avx_naive:
-						convert_avx_naive(v210Buffer.data(), strides.srcStride, p210Y, p210UV, width, height, &t1, &t2);
+						convert_avx_naive(v210Buffer.data(), strides.srcStride, p210Y, p210UV, width, height, padWidth,
+						                  &t1, &t2);
 						break;
 					case scalar:
-						convert_scalar(v210Buffer.data(), strides.srcStride, p210Y, p210UV, width, height, &t1, &t2);
+						convert_scalar(v210Buffer.data(), strides.srcStride, p210Y, p210UV, width, height, padWidth,
+						               &t1, &t2);
 						break;
 					}
 					auto mics = duration_cast<microseconds>(t2 - t1);
@@ -1267,7 +1290,7 @@ public:
 				size_t r210Size = (width + 63) / 64 * 256 * height;
 
 				std::vector<uint8_t> r210Buffer(r210Size);
-				std::vector<uint16_t> rgbBuffer(width * height * 6);
+				std::vector<uint16_t> rgbBuffer((width + padWidth) * height * 6);
 
 				while (!inFile.eof())
 				{
@@ -1286,16 +1309,17 @@ public:
 					switch (mode)
 					{
 					case scalar:
-						convert_scalar_rgb(r210Buffer.data(), rgbBuffer.data(), width, height, &t1, &t2);
+						convert_scalar_rgb(r210Buffer.data(), rgbBuffer.data(), width, height, padWidth, &t1, &t2);
 						break;
 					case r210_avx:
-						convert_avx2_rgb(r210Buffer.data(), rgbBuffer.data(), width, height, &t1, &t2);
+						convert_avx2_rgb(r210Buffer.data(), rgbBuffer.data(), width, height, padWidth, &t1, &t2);
 						break;
 					case r210_avx_load_only:
-						convert_scalar_avx_load_rgb(r210Buffer.data(), rgbBuffer.data(), width, height, &t1, &t2);
+						convert_scalar_avx_load_rgb(r210Buffer.data(), rgbBuffer.data(), width, height, padWidth, &t1,
+						                            &t2);
 						break;
 					case r210_avx_shift:
-						convert_avx2_shift_rgb(r210Buffer.data(), rgbBuffer.data(), width, height, &t1, &t2);
+						convert_avx2_shift_rgb(r210Buffer.data(), rgbBuffer.data(), width, height, padWidth, &t1, &t2);
 						break;
 					}
 					auto mics = duration_cast<microseconds>(t2 - t1);
@@ -1314,7 +1338,7 @@ public:
 			}
 			else if (bfmt == yuv2)
 			{
-				auto ySize = width * height;
+				auto ySize = (width + padWidth) * height;
 				auto uvSize = ySize / 2;
 
 				std::vector<uint8_t> yuv2Buffer(ySize * 2);
@@ -1354,10 +1378,10 @@ public:
 					switch (mode)
 					{
 					case scalar:
-						convert_yuv2_scalar(yuv2Buffer.data(), yv16_y, yv16_u, yv16_v, width, height, &t1, &t2);
+						convert_yuv2_scalar(yuv2Buffer.data(), yv16_y, yv16_u, yv16_v, width, height, padWidth, &t1, &t2);
 						break;
 					case yuv2_avx:
-						convert_yuv2_avx(yuv2Buffer.data(), yv16_y, yv16_u, yv16_v, width, height, &t1, &t2);
+						convert_yuv2_avx(yuv2Buffer.data(), yv16_y, yv16_u, yv16_v, width, height, padWidth, &t1, &t2);
 						break;
 					}
 					auto mics = duration_cast<microseconds>(t2 - t1);
@@ -1416,6 +1440,11 @@ int main(int argc, char* argv[])
 	bench_mode = static_cast<::bench_mode>(i);
 	auto width = std::stoi(argv[3], &pos);
 	auto height = std::stoi(argv[4], &pos);
+	auto padWidth = 0;
+	if (argc > 5)
+	{
+		padWidth = std::stoi(argv[5], &pos);
+	}
 	// auto inp = "demo.dat";
 	auto inp = "bench." + std::string(to_string(bench_fmt));
 	auto suffix = std::string(to_string(bench_fmt)) + "." + std::string(to_string(bench_mode));
@@ -1442,7 +1471,7 @@ int main(int argc, char* argv[])
 	printf("Converting %s using %s\n", inputFile.string().c_str(), suffix.c_str());
 
 	if (Benchmark::bench(inputFile, outputFile_y, outputFile_uv, outputFile_u, outputFile_v,
-	                     outputFile_rgb, statsFile, width, height, bench_mode, bench_fmt))
+	                     outputFile_rgb, statsFile, width, height, padWidth, bench_mode, bench_fmt))
 	{
 		printf("Successfully converted %s\n", inputFile.string().c_str());
 		return 0;

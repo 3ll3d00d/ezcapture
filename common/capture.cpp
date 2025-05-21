@@ -904,12 +904,10 @@ receiveconnection:
 	if (retVal == S_OK)
 	{
 		#ifndef NO_QUILL
-		LOG_TRACE_L1(mLogData.logger,
-		             "[{}] CapturePin::NegotiateMediaType succeeded, sending new MediaType on next sample",
-		             mLogData.prefix);
+		LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::NegotiateMediaType succeeded", mLogData.prefix);
 		#endif
 
-		mSendMediaType = TRUE;
+		mUpdatedMediaType = true;
 	}
 	else
 	{
@@ -1129,16 +1127,6 @@ HRESULT VideoCapturePin::DoChangeMediaType(const CMediaType* pNewMt, const VIDEO
 	{
 		mVideoFormat = *newVideoFormat;
 		OnChangeMediaType();
-
-		#ifndef NO_QUILL
-		if (inTraceMode)
-		{
-			ALLOCATOR_PROPERTIES props;
-			m_pAllocator->GetProperties(&props);
-			LOG_TRACE_L3(mLogData.logger, "[{}] new buffer {} {}", mLogData.prefix, props.cBuffers, props.cbBuffer,
-			             props.cbAlign, props.cbPrefix);
-		}
-		#endif
 	}
 
 	return retVal;

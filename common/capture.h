@@ -306,7 +306,7 @@ protected:
 	WORD mSinceLast{0};
 
 	bool mLastSampleDiscarded{false};
-	bool mSendMediaType{false};
+	bool mUpdatedMediaType{false};
 	bool mHasSignal{false};
 	LONGLONG mLastSentHdrMetaAt{0};
 	// per frame

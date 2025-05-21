@@ -17,6 +17,7 @@
 #include "v210_p210.h"
 #include <atlcomcli.h>
 #include <cstdint>
+#include <dvdmedia.h>
 #include <quill/StopWatch.h>
 #include <span>
 #include <immintrin.h>
@@ -35,9 +36,10 @@ namespace
 	// uv plane : U0 V0 U2 V2 U4 V4
 	// each line of video is aligned on a 128 byte boundary & 6 pixels fit into 16 bytes so 48 pixels fit in 128 bytes
 	#ifdef __AVX__
-	bool convert(const uint8_t* src, int srcStride, uint8_t* dstY, uint8_t* dstUV, int width, int height)
+	bool convert(const uint8_t* src, int srcStride, uint8_t* dstY, uint8_t* dstUV, int width, int height, int pixelsToPad)
 	{
 		const int groupsPerLine = width / 12;
+		const int effectiveWidth = width + pixelsToPad;
 
 		const __m256i mask_s0_s2 = _mm256_set1_epi32(0x3FF003FF);
 		const __m256i shift_s0_s2 = _mm256_set1_epi32(0x00040040);
@@ -62,8 +64,8 @@ namespace
 		for (int lineNo = 0; lineNo < height; ++lineNo)
 		{
 			const uint32_t* srcLine = reinterpret_cast<const uint32_t*>(src + lineNo * srcStride);
-			uint16_t* dstLineY = reinterpret_cast<uint16_t*>(dstY + lineNo * width * 2);
-			uint16_t* dstLineUV = reinterpret_cast<uint16_t*>(dstUV + lineNo * width * 2);
+			uint16_t* dstLineY = reinterpret_cast<uint16_t*>(dstY + lineNo * effectiveWidth * 2);
+			uint16_t* dstLineUV = reinterpret_cast<uint16_t*>(dstUV + lineNo * effectiveWidth * 2);
 
 			// Process all complete groups
 			int g = 0;
@@ -89,6 +91,7 @@ namespace
 				dstLineUV += 12;
 				srcLine += 8;
 			}
+
 
 			// Handle last group for the last line with potential overflow
 			if (lineNo == height - 1 && g < groupsPerLine)
@@ -127,16 +130,18 @@ namespace
 		return true;
 	}
 	#else
-	bool convert(const uint8_t* src, int srcStride, uint8_t* dstY, uint8_t* dstUV, int width, int height)
+	bool convert(const uint8_t* src, int srcStride, uint8_t* dstY, uint8_t* dstUV, int width, int height,
+	             int pixelsToPad)
 	{
 		// Each group of 16 bytes contains 6 pixels (YUVYUV)
 		const int groupsPerLine = width / 6;
-		uint16_t* dstLineY = reinterpret_cast<uint16_t*>(dstY);
-		uint16_t* dstLineUV = reinterpret_cast<uint16_t*>(dstUV);
+		auto effectiveWidth = width + pixelsToPad;
 
 		for (int y = 0; y < height; y++)
 		{
 			const uint32_t* srcLine = reinterpret_cast<const uint32_t*>(src + y * srcStride);
+			uint16_t* dstLineY = reinterpret_cast<uint16_t*>(dstY + y * effectiveWidth * 2);
+			uint16_t* dstLineUV = reinterpret_cast<uint16_t*>(dstUV + y * effectiveWidth * 2);
 			for (int g = 0; g < groupsPerLine; ++g)
 			{
 				// Load 4 dwords (16 bytes = 128 bits)
@@ -153,19 +158,19 @@ namespace
 				// Y5 V4 Y4
 				// to
 				// [U0, Y0, V0, Y1, U2, Y2, V2, Y3, U4, Y4, V4, Y5]
-				samples[0] = p[0] & 0x3FF;			// U0
-				samples[1] = (p[0] >> 10) & 0x3FF;  // Y0
-				samples[2] = (p[0] >> 20) & 0x3FF;  // V0
+				samples[0] = p[0] & 0x3FF; // U0
+				samples[1] = (p[0] >> 10) & 0x3FF; // Y0
+				samples[2] = (p[0] >> 20) & 0x3FF; // V0
 
-				samples[3] = p[1] & 0x3FF;          // Y1
-				samples[4] = (p[1] >> 10) & 0x3FF;  // U2
-				samples[5] = (p[1] >> 20) & 0x3FF;  // Y2
+				samples[3] = p[1] & 0x3FF; // Y1
+				samples[4] = (p[1] >> 10) & 0x3FF; // U2
+				samples[5] = (p[1] >> 20) & 0x3FF; // Y2
 
-				samples[6] = p[2] & 0x3FF;          // V2
-				samples[7] = (p[2] >> 10) & 0x3FF;  // Y3
-				samples[8] = (p[2] >> 20) & 0x3FF;  // U4
+				samples[6] = p[2] & 0x3FF; // V2
+				samples[7] = (p[2] >> 10) & 0x3FF; // Y3
+				samples[8] = (p[2] >> 20) & 0x3FF; // U4
 
-				samples[9] = p[3] & 0x3FF;          // Y4
+				samples[9] = p[3] & 0x3FF; // Y4
 				samples[10] = (p[3] >> 10) & 0x3FF; // V4
 				samples[11] = (p[3] >> 20) & 0x3FF; // Y5
 
@@ -198,13 +203,35 @@ namespace
 
 HRESULT v210_p210::WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame)
 {
-	if (S_OK != CheckFrameSizes(srcFrame->GetFrameIndex(), mExpectedImageSize, dstFrame))
+	auto hr = CheckFrameSizes(srcFrame->GetFrameIndex(), mExpectedImageSize, dstFrame);
+	if (S_FALSE == hr)
 	{
 		return S_FALSE;
 	}
-
 	const auto width = srcFrame->GetVideoFormat().cx;
 	const auto height = srcFrame->GetVideoFormat().cy;
+
+	if (S_PADDING_POSSIBLE == hr)
+	{
+		AM_MEDIA_TYPE* mt;
+		dstFrame->GetMediaType(&mt);
+		if (mt)
+		{
+			auto header = reinterpret_cast<VIDEOINFOHEADER2*>(mt->pbFormat);
+			int paddedWidth = header->bmiHeader.biWidth;
+			mPixelsToPad = std::max(paddedWidth - width, 0);
+
+			#ifndef NO_QUILL
+			if (mPixelsToPad > 0)
+			{
+				LOG_TRACE_L2(mLogData.logger,
+				             "[{}] Padding requested by render, image width is {} but renderer requests padding to {}",
+				             mLogData.prefix, width, paddedWidth);
+			}
+			#endif
+		}
+	}
+	auto actualWidth = width + mPixelsToPad;
 
 	void* d;
 	srcFrame->Start(&d);
@@ -216,19 +243,10 @@ HRESULT v210_p210::WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame)
 
 	// P210 format: 16-bit samples, full res Y plane, half-width U and V planes
 	auto outSpan = std::span(outData, dstSize);
-	auto planeSize = dstSize / 2;
-	// TODO deal with 1920 padding to 2048
+	auto planeSize = actualWidth * height * 2;
+
 	uint8_t* yPlane = outSpan.subspan(0, planeSize).data();
 	uint8_t* uvPlane = outSpan.subspan(planeSize, planeSize).data();
-
-	#ifndef NO_QUILL
-	auto delta = planeSize * 2 - dstSize;
-	if (delta != 0)
-	{
-		LOG_TRACE_L2(mLogData.logger, "[{}] Plane length mismatch in V210 - P210 conversion {} * 2 - {} = {}",
-		             mLogData.prefix, planeSize, dstSize, delta);
-	}
-	#endif
 
 	auto alignedWidth = (width + 47) / 48 * 48;
 	auto srcStride = alignedWidth * 8 / 3;
@@ -237,7 +255,7 @@ HRESULT v210_p210::WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame)
 	const quill::StopWatchTsc swt;
 	#endif
 
-	convert(sourceData, srcStride, yPlane, uvPlane, width, height);
+	convert(sourceData, srcStride, yPlane, uvPlane, width, height, mPixelsToPad);
 
 	#ifndef NO_QUILL
 	auto execTime = swt.elapsed_as<std::chrono::microseconds>().count() / 1000.0;

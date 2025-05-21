@@ -651,13 +651,13 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 		pms->SetSyncPoint(TRUE);
 		pms->SetDiscontinuity(missedFrame);
 
-		if (pin->mSendMediaType)
+		if (pin->mUpdatedMediaType)
 		{
 			CMediaType cmt(pin->m_mt);
 			AM_MEDIA_TYPE* sendMediaType = CreateMediaType(&cmt);
 			pms->SetMediaType(sendMediaType);
 			DeleteMediaType(sendMediaType);
-			pin->mSendMediaType = FALSE;
+			pin->mUpdatedMediaType = FALSE;
 		}
 		pin->AppendHdrSideDataIfNecessary(pms, endTime);
 
@@ -2742,13 +2742,13 @@ HRESULT MagewellAudioCapturePin::FillBuffer(IMediaSample* pms)
 	pms->SetTime(&startTime, &endTime);
 	pms->SetSyncPoint(mAudioFormat.codec == PCM);
 	pms->SetDiscontinuity(mSinceCodecChange < 2 && mAudioFormat.codec != PCM);
-	if (mSendMediaType)
+	if (mUpdatedMediaType)
 	{
 		CMediaType cmt(m_mt);
 		AM_MEDIA_TYPE* sendMediaType = CreateMediaType(&cmt);
 		pms->SetMediaType(sendMediaType);
 		DeleteMediaType(sendMediaType);
-		mSendMediaType = FALSE;
+		mUpdatedMediaType = FALSE;
 	}
 	if (S_FALSE == HandleStreamStateChange(pms))
 	{

@@ -1061,7 +1061,7 @@ void BlackmagicCaptureFilter::LoadFormat(AUDIO_FORMAT* audioFormat, const AUDIO_
 		audioFormat->outputChannelCount = 8;
 		audioFormat->channelMask = KSAUDIO_SPEAKER_7POINT1_SURROUND;
 		audioFormat->channelOffsets.fill(0);
-		// swap LFE and FC
+	// swap LFE and FC
 		audioFormat->channelOffsets[2] = 1;
 		audioFormat->channelOffsets[3] = -1;
 		audioFormat->channelOffsets[4] = 2;
@@ -1586,14 +1586,6 @@ HRESULT BlackmagicVideoCapturePin::FillBuffer(IMediaSample* pms)
 
 	mFrameCounter = mCurrentFrame->GetFrameIndex();
 
-	if (mSendMediaType)
-	{
-		CMediaType cmt(m_mt);
-		AM_MEDIA_TYPE* sendMediaType = CreateMediaType(&cmt);
-		pms->SetMediaType(sendMediaType);
-		DeleteMediaType(sendMediaType);
-		mSendMediaType = false;
-	}
 	AppendHdrSideDataIfNecessary(pms, endTime);
 
 	#ifndef NO_QUILL
@@ -1684,6 +1676,19 @@ void BlackmagicVideoCapturePin::LogHdrMetaIfPresent(VIDEO_FORMAT* newVideoFormat
 void BlackmagicVideoCapturePin::OnChangeMediaType()
 {
 	mFilter->NotifyEvent(EC_VIDEO_SIZE_CHANGED, MAKELPARAM(mVideoFormat.cx, mVideoFormat.cy), 0);
+
+	ALLOCATOR_PROPERTIES props;
+	m_pAllocator->GetProperties(&props);
+	auto bufferSize = props.cbBuffer;
+	auto frameSize = mVideoFormat.imageSize;
+	if (std::cmp_greater(bufferSize, frameSize))
+	{
+		#ifndef NO_QUILL
+		LOG_TRACE_L1(mLogData.logger,
+		             "[{}] Likely padding requested by renderer, frame size is {} but buffer allocated is {}",
+		             mLogData.prefix, frameSize, bufferSize);
+		#endif
+	}
 }
 
 ///////////////////////////////////////////////////////////
@@ -1901,14 +1906,14 @@ HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
 		{
 			for (; i < inputSampleCount - 7; i += mAudioFormat.outputChannelCount)
 			{
-				outputSamples[i] = inputSamples[i];			 // L
-				outputSamples[i + 1] = inputSamples[i + 1];  // R
-				outputSamples[i + 2] = inputSamples[i + 3];  // C
-				outputSamples[i + 3] = inputSamples[i + 2];  // LFE
-				outputSamples[i + 4] = inputSamples[i + 6];  // SL
-				outputSamples[i + 5] = inputSamples[i + 7];  // SR
-				outputSamples[i + 6] = inputSamples[i + 4];  // BL
-				outputSamples[i + 7] = inputSamples[i + 5];  // BR
+				outputSamples[i] = inputSamples[i]; // L
+				outputSamples[i + 1] = inputSamples[i + 1]; // R
+				outputSamples[i + 2] = inputSamples[i + 3]; // C
+				outputSamples[i + 3] = inputSamples[i + 2]; // LFE
+				outputSamples[i + 4] = inputSamples[i + 6]; // SL
+				outputSamples[i + 5] = inputSamples[i + 7]; // SR
+				outputSamples[i + 6] = inputSamples[i + 4]; // BL
+				outputSamples[i + 7] = inputSamples[i + 5]; // BR
 			}
 		}
 		else if (mAudioFormat.outputChannelCount == 6)
@@ -1957,13 +1962,13 @@ HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
 	mPreviousFrameTime = mCurrentFrameTime;
 	mCurrentFrameTime = endTime;
 
-	if (mSendMediaType)
+	if (mUpdatedMediaType)
 	{
 		CMediaType cmt(m_mt);
 		AM_MEDIA_TYPE* sendMediaType = CreateMediaType(&cmt);
 		pms->SetMediaType(sendMediaType);
 		DeleteMediaType(sendMediaType);
-		mSendMediaType = false;
+		mUpdatedMediaType = false;
 	}
 	if (S_FALSE == HandleStreamStateChange(pms))
 	{

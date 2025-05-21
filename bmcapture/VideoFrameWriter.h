@@ -21,6 +21,8 @@
 
 #include "bmdomain.h"
 
+#define S_PADDING_POSSIBLE    ((HRESULT)200L)
+
 class IVideoFrameWriter
 {
 public:
@@ -48,18 +50,13 @@ protected:
 		}
 		if (sizeDelta < 0)
 		{
-			#ifndef NO_QUILL
-			LOG_WARNING(mLogData.logger,
-				"[{}] Buffer for frame {} too large, setting ActualDataLength (src: {}, dst: {})",
-				mLogData.prefix, frameIndex, srcSize, dstFrame->GetSize());
-			#endif
-
-			dstFrame->SetActualDataLength(srcSize);
+			return S_PADDING_POSSIBLE;
 		}
 		return S_OK;
 	}
 
 	log_data mLogData;
-	DWORD mExpectedImageSize;
-	DWORD mExpectedRowLength;
+	DWORD mExpectedImageSize{0};
+	DWORD mExpectedRowLength{0};
+	int mPixelsToPad{0};
 };

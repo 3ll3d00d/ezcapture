@@ -17,6 +17,7 @@
 #include "r210_rgb48.h"
 #include <atlcomcli.h>
 #include <cstdint>
+#include <dvdmedia.h>
 #include <quill/StopWatch.h>
 #include <span>
 #ifdef RECORD_RAW
@@ -26,7 +27,7 @@
 namespace
 {
 	#ifdef __AVX2__
-	bool convert(const uint8_t* src, uint16_t* dst, size_t width, size_t height)
+	bool convert(const uint8_t* src, uint16_t* dst, size_t width, size_t height, int pixelsToPad)
 	{
 		__m128i pixelEndianSwap = _mm_set_epi8(12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3);
 
@@ -35,6 +36,8 @@ namespace
 		const uint8_t* srcRow = src;
 		uint16_t* dstPix = dst;
 		size_t blocks = width / 4;
+		const int dstPadding = pixelsToPad * 6;
+
 		for (size_t y = 0; y < height; ++y)
 		{
 			const uint32_t* srcPixelBE = reinterpret_cast<const uint32_t*>(srcRow);
@@ -62,18 +65,19 @@ namespace
 				dstPix += 12;
 				srcPixelBE += 4;
 			}
-
+			dstPix += dstPadding;
 			srcRow += srcStride;
 		}
 		return true;
 	}
 	#else
-	bool convert(const uint8_t* src, uint16_t* dst, size_t width, size_t height)
+	bool convert(const uint8_t* src, uint16_t* dst, size_t width, size_t height, int pixelsToPad)
 	{
 		// Each row starts on 256-byte boundary
 		size_t srcStride = (width * 4 + 255) / 256 * 256;
 		const uint8_t* srcRow = src;
 		uint16_t* dstPix = dst;
+		const int dstPadding = pixelsToPad * 6;
 
 		for (size_t y = 0; y < height; ++y)
 		{
@@ -92,8 +96,8 @@ namespace
 				dstPix[2] = blue_16;
 				dstPix += 3;
 			}
-
 			srcRow += srcStride;
+			dstPix += dstPadding;
 		}
 		return true;
 	}
@@ -102,13 +106,34 @@ namespace
 
 HRESULT r210_rgb48::WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame)
 {
-	if (S_OK != CheckFrameSizes(srcFrame->GetFrameIndex(), mExpectedImageSize, dstFrame))
+	auto hr = CheckFrameSizes(srcFrame->GetFrameIndex(), mExpectedImageSize, dstFrame);
+	if (S_FALSE == hr)
 	{
 		return S_FALSE;
 	}
-
 	const auto width = srcFrame->GetVideoFormat().cx;
 	const auto height = srcFrame->GetVideoFormat().cy;
+
+	if (S_PADDING_POSSIBLE == hr)
+	{
+		AM_MEDIA_TYPE* mt;
+		dstFrame->GetMediaType(&mt);
+		if (mt)
+		{
+			auto header = reinterpret_cast<VIDEOINFOHEADER2*>(mt->pbFormat);
+			int paddedWidth = header->bmiHeader.biWidth;
+			mPixelsToPad = std::max(paddedWidth - width, 0);
+
+			#ifndef NO_QUILL
+			if (mPixelsToPad > 0)
+			{
+				LOG_TRACE_L2(mLogData.logger,
+					"[{}] Padding requested by render, image width is {} but renderer requests padding to {}",
+					mLogData.prefix, width, paddedWidth);
+			}
+			#endif
+		}
+	}
 
 	void* d;
 	srcFrame->Start(&d);
@@ -143,7 +168,7 @@ HRESULT r210_rgb48::WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame)
 	const quill::StopWatchTsc swt;
 	#endif
 
-	convert(sourceData, reinterpret_cast<uint16_t*>(outData), width, height);
+	convert(sourceData, reinterpret_cast<uint16_t*>(outData), width, height, mPixelsToPad);
 
 	#ifndef NO_QUILL
 	auto execTime = swt.elapsed_as<std::chrono::microseconds>().count() / 1000.0;

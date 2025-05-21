@@ -295,39 +295,29 @@ private:
 	void UpdateFrameWriter(frame_writer_strategy strategy, const pixel_format& signalledFormat)
 	{
 		mSignalledFormat = signalledFormat;
-		if (mFrameWriterStrategy != strategy || strategy == ANY_RGB)
-		{
-			#ifndef NO_QUILL
-			LOG_TRACE_L1(mLogData.logger, "[{}] Updating conversion strategy from {} to {}", mLogData.prefix,
-			             to_string(mFrameWriterStrategy), to_string(strategy));
-			#endif
+		#ifndef NO_QUILL
+		LOG_TRACE_L1(mLogData.logger, "[{}] Updating conversion strategy from {} to {}", mLogData.prefix,
+		             to_string(mFrameWriterStrategy), to_string(strategy));
+		#endif
 
-			mFrameWriterStrategy = strategy;
-			switch (mFrameWriterStrategy)
-			{
-			case ANY_RGB:
-				mFrameWriter = std::make_unique<any_rgb>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
-				break;
-			case YUV2_YV16:
-				mFrameWriter = std::make_unique<yuv2_yv16>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
-				break;
-			case V210_P210:
-				mFrameWriter = std::make_unique<v210_p210>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
-				break;
-			case R210_BGR48:
-				mFrameWriter = std::make_unique<r210_rgb48>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
-				break;
-			case STRAIGHT_THROUGH:
-				mFrameWriter = std::make_unique<StraightThrough>(mLogData, mVideoFormat.cx, mVideoFormat.cy,
-				                                                 &mVideoFormat.pixelFormat);
-			}
-		}
-		else
+		mFrameWriterStrategy = strategy;
+		switch (mFrameWriterStrategy)
 		{
-			#ifndef NO_QUILL
-			LOG_TRACE_L1(mLogData.logger, "[{}] No change to conversion strategy required {}", mLogData.prefix,
-			             to_string(mFrameWriterStrategy));
-			#endif
+		case ANY_RGB:
+			mFrameWriter = std::make_unique<any_rgb>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
+			break;
+		case YUV2_YV16:
+			mFrameWriter = std::make_unique<yuv2_yv16>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
+			break;
+		case V210_P210:
+			mFrameWriter = std::make_unique<v210_p210>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
+			break;
+		case R210_BGR48:
+			mFrameWriter = std::make_unique<r210_rgb48>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
+			break;
+		case STRAIGHT_THROUGH:
+			mFrameWriter = std::make_unique<StraightThrough>(mLogData, mVideoFormat.cx, mVideoFormat.cy,
+			                                                 &mVideoFormat.pixelFormat);
 		}
 	}
 
