@@ -22,7 +22,6 @@
 #include "quill/sinks/FileSink.h"
 #include <string_view>
 #include <utility>
-#include "quill/std/WideString.h"
 #endif // !NO_QUILL
 
 #include "capture.h"
@@ -468,6 +467,8 @@ HRESULT CapturePin::OnThreadStartPlay()
 	#ifndef NO_QUILL
 	REFERENCE_TIME rt;
 	GetReferenceTime(&rt);
+
+	PrintResolution(mLogData);
 
 	if (mStreamStartTime < 0)
 	{

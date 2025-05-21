@@ -83,19 +83,19 @@ inline void logHdrMeta(HDR_META newMeta, HDR_META oldMeta, log_data log)
 		if (logPrimaries)
 		{
 			LOG_INFO(log.logger, "[{}] Primaries RGB {:.4f} x {:.4f} {:.4f} x {:.4f} {:.4f} x {:.4f}",
-				log.prefix,
-				newMeta.r_primary_x, newMeta.r_primary_y, newMeta.g_primary_x, newMeta.g_primary_y,
-				newMeta.b_primary_x, newMeta.b_primary_y);
+			         log.prefix,
+			         newMeta.r_primary_x, newMeta.r_primary_y, newMeta.g_primary_x, newMeta.g_primary_y,
+			         newMeta.b_primary_x, newMeta.b_primary_y);
 		}
 		if (logWp)
 		{
 			LOG_INFO(log.logger, "[{}] Whitepoint {:.4f} x {:.4f}", log.prefix,
-				newMeta.whitepoint_x, newMeta.whitepoint_y);
+			         newMeta.whitepoint_x, newMeta.whitepoint_y);
 		}
 		if (logMax)
 		{
 			LOG_INFO(log.logger, "[{}] DML/MaxCLL/MaxFALL {:.4f} / {:.4f} {} {}", log.prefix,
-				newMeta.minDML, newMeta.maxDML, newMeta.maxCLL, newMeta.maxFALL);
+			         newMeta.minDML, newMeta.maxDML, newMeta.maxCLL, newMeta.maxFALL);
 		}
 		if (logTf)
 		{
@@ -105,10 +105,81 @@ inline void logHdrMeta(HDR_META newMeta, HDR_META oldMeta, log_data log)
 	else
 	{
 		LOG_WARNING(log.logger,
-			"[{}] HDR InfoFrame parsing failure, values are present but no metadata exists",
-			log.prefix);
+		            "[{}] HDR InfoFrame parsing failure, values are present but no metadata exists",
+		            log.prefix);
 	}
 	#endif
+}
+
+inline HRESULT PrintResolution(const log_data& ld)
+{
+	HMONITOR activeMonitor = MonitorFromWindow(GetActiveWindow(), MONITOR_DEFAULTTONEAREST);
+
+	MONITORINFOEX monitorInfo{{.cbSize = sizeof(MONITORINFOEX)}};
+	DEVMODE devMode{.dmSize = sizeof(DEVMODE)};
+
+	if (GetMonitorInfo(activeMonitor, &monitorInfo)
+		&& EnumDisplaySettings(monitorInfo.szDevice, ENUM_CURRENT_SETTINGS, &devMode))
+	{
+		auto width = devMode.dmPelsWidth;
+		auto height = devMode.dmPelsHeight;
+		auto freq = devMode.dmDisplayFrequency;
+		#ifndef NO_QUILL
+		LOG_INFO(ld.logger, "[{}] Current monitor = {} {} x {} @ {} Hz", ld.prefix,
+		         std::wstring{ monitorInfo.szDevice },
+		         width, height, freq);
+		#endif
+		return S_OK;
+	}
+	return E_FAIL;
+}
+
+inline HRESULT ChangeResolution(const log_data& ld, DWORD targetRefreshRate)
+{
+	HMONITOR activeMonitor = MonitorFromWindow(GetActiveWindow(), MONITOR_DEFAULTTONEAREST);
+	MONITORINFOEX monitorInfo{{.cbSize = sizeof(MONITORINFOEX)}};
+	DEVMODE devMode{.dmSize = sizeof(DEVMODE)};
+
+	if (GetMonitorInfo(activeMonitor, &monitorInfo)
+		&& EnumDisplaySettings(monitorInfo.szDevice, ENUM_CURRENT_SETTINGS, &devMode))
+	{
+		auto width = devMode.dmPelsWidth;
+		auto height = devMode.dmPelsHeight;
+		auto freq = devMode.dmDisplayFrequency;
+		if (freq == targetRefreshRate)
+		{
+			#ifndef NO_QUILL
+			LOG_INFO(ld.logger, "[{}] No change requested from = {} {} x {} @ {} Hz", ld.prefix,
+			         std::wstring{ monitorInfo.szDevice }, width, height, freq);
+			#endif
+			return S_OK;
+		}
+
+		#ifndef NO_QUILL
+		LOG_INFO(ld.logger, "[{}] Requesting change from = {} {} x {} @ {} Hz to {} Hz", ld.prefix,
+		         std::wstring{ monitorInfo.szDevice }, width, height, freq, targetRefreshRate);
+		#endif
+
+		devMode.dmDisplayFrequency = targetRefreshRate;
+
+		auto res = ChangeDisplaySettings(&devMode, 0);
+		switch (res)
+		{
+		case DISP_CHANGE_SUCCESSFUL:
+			#ifndef NO_QUILL
+			LOG_INFO(ld.logger, "[{}] Completed change from = {} {} x {} @ {} Hz to {} Hz", ld.prefix,
+			         std::wstring{ monitorInfo.szDevice }, width, height, freq, targetRefreshRate);
+			#endif
+			return S_OK;
+		default:
+			#ifndef NO_QUILL
+			LOG_INFO(ld.logger, "[{}] Failed to change from = {} {} x {} @ {} Hz to {} Hz due to {}", ld.prefix,
+			         std::wstring{ monitorInfo.szDevice }, width, height, freq, targetRefreshRate, res);
+			#endif
+			return E_FAIL;
+		}
+	}
+	return E_FAIL;
 }
 
 // Non template parts of the filter impl
@@ -194,7 +265,6 @@ protected:
 	HdmiCaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID clsid, std::string logPrefix) :
 		CaptureFilter(pName, punk, phr, clsid, logPrefix)
 	{
-		
 	}
 
 	D_INF mDeviceInfo{};
@@ -204,6 +274,7 @@ class IAMTimeAware
 {
 public:
 	void SetStartTime(LONGLONG streamStartTime);
+
 protected:
 	IAMTimeAware(std::string pLogPrefix, const std::string& pLoggerName)
 	{
@@ -214,7 +285,7 @@ protected:
 	}
 
 	log_data mLogData{};
-	LONGLONG mStreamStartTime{ -1LL };
+	LONGLONG mStreamStartTime{-1LL};
 };
 
 
@@ -339,7 +410,12 @@ protected:
 
 	virtual void OnChangeMediaType()
 	{
-		// nop by default
+		if (mHasSignal)
+		{
+			auto fps = mVideoFormat.fps;
+			auto refreshRate = std::lround(fps - 0.49); // 23.976 will become 23, 24 will become 24 etc
+			ChangeResolution(mLogData, refreshRate);
+		}
 	}
 
 	VIDEO_FORMAT mVideoFormat{};
@@ -355,6 +431,7 @@ protected:
 		CapturePin(phr, pParent, pObjectName, pPinName, pLogPrefix)
 	{
 	}
+
 	static void AudioFormatToMediaType(CMediaType* pmt, AUDIO_FORMAT* audioFormat);
 
 	bool ShouldChangeMediaType(AUDIO_FORMAT* newAudioFormat);
@@ -384,9 +461,10 @@ class HdmiVideoCapturePin : public VideoCapturePin
 public:
 	HdmiVideoCapturePin(HRESULT* phr, F* pParent, LPCSTR pObjectName, LPCWSTR pPinName, std::string pLogPrefix)
 		: VideoCapturePin(phr, pParent, pObjectName, pPinName, pLogPrefix),
-		mFilter(pParent)
+		  mFilter(pParent)
 	{
 	}
+
 protected:
 	F* mFilter;
 
@@ -408,8 +486,9 @@ protected:
 				if (SUCCEEDED(pms->QueryInterface(&pMediaSideData)))
 				{
 					#ifndef NO_QUILL
-					LOG_TRACE_L1(mLogData.logger, "[{}] Updating HDR meta in frame {}, last update at {}", mLogData.prefix,
-						mFrameCounter, mLastSentHdrMetaAt);
+					LOG_TRACE_L1(mLogData.logger, "[{}] Updating HDR meta in frame {}, last update at {}",
+					             mLogData.prefix,
+					             mFrameCounter, mLastSentHdrMetaAt);
 					#endif
 
 					MediaSideDataHDR hdr;
@@ -429,7 +508,7 @@ protected:
 					hdr.min_display_mastering_luminance = mVideoFormat.hdrMeta.minDML;
 
 					pMediaSideData->SetSideData(IID_MediaSideDataHDR, reinterpret_cast<const BYTE*>(&hdr),
-						sizeof(hdr));
+					                            sizeof(hdr));
 
 					MediaSideDataHDRContentLightLevel hdrLightLevel;
 					ZeroMemory(&hdrLightLevel, sizeof(hdrLightLevel));
@@ -438,23 +517,23 @@ protected:
 					hdrLightLevel.MaxFALL = mVideoFormat.hdrMeta.maxFALL;
 
 					pMediaSideData->SetSideData(IID_MediaSideDataHDRContentLightLevel,
-						reinterpret_cast<const BYTE*>(&hdrLightLevel),
-						sizeof(hdrLightLevel));
+					                            reinterpret_cast<const BYTE*>(&hdrLightLevel),
+					                            sizeof(hdrLightLevel));
 					pMediaSideData->Release();
 
 					#ifndef NO_QUILL
 					LOG_TRACE_L1(mLogData.logger, "[{}] HDR meta: R {:.4f} {:.4f}", mLogData.prefix,
-						hdr.display_primaries_x[2], hdr.display_primaries_y[2]);
+					             hdr.display_primaries_x[2], hdr.display_primaries_y[2]);
 					LOG_TRACE_L1(mLogData.logger, "[{}] HDR meta: G {:.4f} {:.4f}", mLogData.prefix,
-						hdr.display_primaries_x[0], hdr.display_primaries_y[0]);
+					             hdr.display_primaries_x[0], hdr.display_primaries_y[0]);
 					LOG_TRACE_L1(mLogData.logger, "[{}] HDR meta: B {:.4f} {:.4f}", mLogData.prefix,
-						hdr.display_primaries_x[1], hdr.display_primaries_y[1]);
+					             hdr.display_primaries_x[1], hdr.display_primaries_y[1]);
 					LOG_TRACE_L1(mLogData.logger, "[{}] HDR meta: W {:.4f} {:.4f}", mLogData.prefix,
-						hdr.white_point_x, hdr.white_point_y);
+					             hdr.white_point_x, hdr.white_point_y);
 					LOG_TRACE_L1(mLogData.logger, "[{}] HDR meta: DML {} {}", mLogData.prefix,
-						hdr.min_display_mastering_luminance, hdr.max_display_mastering_luminance);
+					             hdr.min_display_mastering_luminance, hdr.max_display_mastering_luminance);
 					LOG_TRACE_L1(mLogData.logger, "[{}] HDR meta: MaxCLL/MaxFALL {} {}", mLogData.prefix,
-						hdrLightLevel.MaxCLL, hdrLightLevel.MaxFALL);
+					             hdrLightLevel.MaxCLL, hdrLightLevel.MaxFALL);
 					#endif
 
 					mFilter->OnHdrUpdated(&hdr, &hdrLightLevel);
@@ -462,7 +541,9 @@ protected:
 				else
 				{
 					#ifndef NO_QUILL
-					LOG_WARNING(mLogData.logger, "[{}] HDR meta to send via MediaSideDataHDR but not supported by MediaSample", mLogData.prefix);
+					LOG_WARNING(mLogData.logger,
+					            "[{}] HDR meta to send via MediaSideDataHDR but not supported by MediaSample",
+					            mLogData.prefix);
 					#endif
 				}
 			}
@@ -481,9 +562,10 @@ class HdmiAudioCapturePin : public AudioCapturePin
 public:
 	HdmiAudioCapturePin(HRESULT* phr, F* pParent, LPCSTR pObjectName, LPCWSTR pPinName, std::string pLogPrefix)
 		: AudioCapturePin(phr, pParent, pObjectName, pPinName, pLogPrefix),
-		mFilter(pParent)
+		  mFilter(pParent)
 	{
 	}
+
 protected:
 	F* mFilter;
 

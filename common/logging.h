@@ -7,6 +7,7 @@
 #include <quill/Logger.h>
 #include <quill/Frontend.h>
 #include "quill/LogMacros.h"
+#include "quill/std/WideString.h"
 
 struct CustomFrontendOptions
 {

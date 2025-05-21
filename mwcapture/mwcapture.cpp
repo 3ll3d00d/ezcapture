@@ -27,7 +27,6 @@
 #ifndef NO_QUILL
 #include "quill/Backend.h"
 #include "quill/sinks/FileSink.h"
-#include "quill/std/WideString.h"
 #include <quill/StopWatch.h>
 #endif
 
@@ -1035,6 +1034,8 @@ HRESULT MagewellVideoCapturePin::LoadSignal(HCHANNEL* pChannel)
 
 void MagewellVideoCapturePin::OnChangeMediaType()
 {
+	VideoCapturePin::OnChangeMediaType();
+
 	mFilter->NotifyEvent(EC_VIDEO_SIZE_CHANGED, MAKELPARAM(mVideoFormat.cx, mVideoFormat.cy), 0);
 	if (mFilter->GetDeviceType() == USB)
 	{

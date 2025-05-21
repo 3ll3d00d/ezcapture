@@ -34,7 +34,6 @@
 #include "quill/sinks/FileSink.h"
 #include <string_view>
 #include <utility>
-#include "quill/std/WideString.h"
 #include "quill/StopWatch.h"
 #endif
 
@@ -1090,7 +1089,7 @@ HRESULT BlackmagicCaptureFilter::Notify(BMDNotifications topic, ULONGLONG param1
 	int64_t intVal = -1;
 	BOOL boolVal = -1;
 	HRESULT hr = S_OK;
-	std::string desc;
+	std::string desc{""};
 	const BMDDeckLinkStatusID statusId = static_cast<BMDDeckLinkStatusID>(param1);
 	switch (statusId)
 	{
@@ -1126,14 +1125,17 @@ HRESULT BlackmagicCaptureFilter::Notify(BMDNotifications topic, ULONGLONG param1
 		break;
 	}
 	#ifndef NO_QUILL
-	if (hr == S_OK)
+	if (!desc.empty())
 	{
-		LOG_TRACE_L1(mLogData.logger, "[{}] {} is {}", mLogData.prefix, desc, intVal > -1 ? intVal : boolVal);
-	}
-	else
-	{
-		LOG_TRACE_L1(mLogData.logger, "[{}] Failed to read {} {:#08x}", mLogData.prefix, desc,
-		             static_cast<unsigned long>(hr));
+		if (hr == S_OK)
+		{
+			LOG_TRACE_L1(mLogData.logger, "[{}] {} is {}", mLogData.prefix, desc, intVal > -1 ? intVal : boolVal);
+		}
+		else
+		{
+			LOG_TRACE_L1(mLogData.logger, "[{}] Failed to read {} {:#08x}", mLogData.prefix, desc,
+				static_cast<unsigned long>(hr));
+		}
 	}
 	#endif
 	return S_OK;
@@ -1433,6 +1435,7 @@ HRESULT BlackmagicVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, RE
 			LOG_TRACE_L1(mLogData.logger, "[{}] Stream is discarding", mLogData.prefix);
 			#endif
 
+			mHasSignal = false;
 			break;
 		}
 		if (mStreamStartTime < 0)
@@ -1441,6 +1444,7 @@ HRESULT BlackmagicVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, RE
 			LOG_TRACE_L1(mLogData.logger, "[{}] Stream has not started, retry after backoff", mLogData.prefix);
 			#endif
 
+			mHasSignal = false;
 			BACKOFF;
 			continue;
 		}
@@ -1453,6 +1457,8 @@ HRESULT BlackmagicVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, RE
 			#ifndef NO_QUILL
 			LOG_TRACE_L1(mLogData.logger, "[{}] Wait for frame failed, retrying", mLogData.prefix);
 			#endif
+
+			mHasSignal = false;
 			continue;
 		}
 
@@ -1465,6 +1471,8 @@ HRESULT BlackmagicVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, RE
 			#ifndef NO_QUILL
 			LogHdrMetaIfPresent(&newVideoFormat);
 			#endif
+
+			mHasSignal = true;
 
 			if (ShouldChangeMediaType(&newVideoFormat, IsFallbackActive(&newVideoFormat)))
 			{
@@ -1585,7 +1593,7 @@ HRESULT BlackmagicVideoCapturePin::FillBuffer(IMediaSample* pms)
 	pms->SetDiscontinuity(gap != 1);
 
 	mFrameCounter = mCurrentFrame->GetFrameIndex();
-
+	
 	AppendHdrSideDataIfNecessary(pms, endTime);
 
 	#ifndef NO_QUILL
@@ -1675,6 +1683,8 @@ void BlackmagicVideoCapturePin::LogHdrMetaIfPresent(VIDEO_FORMAT* newVideoFormat
 
 void BlackmagicVideoCapturePin::OnChangeMediaType()
 {
+	VideoCapturePin::OnChangeMediaType();
+
 	mFilter->NotifyEvent(EC_VIDEO_SIZE_CHANGED, MAKELPARAM(mVideoFormat.cx, mVideoFormat.cy), 0);
 
 	ALLOCATOR_PROPERTIES props;
