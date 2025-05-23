@@ -65,7 +65,7 @@ void BlackmagicCaptureFilter::LoadFormat(VIDEO_FORMAT* videoFormat, const VIDEO_
 	videoFormat->cy = videoSignal->cy;
 	videoFormat->fps = static_cast<double>(videoSignal->frameDurationScale) / static_cast<double>(videoSignal->
 		frameDuration);
-	videoFormat->frameInterval = videoSignal->frameDuration;
+	videoFormat->frameInterval = 10000000 / videoFormat->fps;
 	videoFormat->quantisation = QUANTISATION_FULL;
 	videoFormat->saturation = SATURATION_FULL;
 	switch (videoSignal->pixelFormat)
@@ -185,8 +185,8 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		if (deckLinkAttributes->GetInt(BMDDeckLinkDuplex, &duplexMode) == S_OK && duplexMode == bmdDuplexInactive)
 		{
 			#ifndef NO_QUILL
-			LOG_ERROR(mLogData.logger, "Ignoring device {} {}, no active connectors for current profile", idx,
-			          deviceName);
+			LOG_ERROR(mLogData.logger, "[{}] Ignoring device {} {}, no active connectors for current profile", idx,
+			          mLogData.prefix, deviceName);
 			#endif
 
 			deckLink->Release();
@@ -199,8 +199,8 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		{
 			#ifndef NO_QUILL
 			LOG_ERROR(mLogData.logger,
-			          "Ignoring device {} {}, could not get BMDDeckLinkVideoIOSupport attribute ({:#08x})", idx,
-			          deviceName, static_cast<unsigned long>(result));
+			          "[{}] Ignoring device {} {}, could not get BMDDeckLinkVideoIOSupport attribute ({:#08x})", 
+					  mLogData.prefix, idx, deviceName, static_cast<unsigned long>(result));
 			#endif
 
 			deckLink->Release();
@@ -219,7 +219,8 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 			if (result != S_OK)
 			{
 				#ifndef NO_QUILL
-				LOG_WARNING(mLogData.logger, "Device {} {} does not support audio capture", idx, deviceName);
+				LOG_WARNING(mLogData.logger, "[{}] Device {} {} does not support audio capture", 
+					mLogData.prefix, idx, deviceName);
 				#endif
 
 				audioChannelCount = 0;
@@ -229,8 +230,8 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 			if (result != S_OK)
 			{
 				#ifndef NO_QUILL
-				LOG_WARNING(mLogData.logger, "Ignoring device {} {} does not support input format detection", idx,
-				            deviceName);
+				LOG_WARNING(mLogData.logger, "[{}] Ignoring device {} {} does not support input format detection", 
+					mLogData.prefix, idx, deviceName);
 				#endif
 
 				inputFormatDetection = false;
@@ -240,7 +241,8 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 			if (result != S_OK)
 			{
 				#ifndef NO_QUILL
-				LOG_WARNING(mLogData.logger, "Device {} {} does not support HDR metadata", idx, deviceName);
+				LOG_WARNING(mLogData.logger, "[{}] Device {} {} does not support HDR metadata", 
+					mLogData.prefix, idx, deviceName);
 				#endif
 
 				hdrMetadata = false;
@@ -250,7 +252,8 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 			if (result != S_OK)
 			{
 				#ifndef NO_QUILL
-				LOG_WARNING(mLogData.logger, "Device {} {} does not support colourspace metadata", idx, deviceName);
+				LOG_WARNING(mLogData.logger, "[{}] Device {} {} does not support colourspace metadata", 
+					mLogData.prefix, idx, deviceName);
 				#endif
 
 				colourspaceMetadata = false;
@@ -260,7 +263,8 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 			if (result != S_OK)
 			{
 				#ifndef NO_QUILL
-				LOG_WARNING(mLogData.logger, "Device {} {} does not support dynamic range metadata", idx, deviceName);
+				LOG_WARNING(mLogData.logger, "[{}] Device {} {} does not support dynamic range metadata", 
+					mLogData.prefix, idx, deviceName);
 				#endif
 
 				dynamicRangeMetadata = false;
@@ -1162,7 +1166,7 @@ void BlackmagicCaptureFilter::OnVideoSignalLoaded(VIDEO_SIGNAL* vs)
 	mVideoInputStatus.inAspectX = vs->aspectX;
 	mVideoInputStatus.inAspectY = vs->aspectY;
 	mVideoInputStatus.inFps = static_cast<double>(vs->frameDurationScale) / static_cast<double>(vs->frameDuration);
-	mVideoInputStatus.inFrameDuration = vs->frameDuration;
+	mVideoInputStatus.inFrameDuration = 10000000 / mVideoInputStatus.inFps;
 	mVideoInputStatus.inBitDepth = vs->bitDepth;
 	mVideoInputStatus.signalStatus = vs->locked ? "Locked" : "No Signal";
 	mVideoInputStatus.inColourFormat = vs->colourFormat;
@@ -1644,6 +1648,8 @@ HRESULT BlackmagicVideoCapturePin::OnThreadCreate()
 
 	LOG_INFO(mLogData.logger, "[{}] BlackmagicVideoCapturePin::OnThreadCreate", mLogData.prefix);
 	#endif
+
+	UpdateResolution();
 
 	return mFilter->PinThreadCreated();
 }

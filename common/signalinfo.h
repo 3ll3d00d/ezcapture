@@ -43,6 +43,7 @@ interface __declspec(uuid("4D6B8852-06A6-4997-BC07-3507BB77F748")) ISignalInfoCB
     STDMETHOD(Reload)(VIDEO_OUTPUT_STATUS* payload) = 0;
     STDMETHOD(Reload)(HDR_STATUS* payload) = 0;
     STDMETHOD(Reload)(DEVICE_STATUS* payload) = 0;
+	STDMETHOD(Reload)(DISPLAY_STATUS* payload) = 0;
 };
 
 interface __declspec(uuid("6A505550-28B2-4668-BC2C-461E75A63BC4")) ISignalInfo : public IUnknown
@@ -74,6 +75,7 @@ public:
     HRESULT Reload(VIDEO_OUTPUT_STATUS* payload) override;
     HRESULT Reload(HDR_STATUS* payload) override;
     HRESULT Reload(DEVICE_STATUS* payload) override;
+	HRESULT Reload(DISPLAY_STATUS* payload) override;
 
 private:
 	void SetDirty()

@@ -24,6 +24,7 @@
 #include "lavfilters_side_data.h"
 #include <dvdmedia.h>
 #include <wmcodecdsp.h>
+#include <cmath>
 
 EXTERN_C const GUID MEDIASUBTYPE_PCM_IN24;
 EXTERN_C const GUID MEDIASUBTYPE_PCM_IN32;
@@ -109,6 +110,26 @@ inline void logHdrMeta(HDR_META newMeta, HDR_META oldMeta, log_data log)
 		            log.prefix);
 	}
 	#endif
+}
+
+inline std::wstring GetCurrentResolution()
+{
+	HMONITOR activeMonitor = MonitorFromWindow(GetActiveWindow(), MONITOR_DEFAULTTONEAREST);
+
+	MONITORINFOEX monitorInfo{ {.cbSize = sizeof(MONITORINFOEX)} };
+	DEVMODE devMode{ .dmSize = sizeof(DEVMODE) };
+
+	if (GetMonitorInfo(activeMonitor, &monitorInfo)
+		&& EnumDisplaySettings(monitorInfo.szDevice, ENUM_CURRENT_SETTINGS, &devMode))
+	{
+		auto width = devMode.dmPelsWidth;
+		auto height = devMode.dmPelsHeight;
+		auto freq = devMode.dmDisplayFrequency;
+		auto status = std::wstring{ monitorInfo.szDevice };
+		status += L" " + std::to_wstring(width) + L" x " + std::to_wstring(height) + L" @ " + std::to_wstring(freq) + L" Hz";
+		return status;
+	}
+	return L"";
 }
 
 inline HRESULT PrintResolution(const log_data& ld)
@@ -233,7 +254,8 @@ public:
 	//////////////////////////////////////////////////////////////////////////
 	STDMETHODIMP GetPages(CAUUID* pPages) override;
 	STDMETHODIMP CreatePage(const GUID& guid, IPropertyPage** ppPage) override;
-
+	
+	void OnDisplayUpdated(std::wstring status);
 	void OnVideoFormatLoaded(VIDEO_FORMAT* vf);
 	void OnAudioFormatLoaded(AUDIO_FORMAT* af);
 	void OnHdrUpdated(MediaSideDataHDR* hdr, MediaSideDataHDRContentLightLevel* light);
@@ -244,6 +266,7 @@ protected:
 	log_data mLogData{};
 	IReferenceClock* mClock;
 	DEVICE_STATUS mDeviceStatus{};
+	DISPLAY_STATUS mDisplayStatus{};
 	AUDIO_INPUT_STATUS mAudioInputStatus{};
 	AUDIO_OUTPUT_STATUS mAudioOutputStatus{};
 	VIDEO_INPUT_STATUS mVideoInputStatus{};
@@ -467,6 +490,11 @@ public:
 
 protected:
 	F* mFilter;
+
+	void UpdateResolution()
+	{
+		mFilter->OnDisplayUpdated(GetCurrentResolution());
+	}
 
 	void GetReferenceTime(REFERENCE_TIME* rt) const override
 	{

@@ -1311,6 +1311,8 @@ HRESULT MagewellVideoCapturePin::OnThreadCreate()
 	LOG_INFO(mLogData.logger, "[{}] MagewellVideoCapturePin::OnThreadCreate", mLogData.prefix);
 	#endif
 
+	UpdateResolution();
+
 	auto hChannel = mFilter->GetChannelHandle();
 	LoadSignal(&hChannel);
 

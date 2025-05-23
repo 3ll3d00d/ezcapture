@@ -86,6 +86,8 @@
 #define IDC_DEVICE_ID                   1082
 #define IDC_IN_FRAME_DUR                1083
 #define IDC_IN_FRAME_DUR_LABEL          1084
+#define IDC_DISPLAY_LABEL               1085
+#define IDC_DISPLAY                     1086
 
 // Next default values for new objects
 // 

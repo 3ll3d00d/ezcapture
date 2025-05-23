@@ -322,6 +322,11 @@ struct VIDEO_OUTPUT_STATUS
 	std::string outTransferFunction;
 };
 
+struct DISPLAY_STATUS
+{
+	std::wstring status;
+};
+
 struct HDR_STATUS
 {
 	bool hdrOn{false};
@@ -407,7 +412,4 @@ struct AUDIO_FORMAT
 	Codec codec{PCM};
 	// encoded content only
 	uint16_t dataBurstSize{0};
-	#ifdef __AVX__
-	__m256i shuffleBytes;
-	#endif
 };

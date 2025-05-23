@@ -252,6 +252,15 @@ STDMETHODIMP CaptureFilter::CreatePage(const GUID& guid, IPropertyPage** ppPage)
 	return E_FAIL;
 }
 
+void CaptureFilter::OnDisplayUpdated(std::wstring status)
+{
+	mDisplayStatus.status = status;
+	if (mInfoCallback != nullptr)
+	{
+		mInfoCallback->Reload(&mDisplayStatus);
+	}
+}
+
 void CaptureFilter::OnVideoFormatLoaded(VIDEO_FORMAT* vf)
 {
 	mVideoOutputStatus.outX = vf->cx;
