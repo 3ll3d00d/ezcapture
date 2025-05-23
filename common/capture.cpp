@@ -252,9 +252,10 @@ STDMETHODIMP CaptureFilter::CreatePage(const GUID& guid, IPropertyPage** ppPage)
 	return E_FAIL;
 }
 
-void CaptureFilter::OnDisplayUpdated(std::wstring status)
+void CaptureFilter::OnDisplayUpdated(std::wstring status, int freq)
 {
 	mDisplayStatus.status = status;
+	mDisplayStatus.freq = freq;
 	if (mInfoCallback != nullptr)
 	{
 		mInfoCallback->Reload(&mDisplayStatus);
@@ -526,6 +527,8 @@ HRESULT CapturePin::DoBufferProcessingLoop(void)
 
 	Command com;
 
+	mFirst = true;
+
 	OnThreadStartPlay();
 
 	do
@@ -544,6 +547,8 @@ HRESULT CapturePin::DoBufferProcessingLoop(void)
 				SHORT_BACKOFF;
 				continue;
 			}
+
+			mFirst = false;
 
 			HRESULT hr = FillBuffer(pSample);
 

@@ -324,6 +324,7 @@ struct VIDEO_OUTPUT_STATUS
 
 struct DISPLAY_STATUS
 {
+	int freq{ 0 };
 	std::wstring status;
 };
 

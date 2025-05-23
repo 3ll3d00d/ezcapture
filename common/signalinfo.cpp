@@ -254,7 +254,7 @@ HRESULT CSignalInfoProp::Reload(DISPLAY_STATUS* payload)
 	if (!payload->status.empty())
 	{
 		WCHAR buffer[256];
-		_snwprintf_s(buffer, _TRUNCATE, L"%hs", payload->status.c_str());
+		_snwprintf_s(buffer, _TRUNCATE, L"%ls", payload->status.c_str());
 		SendDlgItemMessage(m_Dlg, IDC_DISPLAY, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 	}
 	return S_OK;

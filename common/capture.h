@@ -112,12 +112,12 @@ inline void logHdrMeta(HDR_META newMeta, HDR_META oldMeta, log_data log)
 	#endif
 }
 
-inline std::wstring GetCurrentResolution()
+inline std::tuple<std::wstring, int> GetDisplayStatus()
 {
 	HMONITOR activeMonitor = MonitorFromWindow(GetActiveWindow(), MONITOR_DEFAULTTONEAREST);
 
-	MONITORINFOEX monitorInfo{ {.cbSize = sizeof(MONITORINFOEX)} };
-	DEVMODE devMode{ .dmSize = sizeof(DEVMODE) };
+	MONITORINFOEX monitorInfo{{.cbSize = sizeof(MONITORINFOEX)}};
+	DEVMODE devMode{.dmSize = sizeof(DEVMODE)};
 
 	if (GetMonitorInfo(activeMonitor, &monitorInfo)
 		&& EnumDisplaySettings(monitorInfo.szDevice, ENUM_CURRENT_SETTINGS, &devMode))
@@ -125,11 +125,12 @@ inline std::wstring GetCurrentResolution()
 		auto width = devMode.dmPelsWidth;
 		auto height = devMode.dmPelsHeight;
 		auto freq = devMode.dmDisplayFrequency;
-		auto status = std::wstring{ monitorInfo.szDevice };
-		status += L" " + std::to_wstring(width) + L" x " + std::to_wstring(height) + L" @ " + std::to_wstring(freq) + L" Hz";
-		return status;
+		auto status = std::wstring{monitorInfo.szDevice};
+		status += L" " + std::to_wstring(width) + L" x " + std::to_wstring(height) + L" @ " + std::to_wstring(freq) +
+			L" Hz";
+		return {status, freq};
 	}
-	return L"";
+	return {L"", 0};
 }
 
 inline HRESULT PrintResolution(const log_data& ld)
@@ -254,8 +255,8 @@ public:
 	//////////////////////////////////////////////////////////////////////////
 	STDMETHODIMP GetPages(CAUUID* pPages) override;
 	STDMETHODIMP CreatePage(const GUID& guid, IPropertyPage** ppPage) override;
-	
-	void OnDisplayUpdated(std::wstring status);
+
+	void OnDisplayUpdated(std::wstring status, int freq);
 	void OnVideoFormatLoaded(VIDEO_FORMAT* vf);
 	void OnAudioFormatLoaded(AUDIO_FORMAT* af);
 	void OnHdrUpdated(MediaSideDataHDR* hdr, MediaSideDataHDRContentLightLevel* light);
@@ -399,6 +400,7 @@ protected:
 	bool mPreview{false};
 	WORD mSinceLast{0};
 
+	bool mFirst{ true };
 	bool mLastSampleDiscarded{false};
 	bool mUpdatedMediaType{false};
 	bool mHasSignal{false};
@@ -430,14 +432,21 @@ protected:
 	void VideoFormatToMediaType(CMediaType* pmt, VIDEO_FORMAT* videoFormat) const;
 	bool ShouldChangeMediaType(VIDEO_FORMAT* newVideoFormat, bool pixelFallBackIsActive = false);
 	HRESULT DoChangeMediaType(const CMediaType* pNewMt, const VIDEO_FORMAT* newVideoFormat);
+	virtual void UpdateDisplayStatus() = 0;
+
+	long CalcRefreshRate() const
+	{
+		auto fps = mVideoFormat.fps;
+		auto refreshRate = std::lround(fps - 0.49); // 23.976 will become 23, 24 will become 24 etc
+		return refreshRate;
+	}
 
 	virtual void OnChangeMediaType()
 	{
 		if (mHasSignal)
 		{
-			auto fps = mVideoFormat.fps;
-			auto refreshRate = std::lround(fps - 0.49); // 23.976 will become 23, 24 will become 24 etc
-			ChangeResolution(mLogData, refreshRate);
+			ChangeResolution(mLogData, CalcRefreshRate());
+			UpdateDisplayStatus();
 		}
 	}
 
@@ -491,9 +500,13 @@ public:
 protected:
 	F* mFilter;
 
-	void UpdateResolution()
+	void UpdateDisplayStatus() override
 	{
-		mFilter->OnDisplayUpdated(GetCurrentResolution());
+		auto values = GetDisplayStatus();
+		#ifndef NO_QUILL
+		LOG_TRACE_L2(mLogData.logger, "[{}] Updating display status to {}", mLogData.prefix, std::get<0>(values));
+		#endif
+		mFilter->OnDisplayUpdated(std::get<0>(values), std::get<1>(values));
 	}
 
 	void GetReferenceTime(REFERENCE_TIME* rt) const override

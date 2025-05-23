@@ -1222,6 +1222,7 @@ HRESULT BlackmagicCaptureFilter::Reload()
 		mInfoCallback->Reload(&mVideoOutputStatus);
 		mInfoCallback->Reload(&mHdrStatus);
 		mInfoCallback->Reload(&mDeviceStatus);
+		mInfoCallback->Reload(&mDisplayStatus);
 		return S_OK;
 	}
 	return E_FAIL;
@@ -1572,6 +1573,11 @@ HRESULT BlackmagicVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, RE
 				#endif
 			}
 
+			if (hasFrame && mFirst)
+			{
+				OnChangeMediaType();
+			}
+
 			if (!hasFrame)
 			{
 				mCurrentFrame.reset();
@@ -1649,7 +1655,7 @@ HRESULT BlackmagicVideoCapturePin::OnThreadCreate()
 	LOG_INFO(mLogData.logger, "[{}] BlackmagicVideoCapturePin::OnThreadCreate", mLogData.prefix);
 	#endif
 
-	UpdateResolution();
+	UpdateDisplayStatus();
 
 	return mFilter->PinThreadCreated();
 }

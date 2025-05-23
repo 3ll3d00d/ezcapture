@@ -375,6 +375,7 @@ HRESULT MagewellCaptureFilter::Reload()
 		mInfoCallback->Reload(&mVideoOutputStatus);
 		mInfoCallback->Reload(&mHdrStatus);
 		mInfoCallback->Reload(&mDeviceStatus);
+		mInfoCallback->Reload(&mDisplayStatus);
 		return S_OK;
 	}
 	return E_FAIL;
@@ -1288,6 +1289,12 @@ HRESULT MagewellVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 			}
 		}
 	}
+
+	if (hasFrame && mFirst)
+	{
+		OnChangeMediaType();
+	}
+
 	return retVal;
 }
 
@@ -1311,7 +1318,7 @@ HRESULT MagewellVideoCapturePin::OnThreadCreate()
 	LOG_INFO(mLogData.logger, "[{}] MagewellVideoCapturePin::OnThreadCreate", mLogData.prefix);
 	#endif
 
-	UpdateResolution();
+	UpdateDisplayStatus();
 
 	auto hChannel = mFilter->GetChannelHandle();
 	LoadSignal(&hChannel);
