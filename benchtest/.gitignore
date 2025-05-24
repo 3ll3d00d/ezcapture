@@ -1,6 +1,6 @@
 *.v210
 *.scalar
-*.avx*
+*.*avx*
 *r210*
 *yuv2*
 stats*

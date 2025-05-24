@@ -27,10 +27,11 @@ public:
 
 	HRESULT WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame) override
 	{
-		if (S_FALSE != CheckFrameSizes(srcFrame->GetFrameIndex(), mExpectedImageSize, dstFrame))
+		if (S_FALSE == CheckFrameSizes(srcFrame->GetFrameIndex(), mExpectedImageSize, dstFrame))
 		{
 			return S_FALSE;
 		}
+		// TODO handle padding?
 
 		return srcFrame->CopyData(dstFrame);
 	}
