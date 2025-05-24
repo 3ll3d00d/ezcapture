@@ -91,12 +91,21 @@ MagewellCaptureFilter::MagewellCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		{
 			di.deviceType = PRO;
 			di.serialNo = std::string{mci.szBoardSerialNo};
+			MWCAP_PRO_CAPTURE_INFO info;
+			MWGetFamilyInfoByIndex(i, &info, sizeof(MWCAP_PRO_CAPTURE_INFO));
+			di.linkSpeed = info.byLinkType;
+			di.linkWidth = info.byLinkWidth;
+			di.maxPayloadSize = info.wMaxPayloadSize;
+			di.maxReadRequestSize = info.wMaxReadRequestSize;
 		}
 		else if (0 == strcmp(mci.szFamilyName, "USB Capture"))
 		{
 			di.deviceType = USB;
 			di.serialNo = std::string{mci.szBoardSerialNo};
 			// TODO use MWCAP_DEVICE_NAME_MODE and MWUSBGetDeviceNameMode mode?
+			MWCAP_USB_CAPTURE_INFO info;
+			MWGetFamilyInfoByIndex(i, &info, sizeof(MWCAP_USB_CAPTURE_INFO));
+			di.linkSpeed = info.byUSBSpeed;
 		}
 
 		MWGetDevicePath(i, di.devicePath);
@@ -173,6 +182,11 @@ MagewellCaptureFilter::MagewellCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 			mDeviceInfo.serialNo += diToUse->serialNo;
 			mDeviceInfo.deviceType = diToUse->deviceType;
 			mDeviceInfo.hChannel = diToUse->hChannel;
+			mDeviceInfo.linkSpeed = diToUse->linkSpeed;
+			mDeviceInfo.linkWidth = diToUse->linkWidth;
+			mDeviceInfo.maxPayloadSize = diToUse->maxPayloadSize;
+			mDeviceInfo.maxReadRequestSize = diToUse->maxReadRequestSize;
+			SnapTemperature();
 		}
 		else
 		{
@@ -198,7 +212,7 @@ MagewellCaptureFilter::MagewellCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 	}
 	else
 	{
-		OnDeviceSelected();
+		MagewellCaptureFilter::OnDeviceUpdated();
 	}
 
 	mClock = new MWReferenceClock(phr, mDeviceInfo.hChannel, mDeviceInfo.deviceType == PRO);
@@ -214,6 +228,22 @@ MagewellCaptureFilter::~MagewellCaptureFilter()
 	if (mInited)
 	{
 		MWCaptureExitInstance();
+	}
+}
+
+void MagewellCaptureFilter::SnapTemperature()
+{
+	if (mDeviceInfo.deviceType == PRO)
+	{
+		uint32_t temp;
+		MWGetTemperature(mDeviceInfo.hChannel, &temp);
+		mDeviceInfo.temperature = temp;
+	}
+	else if (mDeviceInfo.deviceType == USB)
+	{
+		int16_t temp;
+		MWUSBGetCoreTemperature(mDeviceInfo.hChannel, &temp);
+		mDeviceInfo.temperature = temp;
 	}
 }
 
@@ -338,12 +368,24 @@ void MagewellCaptureFilter::OnAudioSignalLoaded(AUDIO_SIGNAL* as)
 	}
 }
 
-void MagewellCaptureFilter::OnDeviceSelected()
+void MagewellCaptureFilter::OnDeviceUpdated()
 {
 	mDeviceStatus.deviceDesc = devicetype_to_name(mDeviceInfo.deviceType);
 	mDeviceStatus.deviceDesc += " [";
 	mDeviceStatus.deviceDesc += mDeviceInfo.serialNo;
 	mDeviceStatus.deviceDesc += "]";
+	mDeviceStatus.temperature = mDeviceInfo.temperature / 10.0;
+	mDeviceStatus.linkSpeed = mDeviceInfo.linkSpeed;
+	if (mDeviceInfo.deviceType == PRO)
+	{
+		mDeviceStatus.linkWidth = mDeviceInfo.linkWidth;
+		mDeviceStatus.maxReadRequestSize = mDeviceInfo.maxReadRequestSize;
+		mDeviceStatus.maxPayloadSize = mDeviceInfo.maxPayloadSize;
+	}
+	else
+	{
+		mDeviceStatus.protocol = OTHER;
+	}
 
 	#ifndef NO_QUILL
 	LOG_INFO(mLogData.logger, "[{}] Recorded device description: {}", mLogData.prefix, mDeviceStatus.deviceDesc);
@@ -672,6 +714,9 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 		}
 		auto frameInterval = pin->mCurrentFrameTime - pin->mPreviousFrameTime;
 		auto sz = pms->GetSize();
+
+		pin->SnapTemperatureIfNecessary(endTime);
+
 		if (pin->mVideoFormat.imageSize != sz)
 		{
 			LOG_TRACE_L3(mLogData.logger, "[{}] Video format size mismatch (format: {} buffer: {})", mLogData.prefix,

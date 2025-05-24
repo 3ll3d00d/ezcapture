@@ -172,7 +172,7 @@ inline HRESULT ChangeResolution(const log_data& ld, DWORD targetRefreshRate)
 		{
 			#ifndef NO_QUILL
 			LOG_TRACE_L2(ld.logger, "[{}] No change requested from {} {} x {} @ {} Hz", ld.prefix,
-			         std::wstring{ monitorInfo.szDevice }, width, height, freq);
+			             std::wstring{ monitorInfo.szDevice }, width, height, freq);
 			#endif
 			return S_OK;
 		}
@@ -283,7 +283,7 @@ public:
 	// Callbacks to update the prop page data
 	virtual void OnVideoSignalLoaded(V_SIG* vs) = 0;
 	virtual void OnAudioSignalLoaded(A_SIG* as) = 0;
-	virtual void OnDeviceSelected() = 0;
+	virtual void OnDeviceUpdated() = 0;
 
 protected:
 	HdmiCaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID clsid, std::string logPrefix) :
@@ -400,7 +400,7 @@ protected:
 	bool mPreview{false};
 	WORD mSinceLast{0};
 
-	bool mFirst{ true };
+	bool mFirst{true};
 	bool mLastSampleDiscarded{false};
 	bool mUpdatedMediaType{false};
 	bool mHasSignal{false};

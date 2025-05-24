@@ -240,11 +240,53 @@ HRESULT CSignalInfoProp::Reload(HDR_STATUS* payload)
 
 HRESULT CSignalInfoProp::Reload(DEVICE_STATUS* payload)
 {
+	WCHAR buffer[256];
 	if (!payload->deviceDesc.empty())
 	{
-		WCHAR buffer[256];
 		_snwprintf_s(buffer, _TRUNCATE, L"%hs", payload->deviceDesc.c_str());
 		SendDlgItemMessage(m_Dlg, IDC_DEVICE_ID, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+	}
+	_snwprintf_s(buffer, _TRUNCATE, L"%.1f C", payload->temperature);
+	SendDlgItemMessage(m_Dlg, IDC_TEMP, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+	_snwprintf_s(buffer, _TRUNCATE, L"%s%lld.0", 
+		payload->protocol == PCIE ? "Gen " : "",
+		payload->linkSpeed);
+	SendDlgItemMessage(m_Dlg, IDC_LINKSPEED, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+	if (payload->linkWidth > 0)
+	{
+		_snwprintf_s(buffer, _TRUNCATE, L"%lld.0x", payload->linkWidth);
+		SendDlgItemMessage(m_Dlg, IDC_LINKWIDTH, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+		ShowWindow(GetDlgItem(m_Dlg, IDC_LINKWIDTH_LABEL), SW_SHOW);
+		ShowWindow(GetDlgItem(m_Dlg, IDC_LINKWIDTH), SW_SHOW);
+	}
+	else
+	{
+		ShowWindow(GetDlgItem(m_Dlg, IDC_LINKWIDTH_LABEL), SW_HIDE);
+		ShowWindow(GetDlgItem(m_Dlg, IDC_LINKWIDTH), SW_HIDE);
+	}
+	if (payload->maxPayloadSize > 0)
+	{
+		_snwprintf_s(buffer, _TRUNCATE, L"%d", payload->maxPayloadSize);
+		SendDlgItemMessage(m_Dlg, IDC_PCIE_MPS, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+		ShowWindow(GetDlgItem(m_Dlg, IDC_PCIE_MPS_LABEL), SW_SHOW);
+		ShowWindow(GetDlgItem(m_Dlg, IDC_PCIE_MPS), SW_SHOW);
+	}
+	else
+	{
+		ShowWindow(GetDlgItem(m_Dlg, IDC_PCIE_MPS_LABEL), SW_HIDE);
+		ShowWindow(GetDlgItem(m_Dlg, IDC_PCIE_MPS), SW_HIDE);
+	}
+	if (payload->maxReadRequestSize > 0)
+	{
+		_snwprintf_s(buffer, _TRUNCATE, L"%d", payload->maxReadRequestSize);
+		SendDlgItemMessage(m_Dlg, IDC_PCIE_MRRS, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+		ShowWindow(GetDlgItem(m_Dlg, IDC_PCIE_MRRS_LABEL), SW_SHOW);
+		ShowWindow(GetDlgItem(m_Dlg, IDC_PCIE_MRRS), SW_SHOW);
+	}
+	else
+	{
+		ShowWindow(GetDlgItem(m_Dlg, IDC_PCIE_MRRS_LABEL), SW_HIDE);
+		ShowWindow(GetDlgItem(m_Dlg, IDC_PCIE_MRRS), SW_HIDE);
 	}
 	return S_OK;
 }

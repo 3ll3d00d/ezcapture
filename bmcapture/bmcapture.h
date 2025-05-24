@@ -147,7 +147,7 @@ public:
 	// Callbacks to update the prop page data
 	void OnVideoSignalLoaded(VIDEO_SIGNAL* vs) override;
 	void OnAudioSignalLoaded(AUDIO_SIGNAL* as) override;
-	void OnDeviceSelected() override;
+	void OnDeviceUpdated() override;
 
 	HRESULT Reload() override;
 

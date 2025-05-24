@@ -156,7 +156,8 @@ struct pixel_format
 		if (format == NV12 || format == P010)
 		{
 			*imageBytes = *imageBytes * 3 / 2;
-		} else if (format == YV16 || format == NV16 || format == P210)
+		}
+		else if (format == YV16 || format == NV16 || format == P210)
 		{
 			*imageBytes = *imageBytes * 2;
 		}
@@ -195,7 +196,7 @@ const inline pixel_format ARGB{pixel_format::ARGB, 'A', 'R', 'G', 'B', 8, 32, tr
 const inline pixel_format BGRA{pixel_format::BGRA, 'B', 'G', 'R', 'A', 8, 32, true, RGB_444};
 const inline pixel_format RGBA{pixel_format::RGBA, 'R', 'G', 'B', 'A', 8, 32, true, RGB_444};
 const inline pixel_format R210{pixel_format::R210, 'r', '2', '1', '0', 10, 32, false, RGB_444, 256};
-const inline pixel_format R12B{pixel_format::R12B, 'R', '1', '2', 'B', 12,36, false, RGB_444};
+const inline pixel_format R12B{pixel_format::R12B, 'R', '1', '2', 'B', 12, 36, false, RGB_444};
 const inline pixel_format R12L{pixel_format::R12L, 'R', '1', '2', 'L', 12, 36, false, RGB_444};
 const inline pixel_format R10L{pixel_format::R10L, 'R', '1', '0', 'l', 10, 32, false, RGB_444, 256};
 const inline pixel_format R10B{pixel_format::R10B, 'R', '1', '0', 'b', 10, 32, false, RGB_444, 256};
@@ -226,9 +227,21 @@ const pixel_format ALL_PIXEL_FORMATS[] = {
 	RGB48
 };
 
+enum protocol
+{
+	PCIE,
+	OTHER
+};
+
 struct DEVICE_STATUS
 {
+	protocol protocol{PCIE};
 	std::string deviceDesc{};
+	double temperature{0.0};
+	int64_t linkSpeed{0};
+	int64_t linkWidth{0};
+	int16_t maxPayloadSize{0};
+	int16_t maxReadRequestSize{0};
 };
 
 struct HDR_META
@@ -324,7 +337,7 @@ struct VIDEO_OUTPUT_STATUS
 
 struct DISPLAY_STATUS
 {
-	int freq{ 0 };
+	int freq{0};
 	std::wstring status;
 };
 

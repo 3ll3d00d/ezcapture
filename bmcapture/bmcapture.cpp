@@ -199,8 +199,8 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		{
 			#ifndef NO_QUILL
 			LOG_ERROR(mLogData.logger,
-			          "[{}] Ignoring device {} {}, could not get BMDDeckLinkVideoIOSupport attribute ({:#08x})", 
-					  mLogData.prefix, idx, deviceName, static_cast<unsigned long>(result));
+			          "[{}] Ignoring device {} {}, could not get BMDDeckLinkVideoIOSupport attribute ({:#08x})",
+			          mLogData.prefix, idx, deviceName, static_cast<unsigned long>(result));
 			#endif
 
 			deckLink->Release();
@@ -219,8 +219,8 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 			if (result != S_OK)
 			{
 				#ifndef NO_QUILL
-				LOG_WARNING(mLogData.logger, "[{}] Device {} {} does not support audio capture", 
-					mLogData.prefix, idx, deviceName);
+				LOG_WARNING(mLogData.logger, "[{}] Device {} {} does not support audio capture",
+				            mLogData.prefix, idx, deviceName);
 				#endif
 
 				audioChannelCount = 0;
@@ -230,8 +230,8 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 			if (result != S_OK)
 			{
 				#ifndef NO_QUILL
-				LOG_WARNING(mLogData.logger, "[{}] Ignoring device {} {} does not support input format detection", 
-					mLogData.prefix, idx, deviceName);
+				LOG_WARNING(mLogData.logger, "[{}] Ignoring device {} {} does not support input format detection",
+				            mLogData.prefix, idx, deviceName);
 				#endif
 
 				inputFormatDetection = false;
@@ -241,8 +241,8 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 			if (result != S_OK)
 			{
 				#ifndef NO_QUILL
-				LOG_WARNING(mLogData.logger, "[{}] Device {} {} does not support HDR metadata", 
-					mLogData.prefix, idx, deviceName);
+				LOG_WARNING(mLogData.logger, "[{}] Device {} {} does not support HDR metadata",
+				            mLogData.prefix, idx, deviceName);
 				#endif
 
 				hdrMetadata = false;
@@ -252,8 +252,8 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 			if (result != S_OK)
 			{
 				#ifndef NO_QUILL
-				LOG_WARNING(mLogData.logger, "[{}] Device {} {} does not support colourspace metadata", 
-					mLogData.prefix, idx, deviceName);
+				LOG_WARNING(mLogData.logger, "[{}] Device {} {} does not support colourspace metadata",
+				            mLogData.prefix, idx, deviceName);
 				#endif
 
 				colourspaceMetadata = false;
@@ -263,8 +263,8 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 			if (result != S_OK)
 			{
 				#ifndef NO_QUILL
-				LOG_WARNING(mLogData.logger, "[{}] Device {} {} does not support dynamic range metadata", 
-					mLogData.prefix, idx, deviceName);
+				LOG_WARNING(mLogData.logger, "[{}] Device {} {} does not support dynamic range metadata",
+				            mLogData.prefix, idx, deviceName);
 				#endif
 
 				dynamicRangeMetadata = false;
@@ -454,7 +454,20 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 
 	if (mDeckLink)
 	{
-		BlackmagicCaptureFilter::OnDeviceSelected();
+		int64_t val;
+		if (SUCCEEDED(mDeckLinkStatus->GetInt(bmdDeckLinkStatusPCIExpressLinkWidth, &val)))
+		{
+			mDeviceInfo.linkWidth = val;
+		};
+		if (SUCCEEDED(mDeckLinkStatus->GetInt(bmdDeckLinkStatusPCIExpressLinkSpeed, &val)))
+		{
+			mDeviceInfo.linkSpeed = val;
+		};
+		if (SUCCEEDED(mDeckLinkStatus->GetInt(bmdDeckLinkStatusDeviceTemperature, &val)))
+		{
+			mDeviceInfo.temperature = val;
+		};
+		BlackmagicCaptureFilter::OnDeviceUpdated();
 		BlackmagicCaptureFilter::OnVideoSignalLoaded(&mVideoSignal);
 	}
 	else
@@ -1064,7 +1077,7 @@ void BlackmagicCaptureFilter::LoadFormat(AUDIO_FORMAT* audioFormat, const AUDIO_
 		audioFormat->outputChannelCount = 8;
 		audioFormat->channelMask = KSAUDIO_SPEAKER_7POINT1_SURROUND;
 		audioFormat->channelOffsets.fill(0);
-	// swap LFE and FC
+		// swap LFE and FC
 		audioFormat->channelOffsets[2] = 1;
 		audioFormat->channelOffsets[3] = -1;
 		audioFormat->channelOffsets[4] = 2;
@@ -1093,18 +1106,18 @@ HRESULT BlackmagicCaptureFilter::Notify(BMDNotifications topic, ULONGLONG param1
 	int64_t intVal = -1;
 	BOOL boolVal = -1;
 	HRESULT hr = S_OK;
-	std::string desc{""};
+	std::string desc;
 	const BMDDeckLinkStatusID statusId = static_cast<BMDDeckLinkStatusID>(param1);
 	switch (statusId)
 	{
 	case bmdDeckLinkStatusPCIExpressLinkWidth:
 		hr = mDeckLinkStatus->GetInt(statusId, &intVal);
-		if (intVal != -1) mDeviceInfo.pcieLinkWidth = intVal;
+		if (intVal != -1) mDeviceInfo.linkWidth = intVal;
 		desc = "PCIe Link Width";
 		break;
 	case bmdDeckLinkStatusPCIExpressLinkSpeed:
 		hr = mDeckLinkStatus->GetInt(statusId, &intVal);
-		if (intVal != -1) mDeviceInfo.pcieLinkSpeed = intVal;
+		if (intVal != -1) mDeviceInfo.linkSpeed = intVal;
 		desc = "PCIe Link Speed";
 		break;
 	case bmdDeckLinkStatusDeviceTemperature:
@@ -1128,20 +1141,24 @@ HRESULT BlackmagicCaptureFilter::Notify(BMDNotifications topic, ULONGLONG param1
 	default:
 		break;
 	}
-	#ifndef NO_QUILL
 	if (!desc.empty())
 	{
 		if (hr == S_OK)
 		{
+			OnDeviceUpdated();
+
+			#ifndef NO_QUILL
 			LOG_TRACE_L1(mLogData.logger, "[{}] {} is {}", mLogData.prefix, desc, intVal > -1 ? intVal : boolVal);
+			#endif
 		}
+		#ifndef NO_QUILL
 		else
 		{
 			LOG_TRACE_L1(mLogData.logger, "[{}] Failed to read {} {:#08x}", mLogData.prefix, desc,
-				static_cast<unsigned long>(hr));
+			             static_cast<unsigned long>(hr));
 		}
+		#endif
 	}
-	#endif
 	return S_OK;
 }
 
@@ -1197,13 +1214,20 @@ void BlackmagicCaptureFilter::OnAudioSignalLoaded(AUDIO_SIGNAL* as)
 	}
 }
 
-void BlackmagicCaptureFilter::OnDeviceSelected()
+void BlackmagicCaptureFilter::OnDeviceUpdated()
 {
+	auto prev = mDeviceStatus.deviceDesc;
 	mDeviceStatus.deviceDesc = std::format("{0} [{1}.{2}.{3}]", mDeviceInfo.name, mDeviceInfo.apiVersion[0],
 	                                       mDeviceInfo.apiVersion[1], mDeviceInfo.apiVersion[2]);
+	mDeviceStatus.linkSpeed = mDeviceInfo.linkSpeed;
+	mDeviceStatus.linkWidth = mDeviceInfo.linkWidth;
+	mDeviceStatus.temperature = mDeviceInfo.temperature;
 
 	#ifndef NO_QUILL
-	LOG_INFO(mLogData.logger, "[{}] Recorded device description: {}", mLogData.prefix, mDeviceStatus.deviceDesc);
+	if (prev != mDeviceStatus.deviceDesc)
+	{
+		LOG_INFO(mLogData.logger, "[{}] Recorded device description: {}", mLogData.prefix, mDeviceStatus.deviceDesc);
+	}
 	#endif
 
 	if (mInfoCallback != nullptr)
@@ -1603,7 +1627,7 @@ HRESULT BlackmagicVideoCapturePin::FillBuffer(IMediaSample* pms)
 	pms->SetDiscontinuity(gap != 1);
 
 	mFrameCounter = mCurrentFrame->GetFrameIndex();
-	
+
 	AppendHdrSideDataIfNecessary(pms, endTime);
 
 	#ifndef NO_QUILL

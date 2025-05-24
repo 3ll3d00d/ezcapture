@@ -88,6 +88,16 @@
 #define IDC_IN_FRAME_DUR_LABEL          1084
 #define IDC_DISPLAY_LABEL               1085
 #define IDC_DISPLAY                     1086
+#define IDC_LINKSPEED_LABEL             1087
+#define IDC_LINKSPEED                   1088
+#define IDC_LINKWIDTH_LABEL             1089
+#define IDC_LINKWIDTH                   1090
+#define IDC_TEMP_LABEL                  1091
+#define IDC_TEMP						1092
+#define IDC_PCIE_MPS_LABEL              1093
+#define IDC_PCIE_MPS					1094
+#define IDC_PCIE_MRRS_LABEL             1095
+#define IDC_PCIE_MRRS					1096
 
 // Next default values for new objects
 // 

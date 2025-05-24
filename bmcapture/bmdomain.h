@@ -29,9 +29,9 @@ struct DEVICE_INFO
 	bool hdrMetadata{false};
 	bool colourspaceMetadata{false};
 	bool dynamicRangeMetadata{false};
-	int64_t pcieLinkWidth;
-	int64_t pcieLinkSpeed;
-	int64_t temperature;
+	int64_t linkWidth;
+	int64_t linkSpeed;
+	double temperature;
 };
 
 struct VIDEO_SIGNAL
