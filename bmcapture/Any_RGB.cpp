@@ -22,7 +22,7 @@
 
 HRESULT any_rgb::WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame)
 {
-	if (S_OK != CheckFrameSizes(srcFrame->GetFrameIndex(), mExpectedImageSize, dstFrame))
+	if (S_FALSE == CheckFrameSizes(srcFrame->GetFrameIndex(), mExpectedImageSize, dstFrame))
 	{
 		return S_FALSE;
 	}

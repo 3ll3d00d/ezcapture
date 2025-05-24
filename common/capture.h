@@ -171,14 +171,14 @@ inline HRESULT ChangeResolution(const log_data& ld, DWORD targetRefreshRate)
 		if (freq == targetRefreshRate)
 		{
 			#ifndef NO_QUILL
-			LOG_INFO(ld.logger, "[{}] No change requested from = {} {} x {} @ {} Hz", ld.prefix,
+			LOG_TRACE_L2(ld.logger, "[{}] No change requested from {} {} x {} @ {} Hz", ld.prefix,
 			         std::wstring{ monitorInfo.szDevice }, width, height, freq);
 			#endif
 			return S_OK;
 		}
 
 		#ifndef NO_QUILL
-		LOG_INFO(ld.logger, "[{}] Requesting change from = {} {} x {} @ {} Hz to {} Hz", ld.prefix,
+		LOG_INFO(ld.logger, "[{}] Requesting change from {} {} x {} @ {} Hz to {} Hz", ld.prefix,
 		         std::wstring{ monitorInfo.szDevice }, width, height, freq, targetRefreshRate);
 		#endif
 
@@ -189,7 +189,7 @@ inline HRESULT ChangeResolution(const log_data& ld, DWORD targetRefreshRate)
 		{
 		case DISP_CHANGE_SUCCESSFUL:
 			#ifndef NO_QUILL
-			LOG_INFO(ld.logger, "[{}] Completed change from = {} {} x {} @ {} Hz to {} Hz", ld.prefix,
+			LOG_INFO(ld.logger, "[{}] Completed change from {} {} x {} @ {} Hz to {} Hz", ld.prefix,
 			         std::wstring{ monitorInfo.szDevice }, width, height, freq, targetRefreshRate);
 			#endif
 			return S_OK;
@@ -503,9 +503,6 @@ protected:
 	void UpdateDisplayStatus() override
 	{
 		auto values = GetDisplayStatus();
-		#ifndef NO_QUILL
-		LOG_TRACE_L2(mLogData.logger, "[{}] Updating display status to {}", mLogData.prefix, std::get<0>(values));
-		#endif
 		mFilter->OnDisplayUpdated(std::get<0>(values), std::get<1>(values));
 	}
 

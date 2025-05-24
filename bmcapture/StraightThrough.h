@@ -27,7 +27,7 @@ public:
 
 	HRESULT WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame) override
 	{
-		if (CheckFrameSizes(srcFrame->GetFrameIndex(), srcFrame->GetLength(), dstFrame) != S_OK)
+		if (S_FALSE != CheckFrameSizes(srcFrame->GetFrameIndex(), mExpectedImageSize, dstFrame))
 		{
 			return S_FALSE;
 		}
