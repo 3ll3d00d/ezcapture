@@ -66,39 +66,48 @@ void BlackmagicCaptureFilter::LoadFormat(VIDEO_FORMAT* videoFormat, const VIDEO_
 	videoFormat->fps = static_cast<double>(videoSignal->frameDurationScale) / static_cast<double>(videoSignal->
 		frameDuration);
 	videoFormat->frameInterval = 10000000 / videoFormat->fps;
-	videoFormat->quantisation = QUANTISATION_FULL;
 	videoFormat->saturation = SATURATION_FULL;
 	switch (videoSignal->pixelFormat)
 	{
 	case bmdFormat8BitYUV:
+		videoFormat->quantisation = QUANTISATION_UNKNOWN;
 		videoFormat->pixelFormat = YUV2;
 		break;
 	case bmdFormat10BitYUV:
+		videoFormat->quantisation = QUANTISATION_UNKNOWN;
 		videoFormat->pixelFormat = V210;
 		break;
 	case bmdFormat10BitYUVA:
 		// unusual format, Ultrastudio 4k mini only
+		videoFormat->quantisation = QUANTISATION_UNKNOWN;
 		videoFormat->pixelFormat = AY10;
 		break;
 	case bmdFormat8BitARGB:
+		videoFormat->quantisation = QUANTISATION_FULL;
 		videoFormat->pixelFormat = RGBA; // seems dubious but appears to work in practice
 		break;
 	case bmdFormat8BitBGRA:
+		videoFormat->quantisation = QUANTISATION_FULL;
 		videoFormat->pixelFormat = RGBA; // seems dubious but appears to work in practice
 		break;
 	case bmdFormat10BitRGB:
+		videoFormat->quantisation = QUANTISATION_FULL;
 		videoFormat->pixelFormat = R210;
 		break;
 	case bmdFormat12BitRGB:
+		videoFormat->quantisation = QUANTISATION_FULL;
 		videoFormat->pixelFormat = R12B;
 		break;
 	case bmdFormat12BitRGBLE:
+		videoFormat->quantisation = QUANTISATION_FULL;
 		videoFormat->pixelFormat = R12L;
 		break;
 	case bmdFormat10BitRGBXLE:
+		videoFormat->quantisation = QUANTISATION_FULL;
 		videoFormat->pixelFormat = R10L;
 		break;
 	case bmdFormat10BitRGBX:
+		videoFormat->quantisation = QUANTISATION_FULL;
 		videoFormat->pixelFormat = R10B;
 		break;
 	case bmdFormatUnspecified:
