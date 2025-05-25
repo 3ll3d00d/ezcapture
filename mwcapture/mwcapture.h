@@ -89,7 +89,8 @@ struct AUDIO_SIGNAL
 
 enum DeviceType : uint8_t
 {
-	USB,
+	USB_PLUS,
+	USB_PRO,
 	PRO
 };
 
@@ -97,7 +98,8 @@ inline const char* devicetype_to_name(DeviceType e)
 {
 	switch (e)
 	{
-	case USB: return "USB";
+	case USB_PLUS: return "USB_PLUS";
+	case USB_PRO: return "USB_PRO";
 	case PRO: return "PRO";
 	default: return "unknown";
 	}
@@ -112,9 +114,11 @@ struct DEVICE_INFO
 	double temperature{0.0};
 	int64_t linkSpeed{0};
 	// pcie only
-	int64_t linkWidth{0};
-	int16_t maxPayloadSize;
-	int16_t maxReadRequestSize;
+	int64_t linkWidth{-1};
+	int16_t maxPayloadSize{-1};
+	int16_t maxReadRequestSize{-1};
+	// usb pro only
+	int16_t fanSpeed{-1};
 };
 
 struct CAPTURED_FRAME
@@ -169,7 +173,7 @@ public:
 
 	DeviceType GetDeviceType() const;
 
-	void SnapTemperature();
+	void SnapHardwareDetails();
 
 	// Callbacks to update the prop page data
 	void OnVideoSignalLoaded(VIDEO_SIGNAL* vs) override;
@@ -230,7 +234,7 @@ protected:
 	{
 		if (endTime > mLastTempSnapAt + dshowTicksPerSecond)
 		{
-			mFilter->SnapTemperature();
+			mFilter->SnapHardwareDetails();
 			mFilter->OnDeviceUpdated();
 			mLastTempSnapAt = endTime;
 		}

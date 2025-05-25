@@ -69,20 +69,20 @@ TEST(DIMS, CanCalcImageDims)
     {
         for (int j = 0; j < 4; ++j)
         {
-            pixelFormats[i][j].GetImageDimensions(3840, 2160, &line, &img);
+            proPixelFormats[i][j].GetImageDimensions(3840, 2160, &line, &img);
 
-            EXPECT_EQ(line, FOURCC_CalcMinStride(pixelFormats[i][j].fourcc, 3840, 2));
-            EXPECT_EQ(img, FOURCC_CalcImageSize(pixelFormats[i][j].fourcc, 3840, 2160, line));
+            EXPECT_EQ(line, FOURCC_CalcMinStride(proPixelFormats[i][j].fourcc, 3840, 2));
+            EXPECT_EQ(img, FOURCC_CalcImageSize(proPixelFormats[i][j].fourcc, 3840, 2160, line));
 
-        	pixelFormats[i][j].GetImageDimensions(1920, 1080, &line, &img);
+        	proPixelFormats[i][j].GetImageDimensions(1920, 1080, &line, &img);
 
-            EXPECT_EQ(line, FOURCC_CalcMinStride(pixelFormats[i][j].fourcc, 1920, 2));
-            EXPECT_EQ(img, FOURCC_CalcImageSize(pixelFormats[i][j].fourcc, 1920, 1080, line));
+            EXPECT_EQ(line, FOURCC_CalcMinStride(proPixelFormats[i][j].fourcc, 1920, 2));
+            EXPECT_EQ(img, FOURCC_CalcImageSize(proPixelFormats[i][j].fourcc, 1920, 1080, line));
 
-        	pixelFormats[i][j].GetImageDimensions(720, 480, &line, &img);
+        	proPixelFormats[i][j].GetImageDimensions(720, 480, &line, &img);
 
-            EXPECT_EQ(line, FOURCC_CalcMinStride(pixelFormats[i][j].fourcc, 720, 2));
-            EXPECT_EQ(img, FOURCC_CalcImageSize(pixelFormats[i][j].fourcc, 720, 480, line));
+            EXPECT_EQ(line, FOURCC_CalcMinStride(proPixelFormats[i][j].fourcc, 720, 2));
+            EXPECT_EQ(img, FOURCC_CalcImageSize(proPixelFormats[i][j].fourcc, 720, 480, line));
         }
     }
 }

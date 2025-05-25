@@ -72,6 +72,7 @@ struct pixel_format
 		BGR10,
 		RGB48,
 		YUV2,
+		YUY2,
 		YV16,
 		V210,
 		AY10,
@@ -82,7 +83,8 @@ struct pixel_format
 		R12B,
 		R12L,
 		R10B,
-		R10L
+		R10L,
+		FAIL
 	};
 
 	pixel_format(format pf, char a, char b, char c, char d, uint8_t pBitDepth, uint8_t pBitsPerPixel, bool pRgb,
@@ -122,6 +124,7 @@ struct pixel_format
 			cbLine = (cx + 47) / 48 * 128;
 			break;
 		case YUV2:
+		case YUY2:
 		case P010:
 		case P210:
 			cbLine = cx * 2;
@@ -188,6 +191,8 @@ const inline pixel_format P210{pixel_format::P210, 'P', '2', '1', '0', 10, 32, f
 const inline pixel_format AYUV{pixel_format::AYUV, 'A', 'Y', 'U', 'V', 8, 32, false, YUV_444};
 const inline pixel_format BGR24{pixel_format::BGR24, 'B', 'G', 'R', ' ', 8, 24, true, RGB_444};
 const inline pixel_format BGR10{pixel_format::BGR10, 'B', 'G', '1', '0', 10, 32, true, RGB_444};
+// magewell usb
+const inline pixel_format YUY2{pixel_format::YUY2, '2', 'Y', 'U', 'Y', 8, 16, false, YUV_422};
 // blackmagic, generally require conversion due to lack of native renderer support
 const inline pixel_format YUV2{pixel_format::YUV2, '2', 'V', 'U', 'Y', 8, 16, false, YUV_422};
 const inline pixel_format V210{pixel_format::V210, 'v', '2', '1', '0', 10, 16, false, YUV_422, 128};
@@ -203,6 +208,8 @@ const inline pixel_format R10B{pixel_format::R10B, 'R', '1', '0', 'b', 10, 32, f
 // jrvr
 const inline pixel_format YV16{pixel_format::YV16, 'Y', 'V', '1', '6', 8, 16, false, YUV_422};
 const inline pixel_format RGB48{pixel_format::RGB48, 'R', 'G', 'B', '0', 16, 48, false, RGB_444};
+// indicates not supported
+const inline pixel_format NA{ pixel_format::FAIL, 'x', 'x', 'x', 'x', 0, 0, false, RGB_444 };
 
 const pixel_format ALL_PIXEL_FORMATS[] = {
 	NV12,
@@ -213,6 +220,7 @@ const pixel_format ALL_PIXEL_FORMATS[] = {
 	BGR24,
 	BGR10,
 	YUV2,
+	YUY2,
 	YV16,
 	V210,
 	AY10,
@@ -230,7 +238,7 @@ const pixel_format ALL_PIXEL_FORMATS[] = {
 enum protocol
 {
 	PCIE,
-	OTHER
+	USB
 };
 
 struct DEVICE_STATUS
@@ -238,10 +246,11 @@ struct DEVICE_STATUS
 	protocol protocol{PCIE};
 	std::string deviceDesc{};
 	double temperature{0.0};
+	int16_t fanSpeed{-1};
 	int64_t linkSpeed{0};
-	int64_t linkWidth{0};
-	int16_t maxPayloadSize{0};
-	int16_t maxReadRequestSize{0};
+	int64_t linkWidth{-1};
+	int16_t maxPayloadSize{-1};
+	int16_t maxReadRequestSize{-1};
 };
 
 struct HDR_META

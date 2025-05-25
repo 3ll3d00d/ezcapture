@@ -15,6 +15,7 @@
 #pragma once
 #define NOMINMAX // quill does not compile without this
 
+#include <map>
 #include <LibMWCapture/MWHDMIPackets.h>
 #include "domain.h"
 
@@ -24,14 +25,53 @@ constexpr auto low_luminance_scale_factor = 0.0001;
 
 // bit depth -> pixel_encoding -> pixel_format
 // rgb - 4:2:2 - 4:4:4 - 4:2:0
-const pixel_format pixelFormats[3][4] = {
+const pixel_format proPixelFormats[3][4] = {
 	// 8 bit
 	{BGR24, NV16, AYUV, NV12},
 	// 10 bit
 	{BGR10, P210, AYUV, P010},
 	// 12 bit
 	{BGR10, P210, AYUV, P010}
-	// BGR10 not supported, need to revise this to something else
+};
+
+const pixel_format usbPlusPixelFormats[3][4] = {
+	{BGR24, YUY2, NA, NV12},
+	{NA, NA, NA, NA},
+	{NA, NA, NA, NA}
+};
+
+const pixel_format usbProPixelFormats[3][4] = {
+	{BGR24, YUY2, NA, NV12},
+	{NA, V210, NA, P010},
+	{NA, NA, NA, NA}
+};
+
+enum frame_writer_strategy :uint8_t
+{
+	YUY2_YV16,
+	V210_P210,
+	BGR10_BGR48,
+	STRAIGHT_THROUGH
+};
+
+inline const char* to_string(frame_writer_strategy e)
+{
+	switch (e)
+	{
+	case YUY2_YV16: return "YUY2_YV16";
+	case V210_P210: return "V210_P210";
+	case BGR10_BGR48: return "BGR10_BGR48";
+	case STRAIGHT_THROUGH: return "STRAIGHT_THROUGH";
+	default: return "unknown";
+	}
+}
+
+typedef std::map<pixel_format, std::pair<pixel_format, frame_writer_strategy>> pixel_format_fallbacks;
+
+const pixel_format_fallbacks pixelFormatFallbacks{
+	{YUY2, {YV16, YUY2_YV16}},
+	{V210, {P210, V210_P210}},
+	{BGR10, {RGB48, BGR10_BGR48}},
 };
 
 // utility functions

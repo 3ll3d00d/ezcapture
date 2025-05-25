@@ -98,6 +98,8 @@
 #define IDC_PCIE_MPS					1094
 #define IDC_PCIE_MRRS_LABEL             1095
 #define IDC_PCIE_MRRS					1096
+#define IDC_FAN_LABEL                   1097
+#define IDC_FAN						    1098
 
 // Next default values for new objects
 // 

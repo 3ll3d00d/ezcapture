@@ -87,7 +87,7 @@ MagewellCaptureFilter::MagewellCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		DEVICE_INFO di{};
 		MWCAP_CHANNEL_INFO mci;
 		MWGetChannelInfoByIndex(i, &mci);
-		if (0 == strcmp(mci.szFamilyName, "Pro Capture"))
+		if (mci.wFamilyID == MW_FAMILY_ID_PRO_CAPTURE)
 		{
 			di.deviceType = PRO;
 			di.serialNo = std::string{mci.szBoardSerialNo};
@@ -98,9 +98,24 @@ MagewellCaptureFilter::MagewellCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 			di.maxPayloadSize = info.wMaxPayloadSize;
 			di.maxReadRequestSize = info.wMaxReadRequestSize;
 		}
-		else if (0 == strcmp(mci.szFamilyName, "USB Capture"))
+		else if (mci.wFamilyID == MW_FAMILY_ID_USB_CAPTURE)
 		{
-			di.deviceType = USB;
+			if (0 == strcmp(mci.szProductName, "USB Capture HDMI 4K+"))
+			{
+				di.deviceType = USB_PLUS;
+			}
+			else if (0 == strcmp(mci.szProductName, "USB Capture HDMI 4K Pro"))
+			{
+				di.deviceType = USB_PRO;
+			}
+			else
+			{
+				#ifndef NO_QUILL
+				LOG_WARNING(mLogData.logger, "[{}] Ignoring unknown USB device type {} with serial no {}",
+				            mLogData.prefix, mci.szProductName, di.serialNo);
+				#endif
+				continue;
+			}
 			di.serialNo = std::string{mci.szBoardSerialNo};
 			// TODO use MWCAP_DEVICE_NAME_MODE and MWUSBGetDeviceNameMode mode?
 			MWCAP_USB_CAPTURE_INFO info;
@@ -186,7 +201,7 @@ MagewellCaptureFilter::MagewellCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 			mDeviceInfo.linkWidth = diToUse->linkWidth;
 			mDeviceInfo.maxPayloadSize = diToUse->maxPayloadSize;
 			mDeviceInfo.maxReadRequestSize = diToUse->maxReadRequestSize;
-			SnapTemperature();
+			SnapHardwareDetails();
 		}
 		else
 		{
@@ -231,7 +246,7 @@ MagewellCaptureFilter::~MagewellCaptureFilter()
 	}
 }
 
-void MagewellCaptureFilter::SnapTemperature()
+void MagewellCaptureFilter::SnapHardwareDetails()
 {
 	if (mDeviceInfo.deviceType == PRO)
 	{
@@ -239,11 +254,19 @@ void MagewellCaptureFilter::SnapTemperature()
 		MWGetTemperature(mDeviceInfo.hChannel, &temp);
 		mDeviceInfo.temperature = temp;
 	}
-	else if (mDeviceInfo.deviceType == USB)
+	else if (mDeviceInfo.deviceType == USB_PLUS)
 	{
 		int16_t temp;
 		MWUSBGetCoreTemperature(mDeviceInfo.hChannel, &temp);
 		mDeviceInfo.temperature = temp;
+	}
+	else if (mDeviceInfo.deviceType == USB_PRO)
+	{
+		int16_t val;
+		MWUSBGetCoreTemperature(mDeviceInfo.hChannel, &val);
+		mDeviceInfo.temperature = val;
+		MWUSBGetFanSpeed(mDeviceInfo.hChannel, &val);
+		mDeviceInfo.fanSpeed = val;
 	}
 }
 
@@ -376,6 +399,7 @@ void MagewellCaptureFilter::OnDeviceUpdated()
 	mDeviceStatus.deviceDesc += "]";
 	mDeviceStatus.temperature = mDeviceInfo.temperature / 10.0;
 	mDeviceStatus.linkSpeed = mDeviceInfo.linkSpeed;
+	mDeviceStatus.fanSpeed = mDeviceInfo.fanSpeed;
 	if (mDeviceInfo.deviceType == PRO)
 	{
 		mDeviceStatus.linkWidth = mDeviceInfo.linkWidth;
@@ -384,7 +408,7 @@ void MagewellCaptureFilter::OnDeviceUpdated()
 	}
 	else
 	{
-		mDeviceStatus.protocol = OTHER;
+		mDeviceStatus.protocol = USB;
 	}
 
 	#ifndef NO_QUILL
@@ -755,7 +779,7 @@ MagewellVideoCapturePin::MagewellVideoCapturePin(HRESULT* phr, MagewellCaptureFi
 {
 	auto hChannel = mFilter->GetChannelHandle();
 
-	if (mFilter->GetDeviceType() == USB)
+	if (mFilter->GetDeviceType() != PRO)
 	{
 		if (MW_SUCCEEDED == MWUSBGetVideoOutputFOURCC(hChannel, &mUsbCaptureFormats.fourccs))
 		{
@@ -818,7 +842,7 @@ MagewellVideoCapturePin::MagewellVideoCapturePin(HRESULT* phr, MagewellCaptureFi
 	}
 	mFilter->OnVideoFormatLoaded(&mVideoFormat);
 
-	if (mFilter->GetDeviceType() == USB)
+	if (mFilter->GetDeviceType() != PRO)
 	{
 		mCapturedFrame.data = new BYTE[mVideoFormat.imageSize];
 	}
@@ -875,6 +899,13 @@ void MagewellVideoCapturePin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL
 	}
 
 	auto pfIdx = bitDepth == 8 ? 0 : bitDepth == 10 ? 1 : 2;
+
+	auto deviceType = mFilter->GetDeviceType();
+	auto pixelFormats = deviceType == PRO
+		                    ? proPixelFormats
+		                    : deviceType == USB_PLUS
+		                    ? usbPlusPixelFormats
+		                    : usbProPixelFormats;
 	videoFormat->pixelFormat = pixelFormats[pfIdx][subsampling];
 	if (videoFormat->colourFormat == REC709)
 	{
@@ -899,29 +930,28 @@ void MagewellVideoCapturePin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL
 		for (int i = 0; i < captureFormats->fourccs.byCount && !found; i++)
 		{
 			uint32_t adw_fourcc = captureFormats->fourccs.adwFOURCCs[i];
-			for (auto pf : ALL_PIXEL_FORMATS)
+			if (adw_fourcc == videoFormat->pixelFormat.fourcc)
 			{
-				if (adw_fourcc == pf.fourcc)
-				{
-					found = true;
-				}
-			}
-			if (!found)
-			{
-				#ifndef NO_QUILL
-				std::string captureFormatName{static_cast<char>(adw_fourcc & 0xFF)};
-				captureFormatName += static_cast<char>(adw_fourcc >> 8 & 0xFF);
-				captureFormatName += static_cast<char>(adw_fourcc >> 16 & 0xFF);
-				captureFormatName += static_cast<char>(adw_fourcc >> 24 & 0xFF);
-				LOG_WARNING(mLogData.logger, "[{}] {} is not a supported pixel format", mLogData.prefix,
-				            captureFormatName);
-				#endif
+				found = true;
 			}
 		}
 		if (!found)
 		{
 			#ifndef NO_QUILL
-			LOG_ERROR(mLogData.logger, "[{}] No supported pixel formats found", mLogData.prefix);
+			std::string tmp{"["};
+			for (int i = 0; i < captureFormats->fourccs.byCount; i++)
+			{
+				if (i != 0) tmp += ", ";
+				uint32_t adw_fourcc = captureFormats->fourccs.adwFOURCCs[i];
+				tmp += static_cast<char>(adw_fourcc & 0xFF);
+				tmp += static_cast<char>(adw_fourcc >> 8 & 0xFF);
+				tmp += static_cast<char>(adw_fourcc >> 16 & 0xFF);
+				tmp += static_cast<char>(adw_fourcc >> 24 & 0xFF);
+			}
+			tmp += "]";
+
+			LOG_ERROR(mLogData.logger, "[{}] Supported format is {} but card is configured to use {} ", 
+				mLogData.prefix, videoFormat->pixelFormat.name, tmp);
 			#endif
 		}
 
@@ -1083,7 +1113,7 @@ void MagewellVideoCapturePin::OnChangeMediaType()
 	VideoCapturePin::OnChangeMediaType();
 
 	mFilter->NotifyEvent(EC_VIDEO_SIZE_CHANGED, MAKELPARAM(mVideoFormat.cx, mVideoFormat.cy), 0);
-	if (mFilter->GetDeviceType() == USB)
+	if (mFilter->GetDeviceType() != PRO)
 	{
 		delete mVideoCapture;
 		mVideoCapture = new VideoCapture(this, mFilter->GetChannelHandle());
@@ -1616,7 +1646,7 @@ void MagewellAudioCapturePin::LoadFormat(AUDIO_FORMAT* audioFormat, const AUDIO_
 	auto audioIn = *audioSignal;
 	auto currentChannelAlloc = audioFormat->channelAllocation;
 	auto currentChannelMask = audioFormat->channelValidityMask;
-	if (mFilter->GetDeviceType() == USB)
+	if (mFilter->GetDeviceType() != PRO)
 	{
 		audioFormat->fs = 48000;
 	}
@@ -2882,7 +2912,7 @@ HRESULT MagewellAudioCapturePin::DoChangeMediaType(const CMediaType* pmt, const 
 	if (retVal == S_OK)
 	{
 		mAudioFormat = *newAudioFormat;
-		if (mFilter->GetDeviceType() == USB)
+		if (mFilter->GetDeviceType() != PRO)
 		{
 			delete mAudioCapture;
 			mAudioCapture = new AudioCapture(this, mFilter->GetChannelHandle());

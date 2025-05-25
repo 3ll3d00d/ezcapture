@@ -48,7 +48,7 @@ HRESULT any_rgb::WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame)
 	}
 
 	#ifndef NO_QUILL
-	LOG_TRACE_L2(mLogData.logger, "[{}] Converted frame to BGRA in {:.3f} ms", mLogData.prefix,
+	LOG_TRACE_L3(mLogData.logger, "[{}] Converted frame to BGRA in {:.3f} ms", mLogData.prefix,
 	             execTime);
 	#endif
 

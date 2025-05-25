@@ -248,7 +248,7 @@ HRESULT CSignalInfoProp::Reload(DEVICE_STATUS* payload)
 	}
 	_snwprintf_s(buffer, _TRUNCATE, L"%.1f C", payload->temperature);
 	SendDlgItemMessage(m_Dlg, IDC_TEMP, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
-	_snwprintf_s(buffer, _TRUNCATE, L"%s%lld.0", 
+	_snwprintf_s(buffer, _TRUNCATE, L"%hs%lld.0", 
 		payload->protocol == PCIE ? "Gen " : "",
 		payload->linkSpeed);
 	SendDlgItemMessage(m_Dlg, IDC_LINKSPEED, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
@@ -287,6 +287,18 @@ HRESULT CSignalInfoProp::Reload(DEVICE_STATUS* payload)
 	{
 		ShowWindow(GetDlgItem(m_Dlg, IDC_PCIE_MRRS_LABEL), SW_HIDE);
 		ShowWindow(GetDlgItem(m_Dlg, IDC_PCIE_MRRS), SW_HIDE);
+	}
+	if (payload->fanSpeed > 0)
+	{
+		_snwprintf_s(buffer, _TRUNCATE, L"%d", payload->fanSpeed);
+		SendDlgItemMessage(m_Dlg, IDC_FAN, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+		ShowWindow(GetDlgItem(m_Dlg, IDC_FAN), SW_SHOW);
+		ShowWindow(GetDlgItem(m_Dlg, IDC_FAN_LABEL), SW_SHOW);
+	}
+	else
+	{
+		ShowWindow(GetDlgItem(m_Dlg, IDC_FAN_LABEL), SW_HIDE);
+		ShowWindow(GetDlgItem(m_Dlg, IDC_FAN), SW_HIDE);
 	}
 	return S_OK;
 }

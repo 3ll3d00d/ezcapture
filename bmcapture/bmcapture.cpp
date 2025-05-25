@@ -1896,9 +1896,6 @@ HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
 
 	BYTE* pmsData;
 	pms->GetPointer(&pmsData);
-	auto sampleSize = pms->GetSize();
-	auto bytesCaptured = 0L;
-	auto samplesCaptured = 0;
 
 	long size = mCurrentFrame->GetLength();
 	long maxSize = pms->GetSize();
@@ -1995,20 +1992,6 @@ HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
 		}
 	}
 
-	#ifndef NO_QUILL
-	REFERENCE_TIME now;
-	mFilter->GetReferenceTime(&now);
-	if (mFrameCounter == 1)
-	{
-		LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame H|f_idx,lat,ft_0,ft_1,ft_d,s_sz,s_ct",
-		             mLogData.prefix);
-	}
-	LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame D|{},{},{},{},{},{},{}",
-	             mLogData.prefix, codecNames[mAudioFormat.codec],
-	             mFrameCounter, now - mCurrentFrameTime, mPreviousFrameTime, mCurrentFrameTime,
-	             mCurrentFrameTime - mPreviousFrameTime, bytesCaptured, samplesCaptured);
-	#endif
-
 	pms->SetTime(&startTime, &endTime);
 	pms->SetSyncPoint(true);
 	pms->SetDiscontinuity(false);
@@ -2016,6 +1999,20 @@ HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
 
 	mPreviousFrameTime = mCurrentFrameTime;
 	mCurrentFrameTime = endTime;
+
+	#ifndef NO_QUILL
+	REFERENCE_TIME now;
+	mFilter->GetReferenceTime(&now);
+	if (mFrameCounter == 1)
+	{
+		LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame H|codec,f_idx,lat,stime,ft_0,ft_1,ft_d,s_sz,s_ct",
+		             mLogData.prefix);
+	}
+	LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame D|{},{},{},{},{},{},{},{},{}",
+	             mLogData.prefix, codecNames[mAudioFormat.codec],
+	             mFrameCounter, now - mCurrentFrameTime - mStreamStartTime, startTime, mPreviousFrameTime,
+	             mCurrentFrameTime, mCurrentFrameTime - mPreviousFrameTime, mCurrentFrame->GetLength(), sampleCount);
+	#endif
 
 	if (mUpdatedMediaType)
 	{

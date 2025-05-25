@@ -19,7 +19,6 @@
 #include <intsafe.h>
 #include <strmif.h>
 #include <dvdmedia.h>
-
 #include "bmdomain.h"
 
 #define S_PADDING_POSSIBLE    ((HRESULT)200L)
