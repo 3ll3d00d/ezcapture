@@ -13,22 +13,26 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 #pragma once
-
 #include "VideoFrameWriter.h"
+#include "mwdomain.h"
 
-class r210_rgb48 : public IVideoFrameWriter
+class StraightThrough : public IVideoFrameWriter<VideoSampleBuffer>
 {
 public:
-	r210_rgb48(const log_data& pLogData, uint32_t pX, uint32_t pY) : IVideoFrameWriter(pLogData, pX, pY, &RGB48)
+	StraightThrough(const log_data& pLogData, int pX, int pY, const pixel_format* pPixelFormat)
+		: IVideoFrameWriter(pLogData, pX, pY, pPixelFormat)
 	{
 	}
 
-	~r210_rgb48() override = default;
+	~StraightThrough() override = default;
 
-	HRESULT WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame) override;
-
-private:
-	#ifdef RECORD_RAW
-	uint32_t mFrameCounter;
-	#endif
+	HRESULT WriteTo(VideoSampleBuffer* srcFrame, IMediaSample* dstFrame) override
+	{
+		if (S_FALSE == CheckFrameSizes(srcFrame->GetFrameIndex(), mOutputImageSize, dstFrame))
+		{
+			return S_FALSE;
+		}
+		// TODO handle padding?
+		return S_OK;
+	}
 };

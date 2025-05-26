@@ -27,33 +27,12 @@
     <ClCompile Include="MediaSampleBackedDecklinkBuffer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="v210_p210.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="yuv2_yv16.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="r210_rgb48.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="bmcapture.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="VideoFrameWriter.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="v210_p210.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="any_rgb.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="yuv2_yv16.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="r210_rgb48.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="StraightThrough.h">

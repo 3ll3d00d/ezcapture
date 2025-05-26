@@ -16,8 +16,9 @@
 
 #include "VideoFrameWriter.h"
 #include <atlcomcli.h>
+#include "bmdomain.h"
 
-class any_rgb : public IVideoFrameWriter
+class any_rgb : public IVideoFrameWriter<VideoFrame>
 {
 public:
 	any_rgb(const log_data& pLogData, uint32_t pX, uint32_t pY) :
@@ -37,7 +38,7 @@ public:
 			#endif
 		}
 		DWORD b;
-		RGBA.GetImageDimensions(pX, pY, &b, &mExpectedImageSize);
+		RGBA.GetImageDimensions(pX, pY, &b, &mOutputImageSize);
 	}
 
 	~any_rgb() override = default;

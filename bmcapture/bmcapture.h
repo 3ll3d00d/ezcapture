@@ -17,7 +17,6 @@
 #include <functional>
 #include <utility>
 #include <atlcomcli.h>
-#include <map>
 
 #include "capture.h"
 #include "bmdomain.h"
@@ -66,46 +65,6 @@ inline bool isInCieRange(double value)
 {
 	return value >= 0 && value <= 1.1;
 }
-
-enum frame_writer_strategy :uint8_t
-{
-	ANY_RGB,
-	YUV2_YV16,
-	V210_P210,
-	R210_BGR48,
-	STRAIGHT_THROUGH
-};
-
-inline const char* to_string(frame_writer_strategy e)
-{
-	switch (e)
-	{
-	case ANY_RGB: return "ANY_RGB";
-	case YUV2_YV16: return "YUV2_YV16";
-	case V210_P210: return "V210_P210";
-	case R210_BGR48: return "R210_BGR48";
-	case STRAIGHT_THROUGH: return "STRAIGHT_THROUGH";
-	default: return "unknown";
-	}
-}
-
-typedef std::map<pixel_format, std::pair<pixel_format, frame_writer_strategy>> pixel_format_fallbacks;
-typedef std::map<pixel_format, frame_writer_strategy> pixel_conversion_strategies;
-const pixel_conversion_strategies pixelConverters{
-	{RGBA, STRAIGHT_THROUGH},
-};
-const pixel_format_fallbacks pixelFormatFallbacks{
-	// standard consumer formats
-	{YUV2, {YV16, YUV2_YV16}},
-	{V210, {P210, V210_P210}},   // supported natively by madvr
-	{R210, {RGB48, R210_BGR48}}, // supported natively by jrvr >= MC34
-	// unlikely to be seen in the wild so just fallback to RGB using decklink sdk
-	{AY10, {RGBA, ANY_RGB}},
-	{R12B, {RGBA, ANY_RGB}},
-	{R12L, {RGBA, ANY_RGB}},
-	{R10B, {RGBA, ANY_RGB}},
-	{R10L, {RGBA, ANY_RGB}},
-};
 
 constexpr int64_t invalidFrameTime = std::numeric_limits<int64_t>::lowest();
 constexpr BMDAudioSampleType audioBitDepth = bmdAudioSampleType16bitInteger;
@@ -244,7 +203,7 @@ private:
  * A video stream flowing from the capture device to an output pin.
  */
 class BlackmagicVideoCapturePin final :
-	public HdmiVideoCapturePin<BlackmagicCaptureFilter>
+	public HdmiVideoCapturePin<BlackmagicCaptureFilter, VideoFrame>
 {
 public:
 	BlackmagicVideoCapturePin(HRESULT* phr, BlackmagicCaptureFilter* pParent, bool pPreview, VIDEO_FORMAT pVideoFormat);
@@ -266,64 +225,34 @@ public:
 protected:
 	void DoThreadDestroy() override;
 
-	void LogHdrMetaIfPresent(VIDEO_FORMAT* newVideoFormat);
+	void LogHdrMetaIfPresent(const VIDEO_FORMAT* newVideoFormat) override;
 	void OnChangeMediaType() override;
 
 	std::shared_ptr<VideoFrame> mCurrentFrame;
 
 private:
-	boolean IsFallbackActive(const VIDEO_FORMAT* newVideoFormat) const
+	void OnFrameWriterStrategyUpdated() override
 	{
-		if (newVideoFormat->pixelFormat.format != mVideoFormat.pixelFormat.format)
-		{
-			auto search = pixelFormatFallbacks.find(newVideoFormat->pixelFormat);
-			if (search != pixelFormatFallbacks.end())
-			{
-				auto fallbackPixelFormat = search->second.first;
-				if (fallbackPixelFormat.format == mVideoFormat.pixelFormat.format)
-				{
-					if (newVideoFormat->cx == mVideoFormat.cx && newVideoFormat->cy == mVideoFormat.cy)
-					{
-						return true;
-					}
-				}
-			}
-		}
-		return false;
-	}
-
-	void UpdateFrameWriter(frame_writer_strategy strategy, const pixel_format& signalledFormat)
-	{
-		mSignalledFormat = signalledFormat;
-		#ifndef NO_QUILL
-		LOG_TRACE_L1(mLogData.logger, "[{}] Updating conversion strategy from {} to {}", mLogData.prefix,
-		             to_string(mFrameWriterStrategy), to_string(strategy));
-		#endif
-
-		mFrameWriterStrategy = strategy;
 		switch (mFrameWriterStrategy)
 		{
 		case ANY_RGB:
 			mFrameWriter = std::make_unique<any_rgb>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
 			break;
-		case YUV2_YV16:
-			mFrameWriter = std::make_unique<yuv2_yv16>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
-			break;
-		case V210_P210:
-			mFrameWriter = std::make_unique<v210_p210>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
-			break;
-		case R210_BGR48:
-			mFrameWriter = std::make_unique<r210_rgb48>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
-			break;
 		case STRAIGHT_THROUGH:
 			mFrameWriter = std::make_unique<StraightThrough>(mLogData, mVideoFormat.cx, mVideoFormat.cy,
 			                                                 &mVideoFormat.pixelFormat);
+			break;
+		case YUY2_YV16:
+		case BGR10_BGR48:
+			#ifndef NO_QUILL
+			LOG_ERROR(mLogData.logger, "[{}] Conversion strategy {} is not supported by bmcapture",
+			          mLogData.prefix, to_string(mFrameWriterStrategy));
+			#endif
+			break;
+		default:
+			HdmiVideoCapturePin::OnFrameWriterStrategyUpdated();
 		}
 	}
-
-	frame_writer_strategy mFrameWriterStrategy;
-	std::unique_ptr<IVideoFrameWriter> mFrameWriter;
-	pixel_format mSignalledFormat;
 };
 
 /**

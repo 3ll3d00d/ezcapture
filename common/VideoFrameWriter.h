@@ -19,21 +19,23 @@
 #include <intsafe.h>
 #include <strmif.h>
 #include <dvdmedia.h>
-#include "bmdomain.h"
+#include "domain.h"
+#include "logging.h"
 
 #define S_PADDING_POSSIBLE    ((HRESULT)200L)
 
+template<typename VF>
 class IVideoFrameWriter
 {
 public:
 	IVideoFrameWriter(log_data pLogData, int pX, int pY, const pixel_format* pPixelFormat) : mLogData(std::move(pLogData))
 	{
-		pPixelFormat->GetImageDimensions(pX, pY, &mExpectedRowLength, &mExpectedImageSize);
+		pPixelFormat->GetImageDimensions(pX, pY, &mOutputRowLength, &mOutputImageSize);
 	}
 
 	virtual ~IVideoFrameWriter() = default;
 
-	virtual HRESULT WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame) = 0;
+	virtual HRESULT WriteTo(VF* srcFrame, IMediaSample* dstFrame) = 0;
 
 protected:
 	HRESULT CheckFrameSizes(uint64_t frameIndex, long srcSize, IMediaSample* dstFrame)
@@ -42,7 +44,7 @@ protected:
 		if (sizeDelta > 0)
 		{
 			#ifndef NO_QUILL
-			LOG_WARNING(mLogData.logger, "[{}] Buffer for frame {} too small, failing (src: {}, dst: {})",
+			LOG_WARNING(mLogData.logger, "[{}] Framebuffer {} too small, failing (src: {}, dst: {})",
 				mLogData.prefix, frameIndex, srcSize, dstFrame->GetSize());
 			#endif
 
@@ -57,7 +59,7 @@ protected:
 
 	HRESULT DetectPadding(uint64_t frameIndex, int expectedWidth, IMediaSample* dstFrame)
 	{
-		auto hr = CheckFrameSizes(frameIndex, mExpectedImageSize, dstFrame);
+		auto hr = CheckFrameSizes(frameIndex, mOutputImageSize, dstFrame);
 		if (S_FALSE == hr)
 		{
 			return S_FALSE;
@@ -86,7 +88,7 @@ protected:
 	}
 
 	log_data mLogData;
-	DWORD mExpectedImageSize{0};
-	DWORD mExpectedRowLength{0};
+	DWORD mOutputImageSize{0};
+	DWORD mOutputRowLength{0};
 	int mPixelsToPad{0};
 };

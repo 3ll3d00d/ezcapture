@@ -14,8 +14,9 @@
  */
 #pragma once
 #include "VideoFrameWriter.h"
+#include "bmdomain.h"
 
-class StraightThrough : public IVideoFrameWriter
+class StraightThrough : public IVideoFrameWriter<VideoFrame>
 {
 public:
 	StraightThrough(const log_data& pLogData, int pX, int pY, const pixel_format* pPixelFormat)
@@ -27,7 +28,7 @@ public:
 
 	HRESULT WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame) override
 	{
-		if (S_FALSE == CheckFrameSizes(srcFrame->GetFrameIndex(), mExpectedImageSize, dstFrame))
+		if (S_FALSE == CheckFrameSizes(srcFrame->GetFrameIndex(), mOutputImageSize, dstFrame))
 		{
 			return S_FALSE;
 		}

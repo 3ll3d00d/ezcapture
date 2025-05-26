@@ -383,20 +383,21 @@
     <ClCompile Include="signalinfo.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="bgr10.h" />
+    <ClInclude Include="bgr10_rgb48.h" />
+    <ClInclude Include="yuy2_yv16.h" />
+    <ClInclude Include="r210_rgb48.h" />
+    <ClInclude Include="v210_p210.h" />
+    <ClInclude Include="yuv2_yv16.h" />
     <ClInclude Include="capture.h" />
-    <ClInclude Include="r210.h" />
     <ClInclude Include="domain.h" />
     <ClInclude Include="ISpecifyPropertyPages2.h" />
     <ClInclude Include="lavfilters_side_data.h" />
     <ClInclude Include="logging.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="signalinfo.h" />
-    <ClInclude Include="v210.h" />
     <ClInclude Include="version.h" />
     <ClInclude Include="version_rev.h" />
-    <ClInclude Include="yuv2.h" />
-    <ClInclude Include="yuy2.h" />
+    <ClInclude Include="VideoFrameWriter.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\directshow_baseclasses\directshow_baseclasses.vcxproj">

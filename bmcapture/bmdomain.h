@@ -210,6 +210,10 @@ public:
 
 	VIDEO_FORMAT GetVideoFormat() const { return mFormat; }
 
+	int GetWidth() const { return mFormat.cx; }
+
+	int GetHeight() const { return mFormat.cy; }
+
 	long GetLength() const { return mLength; }
 
 	IDeckLinkVideoFrame* GetRawFrame() const { return mFrame; }

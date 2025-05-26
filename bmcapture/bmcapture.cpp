@@ -507,8 +507,10 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		mVideoFormat.hdrMeta.transferFunction, mVideoFormat.imageSize);
 	#endif
 
-	new BlackmagicVideoCapturePin(phr, this, false, mVideoFormat);
-	new BlackmagicVideoCapturePin(phr, this, true, mVideoFormat);
+	auto pin = new BlackmagicVideoCapturePin(phr, this, false, mVideoFormat);
+	pin->UpdateFrameWriterStrategy();
+	pin = new BlackmagicVideoCapturePin(phr, this, true, mVideoFormat);
+	pin->UpdateFrameWriterStrategy();
 
 	if (mDeviceInfo.audioChannelCount > 0)
 	{
@@ -1192,7 +1194,7 @@ void BlackmagicCaptureFilter::OnVideoSignalLoaded(VIDEO_SIGNAL* vs)
 	mVideoInputStatus.inAspectX = vs->aspectX;
 	mVideoInputStatus.inAspectY = vs->aspectY;
 	mVideoInputStatus.inFps = static_cast<double>(vs->frameDurationScale) / static_cast<double>(vs->frameDuration);
-	mVideoInputStatus.inFrameDuration = 10000000 / mVideoInputStatus.inFps;
+	mVideoInputStatus.inFrameDuration = 10000000LL / mVideoInputStatus.inFps;
 	mVideoInputStatus.inBitDepth = vs->bitDepth;
 	mVideoInputStatus.signalStatus = vs->locked ? "Locked" : "No Signal";
 	mVideoInputStatus.inColourFormat = vs->colourFormat;
@@ -1444,13 +1446,22 @@ BlackmagicVideoCapturePin::BlackmagicVideoCapturePin(HRESULT* phr, BlackmagicCap
 		pParent,
 		pPreview ? "VideoPreview" : "VideoCapture",
 		pPreview ? L"Preview" : L"Capture",
-		pPreview ? "VideoPreview" : "VideoCapture"
-	),
-	mSignalledFormat(pVideoFormat.pixelFormat)
+		pPreview ? "VideoPreview" : "VideoCapture",
+		std::move(pVideoFormat),
+		{
+			// standard consumer formats
+			{YUV2, {YV16, YUV2_YV16}},
+			{V210, {P210, V210_P210}}, // supported natively by madvr
+			{R210, {RGB48, R210_BGR48}}, // supported natively by jrvr >= MC34
+			// unlikely to be seen in the wild so just fallback to RGB using decklink sdk
+			{AY10, {RGBA, ANY_RGB}},
+			{R12B, {RGBA, ANY_RGB}},
+			{R12L, {RGBA, ANY_RGB}},
+			{R10B, {RGBA, ANY_RGB}},
+			{R10L, {RGBA, ANY_RGB}},
+		}
+	)
 {
-	mVideoFormat = std::move(pVideoFormat);
-	auto search = pixelConverters.find(mVideoFormat.pixelFormat);
-	UpdateFrameWriter(search == pixelConverters.end() ? STRAIGHT_THROUGH : search->second, mVideoFormat.pixelFormat);
 }
 
 BlackmagicVideoCapturePin::~BlackmagicVideoCapturePin()
@@ -1506,97 +1517,18 @@ HRESULT BlackmagicVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, RE
 			auto newVideoFormat = mCurrentFrame->GetVideoFormat();
 			hasFrame = true;
 
-			#ifndef NO_QUILL
-			LogHdrMetaIfPresent(&newVideoFormat);
-			#endif
-
 			mHasSignal = true;
 
-			if (ShouldChangeMediaType(&newVideoFormat, IsFallbackActive(&newVideoFormat)))
+			auto hr = OnVideoSignal(newVideoFormat);
+			if (FAILED(hr))
 			{
-				#ifndef NO_QUILL
-				LOG_WARNING(mLogData.logger, "[{}] VideoFormat changed! Attempting to reconnect", mLogData.prefix);
-				#endif
-
-				CMediaType proposedMediaType(m_mt);
-				VideoFormatToMediaType(&proposedMediaType, &newVideoFormat);
-
-				auto hr = DoChangeMediaType(&proposedMediaType, &newVideoFormat);
-				auto reconnected = SUCCEEDED(hr);
-				auto signalledFormat = newVideoFormat.pixelFormat;
-				if (reconnected)
-				{
-					auto search = pixelConverters.find(mVideoFormat.pixelFormat);
-					UpdateFrameWriter(search == pixelConverters.end() ? STRAIGHT_THROUGH : search->second,
-					                  signalledFormat);
-				}
-				else
-				{
-					auto search = pixelFormatFallbacks.find(newVideoFormat.pixelFormat);
-					if (search != pixelFormatFallbacks.end())
-					{
-						auto fallbackPixelFormat = search->second.first;
-
-						#ifndef NO_QUILL
-						LOG_WARNING(mLogData.logger,
-						            "[{}] VideoFormat changed but not able to reconnect! [Result: {:#08x}] Attempting fallback format {}",
-						            mLogData.prefix, static_cast<unsigned long>(hr), fallbackPixelFormat.name);
-						#endif
-
-						auto fallbackVideoFormat = std::move(newVideoFormat);
-						fallbackVideoFormat.pixelFormat = std::move(fallbackPixelFormat);
-						fallbackVideoFormat.CalculateDimensions();
-
-						CMediaType fallbackMediaType(m_mt);
-						VideoFormatToMediaType(&fallbackMediaType, &fallbackVideoFormat);
-
-						hr = DoChangeMediaType(&fallbackMediaType, &fallbackVideoFormat);
-						reconnected = SUCCEEDED(hr);
-						if (reconnected)
-						{
-							auto strategy = search->second.second;
-
-							#ifndef NO_QUILL
-							LOG_WARNING(mLogData.logger,
-							            "[{}] VideoFormat changed and fallback format {} required to reconnect, updating frame conversion strategy to {}",
-							            mLogData.prefix, fallbackVideoFormat.pixelFormat.name, to_string(strategy));
-							#endif
-
-							UpdateFrameWriter(strategy, signalledFormat);
-						}
-						else
-						{
-							#ifndef NO_QUILL
-							LOG_WARNING(mLogData.logger,
-							            "[{}] VideoFormat changed but fallback format also not able to reconnect! Will retry after backoff [Result: {:#08x}]",
-							            mLogData.prefix, static_cast<unsigned long>(hr),
-							            fallbackVideoFormat.pixelFormat.name);
-							#endif
-						}
-					}
-					else
-					{
-						#ifndef NO_QUILL
-						LOG_ERROR(mLogData.logger,
-						          "[{}] VideoFormat changed but not able to reconnect! Will retry after backoff [Result: {:#08x}]",
-						          mLogData.prefix, static_cast<unsigned long>(hr));
-						#endif
-					}
-				}
-
-				if (!reconnected)
-				{
-					mCurrentFrame.reset();
-					BACKOFF;
-
-					continue;
-				}
-
-				mFilter->OnVideoFormatLoaded(&mVideoFormat);
+				mCurrentFrame.reset();
+				BACKOFF;
+				continue;
 			}
 
 			retVal = VideoCapturePin::GetDeliveryBuffer(ppSample, pStartTime, pEndTime, dwFlags);
-			if (!SUCCEEDED(retVal))
+			if (FAILED(retVal))
 			{
 				hasFrame = false;
 				#ifndef NO_QUILL
@@ -1712,7 +1644,7 @@ void BlackmagicVideoCapturePin::DoThreadDestroy()
 	mFilter->PinThreadDestroyed();
 }
 
-void BlackmagicVideoCapturePin::LogHdrMetaIfPresent(VIDEO_FORMAT* newVideoFormat)
+void BlackmagicVideoCapturePin::LogHdrMetaIfPresent(const VIDEO_FORMAT* newVideoFormat)
 {
 	#ifndef NO_QUILL
 	if (newVideoFormat->hdrMeta.exists && !mVideoFormat.hdrMeta.exists)

@@ -20,11 +20,18 @@
 
 #include "logging.h"
 #include "signalinfo.h"
+#include "VideoFrameWriter.h"
 #include "ISpecifyPropertyPages2.h"
 #include "lavfilters_side_data.h"
 #include <dvdmedia.h>
 #include <wmcodecdsp.h>
 #include <cmath>
+
+#include "bgr10_rgb48.h"
+#include "r210_rgb48.h"
+#include "v210_p210.h"
+#include "yuv2_yv16.h"
+#include "yuy2_yv16.h"
 
 EXTERN_C const GUID MEDIASUBTYPE_PCM_IN24;
 EXTERN_C const GUID MEDIASUBTYPE_PCM_IN32;
@@ -33,6 +40,7 @@ EXTERN_C const AMOVIESETUP_PIN sMIPPins[];
 
 #define BACKOFF Sleep(20)
 #define SHORT_BACKOFF Sleep(1)
+#define S_RECONNECTION_UNNECESSARY ((HRESULT)1024L)
 
 constexpr auto unity = 1.0;
 
@@ -396,7 +404,7 @@ protected:
 
 	log_data mLogData{};
 	CCritSec mCaptureCritSec;
-	LONGLONG mFrameCounter{0};
+	uint64_t mFrameCounter{0};
 	bool mPreview{false};
 	WORD mSinceLast{0};
 
@@ -487,18 +495,91 @@ protected:
 };
 
 
-template <class F>
+template <class F, typename VF>
 class HdmiVideoCapturePin : public VideoCapturePin
 {
 public:
-	HdmiVideoCapturePin(HRESULT* phr, F* pParent, LPCSTR pObjectName, LPCWSTR pPinName, std::string pLogPrefix)
+	HdmiVideoCapturePin(HRESULT* phr, F* pParent, LPCSTR pObjectName, LPCWSTR pPinName, std::string pLogPrefix,
+	                    VIDEO_FORMAT pVideoFormat, pixel_format_fallbacks pFallbacks)
 		: VideoCapturePin(phr, pParent, pObjectName, pPinName, pLogPrefix),
-		  mFilter(pParent)
+		  mFilter(pParent),
+		  mSignalledFormat(pVideoFormat.pixelFormat),
+		  mFormatFallbacks(std::move(pFallbacks))
 	{
+		mVideoFormat = std::move(pVideoFormat);
+	}
+
+	void UpdateFrameWriterStrategy()
+	{
+		auto search = mFormatFallbacks.find(mVideoFormat.pixelFormat);
+		SetFrameWriterStrategy(search == mFormatFallbacks.end() ? STRAIGHT_THROUGH : search->second.second,
+		                       mVideoFormat.pixelFormat);
 	}
 
 protected:
 	F* mFilter;
+	std::unique_ptr<IVideoFrameWriter<VF>> mFrameWriter;
+	frame_writer_strategy mFrameWriterStrategy{UNKNOWN};
+	pixel_format mSignalledFormat{NA};
+	pixel_format_fallbacks mFormatFallbacks{};
+
+	virtual void OnFrameWriterStrategyUpdated()
+	{
+		switch (mFrameWriterStrategy)
+		{
+		case YUV2_YV16:
+			mFrameWriter = std::make_unique<yuv2_yv16<VF>>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
+			break;
+		case V210_P210:
+			mFrameWriter = std::make_unique<v210_p210<VF>>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
+			break;
+		case R210_BGR48:
+			mFrameWriter = std::make_unique<r210_rgb48<VF>>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
+			break;
+		case YUY2_YV16:
+			mFrameWriter = std::make_unique<yuy2_yv16<VF>>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
+			break;
+		case BGR10_BGR48:
+			mFrameWriter = std::make_unique<bgr10_rgb48<VF>>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
+			break;
+		default:
+			// ugly back to workaround inability of c++ to call pure virtual function
+			;
+		}
+	}
+
+	void SetFrameWriterStrategy(const frame_writer_strategy newStrategy, const pixel_format& signalledFormat)
+	{
+		mSignalledFormat = signalledFormat;
+
+		#ifndef NO_QUILL
+		LOG_TRACE_L1(mLogData.logger, "[{}] Updating conversion strategy from {} to {}", mLogData.prefix,
+		             to_string(mFrameWriterStrategy), to_string(newStrategy));
+		#endif
+		mFrameWriterStrategy = newStrategy;
+
+		OnFrameWriterStrategyUpdated();
+	}
+
+	boolean IsFallbackActive(const VIDEO_FORMAT* newVideoFormat) const
+	{
+		if (newVideoFormat->pixelFormat.format != mVideoFormat.pixelFormat.format)
+		{
+			auto search = mFormatFallbacks.find(newVideoFormat->pixelFormat);
+			if (search != mFormatFallbacks.end())
+			{
+				auto fallbackPixelFormat = search->second.first;
+				if (fallbackPixelFormat.format == mVideoFormat.pixelFormat.format)
+				{
+					if (newVideoFormat->cx == mVideoFormat.cx && newVideoFormat->cy == mVideoFormat.cy)
+					{
+						return true;
+					}
+				}
+			}
+		}
+		return false;
+	}
 
 	void UpdateDisplayStatus() override
 	{
@@ -525,8 +606,7 @@ protected:
 				{
 					#ifndef NO_QUILL
 					LOG_TRACE_L1(mLogData.logger, "[{}] Updating HDR meta in frame {}, last update at {}",
-					             mLogData.prefix,
-					             mFrameCounter, mLastSentHdrMetaAt);
+					             mLogData.prefix, mFrameCounter, mLastSentHdrMetaAt);
 					#endif
 
 					MediaSideDataHDR hdr;
@@ -591,8 +671,98 @@ protected:
 			}
 		}
 	}
-};
 
+	virtual void LogHdrMetaIfPresent(const VIDEO_FORMAT* newVideoFormat) = 0;
+
+	HRESULT OnVideoSignal(VIDEO_FORMAT newVideoFormat)
+	{
+		auto retVal = S_RECONNECTION_UNNECESSARY;
+
+		#ifndef NO_QUILL
+		LogHdrMetaIfPresent(&newVideoFormat);
+		#endif
+
+		if (ShouldChangeMediaType(&newVideoFormat, IsFallbackActive(&newVideoFormat)))
+		{
+			#ifndef NO_QUILL
+			LOG_WARNING(mLogData.logger, "[{}] VideoFormat changed! Attempting to reconnect", mLogData.prefix);
+			#endif
+
+			CMediaType proposedMediaType(m_mt);
+			VideoFormatToMediaType(&proposedMediaType, &newVideoFormat);
+
+			auto hr = DoChangeMediaType(&proposedMediaType, &newVideoFormat);
+			auto reconnected = SUCCEEDED(hr);
+			auto signalledFormat = newVideoFormat.pixelFormat;
+			if (reconnected)
+			{
+				retVal = S_OK;
+				SetFrameWriterStrategy(STRAIGHT_THROUGH, signalledFormat);
+			}
+			else
+			{
+				auto search = mFormatFallbacks.find(newVideoFormat.pixelFormat);
+				if (search != mFormatFallbacks.end())
+				{
+					auto fallbackPixelFormat = search->second.first;
+
+					#ifndef NO_QUILL
+					LOG_WARNING(mLogData.logger,
+					            "[{}] VideoFormat changed but not able to reconnect! [Result: {:#08x}] Attempting fallback format {}",
+					            mLogData.prefix, static_cast<unsigned long>(hr), fallbackPixelFormat.name);
+					#endif
+
+					auto fallbackVideoFormat = std::move(newVideoFormat);
+					fallbackVideoFormat.pixelFormat = std::move(fallbackPixelFormat);
+					fallbackVideoFormat.CalculateDimensions();
+
+					CMediaType fallbackMediaType(m_mt);
+					VideoFormatToMediaType(&fallbackMediaType, &fallbackVideoFormat);
+
+					hr = DoChangeMediaType(&fallbackMediaType, &fallbackVideoFormat);
+					reconnected = SUCCEEDED(hr);
+					if (reconnected)
+					{
+						auto strategy = search->second.second;
+
+						#ifndef NO_QUILL
+						LOG_WARNING(mLogData.logger,
+						            "[{}] VideoFormat changed and fallback format {} required to reconnect, updating frame conversion strategy to {}",
+						            mLogData.prefix, fallbackVideoFormat.pixelFormat.name, to_string(strategy));
+						#endif
+
+						SetFrameWriterStrategy(search->second.second, signalledFormat);
+
+						retVal = S_OK;
+					}
+					else
+					{
+						#ifndef NO_QUILL
+						LOG_WARNING(mLogData.logger,
+						            "[{}] VideoFormat changed but fallback format also not able to reconnect! Will retry after backoff [Result: {:#08x}]",
+						            mLogData.prefix, static_cast<unsigned long>(hr),
+						            fallbackVideoFormat.pixelFormat.name);
+						#endif
+
+						retVal = E_FAIL;
+					}
+				}
+				else
+				{
+					#ifndef NO_QUILL
+					LOG_ERROR(mLogData.logger,
+					          "[{}] VideoFormat changed but not able to reconnect! Will retry after backoff [Result: {:#08x}]",
+					          mLogData.prefix, static_cast<unsigned long>(hr));
+					#endif
+
+					retVal = E_FAIL;
+				}
+			}
+			if (reconnected) mFilter->OnVideoFormatLoaded(&mVideoFormat);
+		}
+		return retVal;
+	}
+};
 
 template <class F>
 class HdmiAudioCapturePin : public AudioCapturePin

@@ -419,9 +419,6 @@
     <ClCompile Include="bmcapture.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="MediaSampleBackedDecklinkBuffer.cpp" />
-    <ClCompile Include="r210_rgb48.cpp" />
-    <ClCompile Include="v210_p210.cpp" />
-    <ClCompile Include="yuv2_yv16.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="bmcapture.def" />
@@ -443,10 +440,6 @@
     <ClInclude Include="bmdomain.h" />
     <ClInclude Include="MediaSampleBackedDecklinkBuffer.h" />
     <ClInclude Include="StraightThrough.h" />
-    <ClInclude Include="r210_rgb48.h" />
-    <ClInclude Include="v210_p210.h" />
-    <ClInclude Include="VideoFrameWriter.h" />
-    <ClInclude Include="yuv2_yv16.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="bmcapture.rc" />

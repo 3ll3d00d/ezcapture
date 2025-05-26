@@ -12,13 +12,71 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-
 #pragma once
-#include <cstdint>
-#include <intrin.h>
+#include "VideoFrameWriter.h"
+#include <span>
 
-namespace v210
+#ifndef NO_QUILL
+#include <quill/StopWatch.h>
+#endif
+
+template<typename VF>
+class v210_p210 : public IVideoFrameWriter<VF>
 {
+public:
+	v210_p210(const log_data& pLogData, int pX, int pY) : IVideoFrameWriter<VF>(pLogData, pX, pY, &P210)
+	{
+	}
+
+	~v210_p210() override = default;
+
+	HRESULT WriteTo(VF* srcFrame, IMediaSample* dstFrame) override
+	{
+		const auto width = srcFrame->GetWidth();
+		const auto height = srcFrame->GetHeight();
+
+		auto hr = this->DetectPadding(srcFrame->GetFrameIndex(), width, dstFrame);
+		if (S_FALSE == hr)
+		{
+			return S_FALSE;
+		}
+		auto actualWidth = width + this->mPixelsToPad;
+
+		void* d;
+		srcFrame->Start(&d);
+		const uint8_t* sourceData = static_cast<const uint8_t*>(d);
+
+		BYTE* outData;
+		dstFrame->GetPointer(&outData);
+		auto dstSize = dstFrame->GetSize();
+
+		// P210 format: 16-bit samples, full res Y plane, half-width U and V planes
+		auto outSpan = std::span(outData, dstSize);
+		auto planeSize = actualWidth * height * 2;
+
+		uint8_t* yPlane = outSpan.subspan(0, planeSize).data();
+		uint8_t* uvPlane = outSpan.subspan(planeSize, planeSize).data();
+
+		auto alignedWidth = (width + 47) / 48 * 48;
+		auto srcStride = alignedWidth * 8 / 3;
+
+		#ifndef NO_QUILL
+		const quill::StopWatchTsc swt;
+		#endif
+
+		this->convert(sourceData, srcStride, yPlane, uvPlane, width, height, this->mPixelsToPad);
+
+		#ifndef NO_QUILL
+		auto execTime = swt.elapsed_as<std::chrono::microseconds>().count() / 1000.0;
+		LOG_TRACE_L3(this->mLogData.logger, "[{}] Converted frame to P210 in {:.3f} ms", this->mLogData.prefix, execTime);
+		#endif
+
+		srcFrame->End();
+
+		return S_OK;
+	}
+
+private:
 	// v210 format
 	// 12 10-bit unsigned components are packed into four 32-bit little-endian words hence
 	// each block specifies the following samples in decreasing address order
@@ -194,5 +252,4 @@ namespace v210
 		return true;
 	}
 	#endif
-}
-
+};

@@ -474,7 +474,8 @@
   <ItemGroup>
     <ClInclude Include="..\common\resource.h" />
     <ClInclude Include="mwcapture.h" />
-    <ClInclude Include="util.h" />
+    <ClInclude Include="mwdomain.h" />
+    <ClInclude Include="StraightThrough.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp" />

@@ -17,6 +17,7 @@
 #include <array>
 #include <ks.h>
 #include <ksmedia.h>
+#include <map>
 
 constexpr auto not_present = 1024;
 constexpr LONGLONG dshowTicksPerSecond = 10LL * 1000 * 1000; // 100ns
@@ -192,7 +193,7 @@ const inline pixel_format AYUV{pixel_format::AYUV, 'A', 'Y', 'U', 'V', 8, 32, fa
 const inline pixel_format BGR24{pixel_format::BGR24, 'B', 'G', 'R', ' ', 8, 24, true, RGB_444};
 const inline pixel_format BGR10{pixel_format::BGR10, 'B', 'G', '1', '0', 10, 32, true, RGB_444};
 // magewell usb
-const inline pixel_format YUY2{pixel_format::YUY2, '2', 'Y', 'U', 'Y', 8, 16, false, YUV_422};
+const inline pixel_format YUY2{pixel_format::YUY2, 'Y', 'U', 'Y', '2', 8, 16, false, YUV_422};
 // blackmagic, generally require conversion due to lack of native renderer support
 const inline pixel_format YUV2{pixel_format::YUV2, '2', 'V', 'U', 'Y', 8, 16, false, YUV_422};
 const inline pixel_format V210{pixel_format::V210, 'v', '2', '1', '0', 10, 16, false, YUV_422, 128};
@@ -436,3 +437,32 @@ struct AUDIO_FORMAT
 	// encoded content only
 	uint16_t dataBurstSize{0};
 };
+
+enum frame_writer_strategy :uint8_t
+{
+	UNKNOWN,
+	ANY_RGB,
+	YUV2_YV16,
+	YUY2_YV16,
+	V210_P210,
+	R210_BGR48,
+	BGR10_BGR48,
+	STRAIGHT_THROUGH
+};
+
+inline const char* to_string(frame_writer_strategy e)
+{
+	switch (e)
+	{
+	case ANY_RGB: return "ANY_RGB";
+	case YUV2_YV16: return "YUV2_YV16";
+	case YUY2_YV16: return "YUY2_YV16";
+	case V210_P210: return "V210_P210";
+	case R210_BGR48: return "R210_BGR48";
+	case BGR10_BGR48: return "BGR10_BGR48";
+	case STRAIGHT_THROUGH: return "STRAIGHT_THROUGH";
+	default: return "unknown";
+	}
+}
+
+typedef std::map<pixel_format, std::pair<pixel_format, frame_writer_strategy>> pixel_format_fallbacks;

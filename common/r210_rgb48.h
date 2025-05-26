@@ -12,14 +12,90 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-
 #pragma once
-#include <cstdint>
-#include <intrin.h>
 
- // same mechanism as bgr10 but with a byte swap to flip endianness and different component order
-namespace r210
+#include "VideoFrameWriter.h"
+#include <span>
+
+#ifndef NO_QUILL
+#include <quill/StopWatch.h>
+#endif
+
+#ifdef RECORD_RAW
+#include <filesystem>
+#endif
+
+template <typename VF>
+class r210_rgb48 : public IVideoFrameWriter<VF>
 {
+public:
+	r210_rgb48(const log_data& pLogData, uint32_t pX, uint32_t pY) : IVideoFrameWriter<VF>(pLogData, pX, pY, &RGB48)
+	{
+	}
+
+	~r210_rgb48() override = default;
+
+	HRESULT WriteTo(VF* srcFrame, IMediaSample* dstFrame) override
+	{
+		const auto width = srcFrame->GetWidth();
+		const auto height = srcFrame->GetHeight();
+
+		auto hr = this->DetectPadding(srcFrame->GetFrameIndex(), width, dstFrame);
+		if (S_FALSE == hr)
+		{
+			return S_FALSE;
+		}
+
+		void* d;
+		srcFrame->Start(&d);
+		const uint8_t* sourceData = static_cast<const uint8_t*>(d);
+
+		BYTE* outData;
+		dstFrame->GetPointer(&outData);
+
+		#ifdef RECORD_RAW
+		if (++mFrameCounter % 60 == 0)
+		{
+			char filename[MAX_PATH];
+			strcpy_s(filename, std::filesystem::temp_directory_path().string().c_str());
+			CHAR rawFileName[128];
+			sprintf_s(rawFileName, "\\r210-%d.raw", mFrameCounter);
+			strcat_s(filename, rawFileName);
+			FILE* file;
+			if (fopen_s(&file, filename, "wb") != 0)
+			{
+				LOG_WARNING(this->mLogData.logger, "[{}] Failed to open {}", this->mLogData.prefix, filename);
+			}
+			else
+			{
+				LOG_TRACE_L3(this->mLogData.logger, "[{}] Wrote input frame {} to raw file", this->mLogData.prefix, mFrameCounter);
+				fwrite(sourceData, srcFrame->GetLength(), 1, file);
+				fclose(file);
+			}
+		}
+		#endif
+
+		#ifndef NO_QUILL
+		const quill::StopWatchTsc swt;
+		#endif
+
+		this->convert(sourceData, reinterpret_cast<uint16_t*>(outData), width, height, this->mPixelsToPad);
+
+		#ifndef NO_QUILL
+		auto execTime = swt.elapsed_as<std::chrono::microseconds>().count() / 1000.0;
+		LOG_TRACE_L3(this->mLogData.logger, "[{}] Converted frame to RGB48 in {:.3f} ms", this->mLogData.prefix, execTime);
+		#endif
+
+		srcFrame->End();
+
+		return S_OK;
+	}
+
+private:
+	#ifdef RECORD_RAW
+	uint32_t mFrameCounter{0};
+	#endif
+
 	#ifdef __AVX2__
 	bool convert(const uint8_t* src, uint16_t* dst, size_t width, size_t height, int pixelsToPad)
 	{
@@ -96,4 +172,4 @@ namespace r210
 		return true;
 	}
 	#endif
-}
+};

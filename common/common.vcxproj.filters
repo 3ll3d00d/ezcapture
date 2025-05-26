@@ -50,19 +50,22 @@
     <ClInclude Include="logging.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="r210.h">
+    <ClInclude Include="VideoFrameWriter.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="v210.h">
+    <ClInclude Include="r210_rgb48.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="yuv2.h">
+    <ClInclude Include="v210_p210.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="yuy2.h">
+    <ClInclude Include="yuv2_yv16.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="bgr10.h">
+    <ClInclude Include="yuy2_yv16.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="bgr10_rgb48.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

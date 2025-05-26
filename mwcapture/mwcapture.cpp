@@ -33,8 +33,11 @@
 #include "mwcapture.h"
 
 #include <cmath>
-// std::reverse
 #include <algorithm>
+#include "bgr10_rgb48.h"
+#include "StraightThrough.h"
+#include "yuy2_yv16.h"
+#include "V210_P210.h"
 
 #define S_PARTIAL_DATABURST    ((HRESULT)2L)
 #define S_POSSIBLE_BITSTREAM    ((HRESULT)3L)
@@ -232,8 +235,11 @@ MagewellCaptureFilter::MagewellCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 
 	mClock = new MWReferenceClock(phr, mDeviceInfo.hChannel, mDeviceInfo.deviceType == PRO);
 
-	new MagewellVideoCapturePin(phr, this, false);
-	new MagewellVideoCapturePin(phr, this, true);
+	auto pin = new MagewellVideoCapturePin(phr, this, false);
+	pin->UpdateFrameWriterStrategy();
+	pin = new MagewellVideoCapturePin(phr, this, true);
+	pin->UpdateFrameWriterStrategy();
+
 	new MagewellAudioCapturePin(phr, this, false);
 	new MagewellAudioCapturePin(phr, this, true);
 }
@@ -460,13 +466,13 @@ MagewellVideoCapturePin::VideoCapture::VideoCapture(MagewellVideoCapturePin* pin
 	#ifndef NO_QUILL
 	if (mEvent == nullptr)
 	{
-		LOG_ERROR(mLogData.logger, "[{}] MWCreateVideoCapture failed {}x{} {} {}", mLogData.prefix,
+		LOG_ERROR(mLogData.logger, "[{}] MWCreateVideoCapture failed [{}x{} '{}' {}]", mLogData.prefix,
 		          pin->mVideoFormat.cx, pin->mVideoFormat.cy, pin->mVideoFormat.pixelFormat.name,
 		          pin->mVideoFormat.frameInterval);
 	}
 	else
 	{
-		LOG_INFO(mLogData.logger, "[{}] MWCreateVideoCapture succeeded {}x{} {} {}", mLogData.prefix,
+		LOG_INFO(mLogData.logger, "[{}] MWCreateVideoCapture succeeded [{}x{} '{}' {}]", mLogData.prefix,
 		         pin->mVideoFormat.cx, pin->mVideoFormat.cy, pin->mVideoFormat.pixelFormat.name,
 		         pin->mVideoFormat.frameInterval);
 	}
@@ -573,10 +579,12 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 
 			frameTime = pin->mVideoSignal.frameInfo.allFieldBufferedTimes[0];
 
+			uint8_t* writeBuffer = pin->mFrameWriterStrategy == STRAIGHT_THROUGH ? pmsData : pin->mCapturedFrame.data;
+
 			pin->mLastMwResult = MWCaptureVideoFrameToVirtualAddressEx(
 				hChannel,
 				pin->mHasSignal ? pin->mVideoSignal.bufferInfo.iNewestBuffering : MWCAP_VIDEO_FRAME_ID_NEWEST_BUFFERING,
-				pmsData,
+				writeBuffer,
 				pin->mVideoFormat.imageSize,
 				pin->mVideoFormat.lineLength,
 				FALSE,
@@ -659,18 +667,42 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 			if (hasFrame)
 			{
 				pin->SnapCaptureTime();
+				if (pin->mFrameWriterStrategy != STRAIGHT_THROUGH)
+				{
+					VideoSampleBuffer buffer{
+						.index = pin->mFrameCounter,
+						.data = pin->mCapturedFrame.data,
+						.width = pin->mVideoFormat.cx,
+						.height = pin->mVideoFormat.cy
+					};
+					pin->mFrameWriter->WriteTo(&buffer, pms);
+				}
 			}
 		}
 		else
 		{
 			frameTime = pin->mCapturedFrame.ts;
 			CAutoLock lck(&pin->mCaptureCritSec);
-			memcpy(pmsData, pin->mCapturedFrame.data, pin->mCapturedFrame.length);
+			if (pin->mFrameWriterStrategy == STRAIGHT_THROUGH)
+			{
+				memcpy(pmsData, pin->mCapturedFrame.data, pin->mCapturedFrame.length);
+			}
+			else
+			{
+				VideoSampleBuffer buffer{
+					.index = pin->mFrameCounter,
+					.data = pin->mCapturedFrame.data,
+					.width = pin->mVideoFormat.cx,
+					.height = pin->mVideoFormat.cy
+				};
+				pin->mFrameWriter->WriteTo(&buffer, pms);
+			}
 			hasFrame = true;
 		}
 	}
 	if (hasFrame)
 	{
+		// in place byteswap so no need for frame conversion buffer
 		if (pin->mVideoFormat.pixelFormat.format == pixel_format::AYUV)
 		{
 			#ifndef NO_QUILL
@@ -723,7 +755,7 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 			AM_MEDIA_TYPE* sendMediaType = CreateMediaType(&cmt);
 			pms->SetMediaType(sendMediaType);
 			DeleteMediaType(sendMediaType);
-			pin->mUpdatedMediaType = FALSE;
+			pin->mUpdatedMediaType = false;
 		}
 		pin->AppendHdrSideDataIfNecessary(pms, endTime);
 
@@ -770,7 +802,13 @@ MagewellVideoCapturePin::MagewellVideoCapturePin(HRESULT* phr, MagewellCaptureFi
 		pParent,
 		pPreview ? "VideoPreview" : "VideoCapture",
 		pPreview ? L"Preview" : L"Capture",
-		pPreview ? "VideoPreview" : "VideoCapture"
+		pPreview ? "VideoPreview" : "VideoCapture",
+		VIDEO_FORMAT{},
+		{
+			{YUY2, {YV16, YUY2_YV16}},
+			{V210, {P210, V210_P210}},
+			{BGR10, {RGB48, BGR10_BGR48}},
+		}
 	),
 	mNotify(nullptr),
 	mCaptureEvent(nullptr),
@@ -842,10 +880,7 @@ MagewellVideoCapturePin::MagewellVideoCapturePin(HRESULT* phr, MagewellCaptureFi
 	}
 	mFilter->OnVideoFormatLoaded(&mVideoFormat);
 
-	if (mFilter->GetDeviceType() != PRO)
-	{
-		mCapturedFrame.data = new BYTE[mVideoFormat.imageSize];
-	}
+	mCapturedFrame.data = new uint8_t[mVideoFormat.imageSize];
 }
 
 MagewellVideoCapturePin::~MagewellVideoCapturePin()
@@ -867,7 +902,7 @@ void MagewellVideoCapturePin::DoThreadDestroy()
 }
 
 void MagewellVideoCapturePin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL* videoSignal,
-                                         USB_CAPTURE_FORMATS* captureFormats)
+                                         const USB_CAPTURE_FORMATS* captureFormats)
 {
 	auto subsampling = RGB_444;
 	auto bitDepth = 8;
@@ -938,20 +973,20 @@ void MagewellVideoCapturePin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL
 		if (!found)
 		{
 			#ifndef NO_QUILL
-			std::string tmp{"["};
+			std::string tmp{"['"};
 			for (int i = 0; i < captureFormats->fourccs.byCount; i++)
 			{
-				if (i != 0) tmp += ", ";
+				if (i != 0) tmp += "', '";
 				uint32_t adw_fourcc = captureFormats->fourccs.adwFOURCCs[i];
 				tmp += static_cast<char>(adw_fourcc & 0xFF);
 				tmp += static_cast<char>(adw_fourcc >> 8 & 0xFF);
 				tmp += static_cast<char>(adw_fourcc >> 16 & 0xFF);
 				tmp += static_cast<char>(adw_fourcc >> 24 & 0xFF);
 			}
-			tmp += "]";
+			tmp += "']";
 
-			LOG_ERROR(mLogData.logger, "[{}] Supported format is {} but card is configured to use {} ", 
-				mLogData.prefix, videoFormat->pixelFormat.name, tmp);
+			LOG_ERROR(mLogData.logger, "[{}] Supported format is {} but card is configured to use {} ",
+			          mLogData.prefix, videoFormat->pixelFormat.name, tmp);
 			#endif
 		}
 
@@ -988,7 +1023,7 @@ void MagewellVideoCapturePin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL
 	videoFormat->CalculateDimensions();
 }
 
-void MagewellVideoCapturePin::LogHdrMetaIfPresent(VIDEO_FORMAT* newVideoFormat)
+void MagewellVideoCapturePin::LogHdrMetaIfPresent(const VIDEO_FORMAT* newVideoFormat)
 {
 	#ifndef NO_QUILL
 	auto hdrIf = mVideoSignal.hdrInfo;
@@ -1108,21 +1143,42 @@ HRESULT MagewellVideoCapturePin::LoadSignal(HCHANNEL* pChannel)
 	return S_OK;
 }
 
+void MagewellVideoCapturePin::OnFrameWriterStrategyUpdated()
+{
+	switch (mFrameWriterStrategy)
+	{
+	case STRAIGHT_THROUGH:
+		mFrameWriter = std::make_unique<StraightThrough>(mLogData, mVideoFormat.cx, mVideoFormat.cy,
+		                                                 &mVideoFormat.pixelFormat);
+		break;
+	case ANY_RGB:
+	case YUV2_YV16:
+	case R210_BGR48:
+		#ifndef NO_QUILL
+		LOG_ERROR(mLogData.logger, "[{}] Conversion strategy {} is not supported by mwcapture",
+		          mLogData.prefix, to_string(mFrameWriterStrategy));
+		#endif
+		break;
+	default:
+		HdmiVideoCapturePin::OnFrameWriterStrategyUpdated();
+	}
+}
+
 void MagewellVideoCapturePin::OnChangeMediaType()
 {
 	VideoCapturePin::OnChangeMediaType();
 
 	mFilter->NotifyEvent(EC_VIDEO_SIZE_CHANGED, MAKELPARAM(mVideoFormat.cx, mVideoFormat.cy), 0);
-	if (mFilter->GetDeviceType() != PRO)
+	if (mFilter->GetDeviceType() != PRO && !mFirst)
 	{
-		delete mVideoCapture;
-		mVideoCapture = new VideoCapture(this, mFilter->GetChannelHandle());
-		if (mVideoFormat.imageSize > mVideoFormat.imageSize)
-		{
-			CAutoLock lck(&mCaptureCritSec);
-			delete mCapturedFrame.data;
-			mCapturedFrame.data = new BYTE[mVideoFormat.imageSize];
-		}
+		if (mVideoCapture) mVideoCapture.reset();
+		mVideoCapture = std::make_unique<VideoCapture>(this, mFilter->GetChannelHandle());
+	}
+	if (mVideoFormat.imageSize > mVideoFormat.imageSize)
+	{
+		CAutoLock lck(&mCaptureCritSec);
+		delete mCapturedFrame.data;
+		mCapturedFrame.data = new uint8_t[mVideoFormat.imageSize];
 	}
 }
 
@@ -1207,42 +1263,17 @@ HRESULT MagewellVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 		VIDEO_FORMAT newVideoFormat;
 		LoadFormat(&newVideoFormat, &mVideoSignal, &mUsbCaptureFormats);
 
-		#ifndef NO_QUILL
-		LogHdrMetaIfPresent(&newVideoFormat);
-		#endif
-
-		if (ShouldChangeMediaType(&newVideoFormat))
-		{
-			#ifndef NO_QUILL
-			LOG_WARNING(mLogData.logger, "[{}] VideoFormat changed! Attempting to reconnect", mLogData.prefix);
-			#endif
-
-			CMediaType proposedMediaType(m_mt);
-			VideoFormatToMediaType(&proposedMediaType, &newVideoFormat);
-
-			hr = DoChangeMediaType(&proposedMediaType, &newVideoFormat);
-
-			mFilter->OnVideoSignalLoaded(&mVideoSignal);
-
-			if (FAILED(hr))
-			{
-				#ifndef NO_QUILL
-				LOG_ERROR(mLogData.logger,
-				          "[{}] VideoFormat changed but not able to reconnect! retry after backoff [Result: {:#08x}]",
-				          mLogData.prefix, static_cast<unsigned long>(hr));
-				#endif
-
-				// TODO show OSD to say we need to change
-				BACKOFF;
-				continue;
-			}
-
-			mFilter->OnVideoFormatLoaded(&mVideoFormat);
-		}
+		hr = OnVideoSignal(newVideoFormat);
 
 		if (hadSignal && !mHasSignal)
 		{
 			mFilter->OnVideoSignalLoaded(&mVideoSignal);
+		}
+
+		if (FAILED(hr))
+		{
+			BACKOFF;
+			continue;
 		}
 
 		// grab next frame 
@@ -1355,11 +1386,17 @@ HRESULT MagewellVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 					hasFrame = true;
 				}
 			}
+			else if (dwRet == STATUS_TIMEOUT)
+			{
+				#ifndef NO_QUILL
+				LOG_TRACE_L1(mLogData.logger, "[{}] No frame arrived within timeout", mLogData.prefix);
+				#endif
+			}
 			else
 			{
 				#ifndef NO_QUILL
-				LOG_TRACE_L1(mLogData.logger, "[{}] Wait for frame unexpected response ({:#08x})", mLogData.prefix,
-				             static_cast<unsigned long>(dwRet));
+				LOG_WARNING(mLogData.logger, "[{}] Wait for frame unexpected response ({:#08x})", mLogData.prefix,
+				            static_cast<unsigned long>(dwRet));
 				#endif
 			}
 		}
@@ -1431,10 +1468,10 @@ HRESULT MagewellVideoCapturePin::OnThreadCreate()
 			// TODO throw
 		}
 	}
-	else if (deviceType == USB)
+	else
 	{
-		delete mVideoCapture;
-		mVideoCapture = new VideoCapture(this, mFilter->GetChannelHandle());
+		if (mVideoCapture) mVideoCapture.reset();
+		mVideoCapture = std::make_unique<VideoCapture>(this, mFilter->GetChannelHandle());
 	}
 	return NOERROR;
 }
@@ -1446,10 +1483,9 @@ void MagewellVideoCapturePin::StopCapture()
 	{
 		MWStopVideoCapture(mFilter->GetChannelHandle());
 	}
-	else if (deviceType == USB)
+	else if (mVideoCapture)
 	{
-		delete mVideoCapture;
-		mVideoCapture = nullptr;
+		mVideoCapture.reset();
 	}
 }
 
@@ -1517,7 +1553,7 @@ MagewellAudioCapturePin::MagewellAudioCapturePin(HRESULT* phr, MagewellCaptureFi
 	mDataBurstBuffer(bitstreamBufferSize)
 // initialise to a reasonable default size that is not wastefully large but also is unlikely to need to be expanded very often
 {
-	mCapturedFrame.data = new BYTE[maxFrameLengthInBytes];
+	mCapturedFrame.data = new uint8_t[maxFrameLengthInBytes];
 	mCapturedFrame.length = maxFrameLengthInBytes;
 
 	mDataBurstBuffer.assign(bitstreamBufferSize, 0);
@@ -1625,7 +1661,6 @@ MagewellAudioCapturePin::~MagewellAudioCapturePin()
 		LOG_WARNING(mLogData.logger, "[{}] Failed to close {}", mLogData.prefix, mRawFileName);
 	}
 	#endif
-	delete mAudioCapture;
 }
 
 void MagewellAudioCapturePin::DoThreadDestroy()
@@ -2833,7 +2868,7 @@ HRESULT MagewellAudioCapturePin::FillBuffer(IMediaSample* pms)
 		AM_MEDIA_TYPE* sendMediaType = CreateMediaType(&cmt);
 		pms->SetMediaType(sendMediaType);
 		DeleteMediaType(sendMediaType);
-		mUpdatedMediaType = FALSE;
+		mUpdatedMediaType = false;
 	}
 	if (S_FALSE == HandleStreamStateChange(pms))
 	{
@@ -2881,10 +2916,9 @@ HRESULT MagewellAudioCapturePin::OnThreadCreate()
 			#endif
 		}
 	}
-	else if (deviceType == USB)
+	else
 	{
-		delete mAudioCapture;
-		mAudioCapture = new AudioCapture(this, mFilter->GetChannelHandle());
+		mAudioCapture = std::make_unique<AudioCapture>(this, mFilter->GetChannelHandle());
 	}
 	return NOERROR;
 }
@@ -2914,8 +2948,7 @@ HRESULT MagewellAudioCapturePin::DoChangeMediaType(const CMediaType* pmt, const 
 		mAudioFormat = *newAudioFormat;
 		if (mFilter->GetDeviceType() != PRO)
 		{
-			delete mAudioCapture;
-			mAudioCapture = new AudioCapture(this, mFilter->GetChannelHandle());
+			mAudioCapture = std::make_unique<AudioCapture>(this, mFilter->GetChannelHandle());
 		}
 	}
 	return retVal;
@@ -2928,10 +2961,12 @@ void MagewellAudioCapturePin::StopCapture()
 	{
 		MWStopAudioCapture(mFilter->GetChannelHandle());
 	}
-	else if (deviceType == USB)
+	else
 	{
-		delete mAudioCapture;
-		mAudioCapture = nullptr;
+		if (mAudioCapture)
+		{
+			mAudioCapture.reset();
+		}
 	}
 }
 

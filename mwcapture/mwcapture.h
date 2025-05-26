@@ -19,114 +19,9 @@
 #include <chrono>
 #endif
 #include "capture.h"
-#include "util.h"
+#include "mwdomain.h"
+#include "VideoFrameWriter.h"
 #include "LibMWCapture/MWCapture.h"
-
-// HDMI Audio Bitstream Codec Identification metadata
-
-// IEC 61937-1 Chapter 6.1.7 Field Pa
-constexpr auto IEC61937_SYNCWORD_1 = 0xF872;
-// IEC 61937-1 Chapter 6.1.7 Field Pb
-constexpr auto IEC61937_SYNCWORD_2 = 0x4E1F;
-
-// IEC 61937-2 Table 2
-enum IEC61937DataType : uint8_t
-{
-	IEC61937_NULL = 0x0, ///< NULL
-	IEC61937_AC3 = 0x01, ///< AC-3 data
-	IEC61937_PAUSE = 0x03, ///< Pause
-	IEC61937_MPEG1_LAYER1 = 0x04, ///< MPEG-1 layer 1
-	IEC61937_MPEG1_LAYER23 = 0x05, ///< MPEG-1 layer 2 or 3 data or MPEG-2 without extension
-	IEC61937_MPEG2_EXT = 0x06, ///< MPEG-2 data with extension
-	IEC61937_MPEG2_AAC = 0x07, ///< MPEG-2 AAC ADTS
-	IEC61937_MPEG2_LAYER1_LSF = 0x08, ///< MPEG-2, layer-1 low sampling frequency
-	IEC61937_MPEG2_LAYER2_LSF = 0x09, ///< MPEG-2, layer-2 low sampling frequency
-	IEC61937_MPEG2_LAYER3_LSF = 0x0A, ///< MPEG-2, layer-3 low sampling frequency
-	IEC61937_DTS1 = 0x0B, ///< DTS type I   (512 samples)
-	IEC61937_DTS2 = 0x0C, ///< DTS type II  (1024 samples)
-	IEC61937_DTS3 = 0x0D, ///< DTS type III (2048 samples)
-	IEC61937_ATRAC = 0x0E, ///< ATRAC data
-	IEC61937_ATRAC3 = 0x0F, ///< ATRAC3 data
-	IEC61937_ATRACX = 0x10, ///< ATRAC3+ data
-	IEC61937_DTSHD = 0x11, ///< DTS HD data
-	IEC61937_WMAPRO = 0x12, ///< WMA 9 Professional data
-	IEC61937_MPEG2_AAC_LSF_2048 = 0x13, ///< MPEG-2 AAC ADTS half-rate low sampling frequency
-	IEC61937_MPEG2_AAC_LSF_4096 = 0x13 | 0x20, ///< MPEG-2 AAC ADTS quarter-rate low sampling frequency
-	IEC61937_EAC3 = 0x15, ///< E-AC-3 data
-	IEC61937_TRUEHD = 0x16, ///< TrueHD/MAT data
-};
-
-constexpr int maxBitDepthInBytes = sizeof(DWORD);
-constexpr int maxFrameLengthInBytes = MWCAP_AUDIO_SAMPLES_PER_FRAME * MWCAP_AUDIO_MAX_NUM_CHANNELS * maxBitDepthInBytes;
-
-EXTERN_C const GUID CLSID_MWCAPTURE_FILTER;
-
-struct USB_CAPTURE_FORMATS
-{
-	bool usb{false};
-	MWCAP_VIDEO_OUTPUT_FOURCC fourccs;
-	MWCAP_VIDEO_OUTPUT_FRAME_INTERVAL frameIntervals;
-	MWCAP_VIDEO_OUTPUT_FRAME_SIZE frameSizes;
-};
-
-struct VIDEO_SIGNAL
-{
-	MWCAP_INPUT_SPECIFIC_STATUS inputStatus;
-	MWCAP_VIDEO_SIGNAL_STATUS signalStatus;
-	MWCAP_VIDEO_BUFFER_INFO bufferInfo;
-	MWCAP_VIDEO_FRAME_INFO frameInfo;
-	MWCAP_VIDEO_CAPTURE_STATUS captureStatus;
-	HDMI_HDR_INFOFRAME_PAYLOAD hdrInfo;
-	HDMI_AVI_INFOFRAME_PAYLOAD aviInfo;
-};
-
-struct AUDIO_SIGNAL
-{
-	MWCAP_AUDIO_SIGNAL_STATUS signalStatus;
-	MWCAP_AUDIO_CAPTURE_FRAME frameInfo;
-	HDMI_AUDIO_INFOFRAME_PAYLOAD audioInfo;
-};
-
-enum DeviceType : uint8_t
-{
-	USB_PLUS,
-	USB_PRO,
-	PRO
-};
-
-inline const char* devicetype_to_name(DeviceType e)
-{
-	switch (e)
-	{
-	case USB_PLUS: return "USB_PLUS";
-	case USB_PRO: return "USB_PRO";
-	case PRO: return "PRO";
-	default: return "unknown";
-	}
-}
-
-struct DEVICE_INFO
-{
-	DeviceType deviceType;
-	std::string serialNo{};
-	WCHAR devicePath[128];
-	HCHANNEL hChannel;
-	double temperature{0.0};
-	int64_t linkSpeed{0};
-	// pcie only
-	int64_t linkWidth{-1};
-	int16_t maxPayloadSize{-1};
-	int16_t maxReadRequestSize{-1};
-	// usb pro only
-	int16_t fanSpeed{-1};
-};
-
-struct CAPTURED_FRAME
-{
-	BYTE* data;
-	int length;
-	UINT64 ts;
-};
 
 class MWReferenceClock final :
 	public CBaseReferenceClock
@@ -194,7 +89,7 @@ private:
  * A video stream flowing from the capture device to an output pin.
  */
 class MagewellVideoCapturePin final :
-	public HdmiVideoCapturePin<MagewellCaptureFilter>
+	public HdmiVideoCapturePin<MagewellCaptureFilter, VideoSampleBuffer>
 {
 public:
 	MagewellVideoCapturePin(HRESULT* phr, MagewellCaptureFilter* pParent, bool pPreview);
@@ -222,13 +117,14 @@ protected:
 	void DoThreadDestroy() override;
 	void StopCapture();
 
-	void LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL* videoSignal, USB_CAPTURE_FORMATS* captureFormats);
+	void LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL* videoSignal, const USB_CAPTURE_FORMATS* captureFormats);
 	// USB only
 	static void CaptureFrame(BYTE* pbFrame, int cbFrame, UINT64 u64TimeStamp, void* pParam);
 
-	void LogHdrMetaIfPresent(VIDEO_FORMAT* newVideoFormat);
+	void LogHdrMetaIfPresent(const VIDEO_FORMAT* newVideoFormat) override;
 	void OnChangeMediaType() override;
 	HRESULT LoadSignal(HCHANNEL* pChannel);
+	void OnFrameWriterStrategyUpdated() override;
 
 	void SnapTemperatureIfNecessary(LONGLONG endTime)
 	{
@@ -278,11 +174,12 @@ protected:
 
 	// Common - temp 
 	HNOTIFY mNotify;
-	ULONGLONG mStatusBits = 0;
+	uint64_t mStatusBits = 0;
 	HANDLE mNotifyEvent;
 	MW_RESULT mLastMwResult;
 	int64_t mCaptureTime;
-	LONGLONG mLastTempSnapAt{0};
+	int64_t mLastTempSnapAt{0};
+	captured_frame mCapturedFrame{};
 
 	// pro only
 	HANDLE mCaptureEvent;
@@ -291,8 +188,7 @@ protected:
 	USB_CAPTURE_FORMATS mUsbCaptureFormats{};
 	bool mHasHdrInfoFrame{false};
 	// USB only
-	VideoCapture* mVideoCapture{nullptr};
-	CAPTURED_FRAME mCapturedFrame{};
+	std::unique_ptr<VideoCapture> mVideoCapture;
 };
 
 /**
@@ -359,8 +255,8 @@ protected:
 	bool mPacketMayBeCorrupt{false};
 	BYTE mCompressedBuffer[maxFrameLengthInBytes];
 	std::vector<BYTE> mDataBurstBuffer; // variable size
-	AudioCapture* mAudioCapture{nullptr};
-	CAPTURED_FRAME mCapturedFrame{};
+	std::unique_ptr<AudioCapture> mAudioCapture;
+	captured_frame mCapturedFrame{};
 
 	#ifdef RECORD_RAW
     char mRawFileName[MAX_PATH];

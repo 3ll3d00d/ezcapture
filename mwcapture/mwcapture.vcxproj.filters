@@ -18,10 +18,13 @@
     <ClInclude Include="mwcapture.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="util.h">
+    <ClInclude Include="mwdomain.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\common\resource.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="StraightThrough.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

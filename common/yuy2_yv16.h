@@ -12,15 +12,71 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-
 #pragma once
-#include <cstdint>
-#include <intrin.h>
+#include "VideoFrameWriter.h"
+#include <span>
 
-// same as yuy2 but v - u order is reverted
-// y - v - y - u
-namespace yuv2
+#ifndef NO_QUILL
+#include <quill/StopWatch.h>
+#endif
+
+template <typename VF>
+class yuy2_yv16 : public IVideoFrameWriter<VF>
 {
+public:
+	yuy2_yv16(const log_data& pLogData, int pX, int pY) : IVideoFrameWriter<VF>(pLogData, pX, pY, &YV16)
+	{
+	}
+
+	~yuy2_yv16() override = default;
+
+	HRESULT WriteTo(VF* srcFrame, IMediaSample* dstFrame) override
+	{
+		const auto width = srcFrame->GetWidth();
+		const auto height = srcFrame->GetHeight();
+
+		auto hr = this->DetectPadding(srcFrame->GetFrameIndex(), width, dstFrame);
+		if (S_FALSE == hr)
+		{
+			return S_FALSE;
+		}
+		const auto actualWidth = width + this->mPixelsToPad;
+		const auto pixelCount = actualWidth * height;
+
+		void* d;
+		srcFrame->Start(&d);
+		const uint8_t* sourceData = static_cast<const uint8_t*>(d);
+
+		BYTE* outData;
+		dstFrame->GetPointer(&outData);
+		auto dstSize = dstFrame->GetSize();
+
+		// YV16 format: 
+		auto ySize = pixelCount;
+		auto uvSize = pixelCount / 2;
+
+		auto outSpan = std::span(outData, dstSize);
+		uint8_t* yPlane = outSpan.subspan(0, ySize).data();
+		uint8_t* vPlane = outSpan.subspan(ySize, uvSize).data();
+		uint8_t* uPlane = outSpan.subspan(ySize + uvSize, uvSize).data();
+
+		#ifndef NO_QUILL
+		const quill::StopWatchTsc swt;
+		#endif
+
+		this->convert(sourceData, yPlane, uPlane, vPlane, width, srcFrame->GetHeight(), this->mPixelsToPad);
+
+		#ifndef NO_QUILL
+		auto execTime = swt.elapsed_as<std::chrono::microseconds>().count() / 1000.0;
+		LOG_TRACE_L3(this->mLogData.logger, "[{}] Converted frame to YV16 in {:.3f} ms", this->mLogData.prefix, execTime);
+		#endif
+
+		srcFrame->End();
+
+		return S_OK;
+	}
+
+private:
 	#ifdef __AVX2__
 	bool convert(const uint8_t* src, uint8_t* yPlane, uint8_t* uPlane, uint8_t* vPlane, int width, int height, int pixelsToPad)
 	{
@@ -43,10 +99,10 @@ namespace yuv2
 				__m256i permuted = _mm256_permutevar8x32_epi32(shuffled, permute);
 				const uint64_t* vals = reinterpret_cast<const uint64_t*>(&permuted);
 
-				v_out[0] = vals[0]; // 8 bytes each of UV
-				v_out++;
-				u_out[0] = vals[1];
+				u_out[0] = vals[0]; // 8 bytes each of UV
 				u_out++;
+				v_out[0] = vals[1];
+				v_out++;
 
 				y_out[0] = vals[2]; // 16 bytes of Y
 				y_out[1] = vals[3];
@@ -69,9 +125,9 @@ namespace yuv2
 
 			for (int x = 0; x < width; x += 2) // 2 pixels per pass
 			{
-				uOut[0] = src[0];
+				vOut[0] = src[0];
 				yOut[0] = src[1];
-				vOut[0] = src[2];
+				uOut[0] = src[2];
 				yOut[1] = src[3];
 
 				yOut += 2;
@@ -83,4 +139,4 @@ namespace yuv2
 		return true;
 	}
 	#endif
-}
+};

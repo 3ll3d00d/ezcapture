@@ -15,7 +15,7 @@
 #pragma once
 #define NOMINMAX // quill does not compile without this
 
-#include <map>
+#include <LibMWCapture/MWCaptureDef.h>
 #include <LibMWCapture/MWHDMIPackets.h>
 #include "domain.h"
 
@@ -35,43 +35,15 @@ const pixel_format proPixelFormats[3][4] = {
 };
 
 const pixel_format usbPlusPixelFormats[3][4] = {
-	{BGR24, YUY2, NA, NV12},
-	{NA, NA, NA, NA},
-	{NA, NA, NA, NA}
+	{BGR24, YUY2, YUY2, NV12},
+	{BGR24, YUY2, YUY2, NV12},
+	{BGR24, YUY2, YUY2, NV12},
 };
 
 const pixel_format usbProPixelFormats[3][4] = {
-	{BGR24, YUY2, NA, NV12},
-	{NA, V210, NA, P010},
-	{NA, NA, NA, NA}
-};
-
-enum frame_writer_strategy :uint8_t
-{
-	YUY2_YV16,
-	V210_P210,
-	BGR10_BGR48,
-	STRAIGHT_THROUGH
-};
-
-inline const char* to_string(frame_writer_strategy e)
-{
-	switch (e)
-	{
-	case YUY2_YV16: return "YUY2_YV16";
-	case V210_P210: return "V210_P210";
-	case BGR10_BGR48: return "BGR10_BGR48";
-	case STRAIGHT_THROUGH: return "STRAIGHT_THROUGH";
-	default: return "unknown";
-	}
-}
-
-typedef std::map<pixel_format, std::pair<pixel_format, frame_writer_strategy>> pixel_format_fallbacks;
-
-const pixel_format_fallbacks pixelFormatFallbacks{
-	{YUY2, {YV16, YUY2_YV16}},
-	{V210, {P210, V210_P210}},
-	{BGR10, {RGB48, BGR10_BGR48}},
+	{BGR24, YUY2, YUY2, NV12},
+	{BGR24, V210, YUY2, P010},
+	{BGR24, V210, YUY2, P010},
 };
 
 // utility functions
@@ -144,3 +116,133 @@ inline void LoadHdrMeta(HDR_META* meta, const HDMI_HDR_INFOFRAME_PAYLOAD* frame)
 
 	hdrOut->exists = hdrMetaExists(hdrOut);
 }
+
+// HDMI Audio Bitstream Codec Identification metadata
+
+// IEC 61937-1 Chapter 6.1.7 Field Pa
+constexpr auto IEC61937_SYNCWORD_1 = 0xF872;
+// IEC 61937-1 Chapter 6.1.7 Field Pb
+constexpr auto IEC61937_SYNCWORD_2 = 0x4E1F;
+
+// IEC 61937-2 Table 2
+enum IEC61937DataType : uint8_t
+{
+	IEC61937_NULL = 0x0, ///< NULL
+	IEC61937_AC3 = 0x01, ///< AC-3 data
+	IEC61937_PAUSE = 0x03, ///< Pause
+	IEC61937_MPEG1_LAYER1 = 0x04, ///< MPEG-1 layer 1
+	IEC61937_MPEG1_LAYER23 = 0x05, ///< MPEG-1 layer 2 or 3 data or MPEG-2 without extension
+	IEC61937_MPEG2_EXT = 0x06, ///< MPEG-2 data with extension
+	IEC61937_MPEG2_AAC = 0x07, ///< MPEG-2 AAC ADTS
+	IEC61937_MPEG2_LAYER1_LSF = 0x08, ///< MPEG-2, layer-1 low sampling frequency
+	IEC61937_MPEG2_LAYER2_LSF = 0x09, ///< MPEG-2, layer-2 low sampling frequency
+	IEC61937_MPEG2_LAYER3_LSF = 0x0A, ///< MPEG-2, layer-3 low sampling frequency
+	IEC61937_DTS1 = 0x0B, ///< DTS type I   (512 samples)
+	IEC61937_DTS2 = 0x0C, ///< DTS type II  (1024 samples)
+	IEC61937_DTS3 = 0x0D, ///< DTS type III (2048 samples)
+	IEC61937_ATRAC = 0x0E, ///< ATRAC data
+	IEC61937_ATRAC3 = 0x0F, ///< ATRAC3 data
+	IEC61937_ATRACX = 0x10, ///< ATRAC3+ data
+	IEC61937_DTSHD = 0x11, ///< DTS HD data
+	IEC61937_WMAPRO = 0x12, ///< WMA 9 Professional data
+	IEC61937_MPEG2_AAC_LSF_2048 = 0x13, ///< MPEG-2 AAC ADTS half-rate low sampling frequency
+	IEC61937_MPEG2_AAC_LSF_4096 = 0x13 | 0x20, ///< MPEG-2 AAC ADTS quarter-rate low sampling frequency
+	IEC61937_EAC3 = 0x15, ///< E-AC-3 data
+	IEC61937_TRUEHD = 0x16, ///< TrueHD/MAT data
+};
+
+constexpr int maxBitDepthInBytes = sizeof(DWORD);
+constexpr int maxFrameLengthInBytes = MWCAP_AUDIO_SAMPLES_PER_FRAME * MWCAP_AUDIO_MAX_NUM_CHANNELS * maxBitDepthInBytes;
+
+EXTERN_C const GUID CLSID_MWCAPTURE_FILTER;
+
+struct USB_CAPTURE_FORMATS
+{
+	bool usb{ false };
+	MWCAP_VIDEO_OUTPUT_FOURCC fourccs;
+	MWCAP_VIDEO_OUTPUT_FRAME_INTERVAL frameIntervals;
+	MWCAP_VIDEO_OUTPUT_FRAME_SIZE frameSizes;
+};
+
+struct VIDEO_SIGNAL
+{
+	MWCAP_INPUT_SPECIFIC_STATUS inputStatus;
+	MWCAP_VIDEO_SIGNAL_STATUS signalStatus;
+	MWCAP_VIDEO_BUFFER_INFO bufferInfo;
+	MWCAP_VIDEO_FRAME_INFO frameInfo;
+	MWCAP_VIDEO_CAPTURE_STATUS captureStatus;
+	HDMI_HDR_INFOFRAME_PAYLOAD hdrInfo;
+	HDMI_AVI_INFOFRAME_PAYLOAD aviInfo;
+};
+
+struct AUDIO_SIGNAL
+{
+	MWCAP_AUDIO_SIGNAL_STATUS signalStatus;
+	MWCAP_AUDIO_CAPTURE_FRAME frameInfo;
+	HDMI_AUDIO_INFOFRAME_PAYLOAD audioInfo;
+};
+
+enum DeviceType : uint8_t
+{
+	USB_PLUS,
+	USB_PRO,
+	PRO
+};
+
+inline const char* devicetype_to_name(DeviceType e)
+{
+	switch (e)
+	{
+	case USB_PLUS: return "USB_PLUS";
+	case USB_PRO: return "USB_PRO";
+	case PRO: return "PRO";
+	default: return "unknown";
+	}
+}
+
+struct DEVICE_INFO
+{
+	DeviceType deviceType;
+	std::string serialNo{};
+	WCHAR devicePath[128];
+	HCHANNEL hChannel;
+	double temperature{ 0.0 };
+	int64_t linkSpeed{ 0 };
+	// pcie only
+	int64_t linkWidth{ -1 };
+	int16_t maxPayloadSize{ -1 };
+	int16_t maxReadRequestSize{ -1 };
+	// usb pro only
+	int16_t fanSpeed{ -1 };
+};
+
+struct captured_frame
+{
+	uint8_t* data;
+	uint64_t length;
+	uint64_t ts;
+};
+
+struct VideoSampleBuffer
+{
+	uint64_t index;
+	uint8_t* data;
+	int width;
+	int height;
+
+	int GetWidth() const { return width; }
+
+	int GetHeight() const { return height; }
+
+	uint64_t GetFrameIndex() const { return index; }
+
+	void Start(void** buffer) const
+	{
+		*buffer = data;
+	}
+
+	void End() const
+	{
+		// nop
+	}
+};

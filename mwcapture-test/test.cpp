@@ -4,7 +4,7 @@
 
 #include "gtest/gtest.h"
 #include "LibMWCapture/MWCapture.h"
-#include "../mwcapture/util.h"
+#include "../mwcapture/mwdomain.h"
 
 
 TEST(HDR, CanParseHDRInfoFrame) {
