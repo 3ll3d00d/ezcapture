@@ -1265,7 +1265,7 @@ HRESULT MagewellVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 
 		hr = OnVideoSignal(newVideoFormat);
 
-		if (hadSignal && !mHasSignal)
+		if (hr != S_RECONNECTION_UNNECESSARY || (hadSignal && !mHasSignal))
 		{
 			mFilter->OnVideoSignalLoaded(&mVideoSignal);
 		}
