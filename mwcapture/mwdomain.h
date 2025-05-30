@@ -35,15 +35,15 @@ const pixel_format proPixelFormats[3][4] = {
 };
 
 const pixel_format usbPlusPixelFormats[3][4] = {
-	{BGR24, YUY2, YUY2, NV12},
-	{BGR24, YUY2, YUY2, NV12},
-	{BGR24, YUY2, YUY2, NV12},
+	{BGR24, UYVY, UYVY, NV12},
+	{BGR24, UYVY, UYVY, NV12},
+	{BGR24, UYVY, UYVY, NV12},
 };
 
 const pixel_format usbProPixelFormats[3][4] = {
-	{BGR24, YUY2, YUY2, NV12},
-	{BGR24, V210, YUY2, P010},
-	{BGR24, V210, YUY2, P010},
+	{BGR24, UYVY, UYVY, NV12},
+	{BGR24, V210, UYVY, P010},
+	{BGR24, V210, UYVY, P010},
 };
 
 // utility functions

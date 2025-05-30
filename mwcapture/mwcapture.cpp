@@ -461,19 +461,19 @@ MagewellVideoCapturePin::VideoCapture::VideoCapture(MagewellVideoCapturePin* pin
 	mLogData(pin->mLogData)
 {
 	mEvent = MWCreateVideoCapture(hChannel, pin->mVideoFormat.cx, pin->mVideoFormat.cy,
-	                              pin->mVideoFormat.pixelFormat.fourcc, pin->mVideoFormat.frameInterval, CaptureFrame,
+	                              pin->mSignalledFormat.fourcc, pin->mVideoFormat.frameInterval, CaptureFrame,
 	                              pin);
 	#ifndef NO_QUILL
 	if (mEvent == nullptr)
 	{
 		LOG_ERROR(mLogData.logger, "[{}] MWCreateVideoCapture failed [{}x{} '{}' {}]", mLogData.prefix,
-		          pin->mVideoFormat.cx, pin->mVideoFormat.cy, pin->mVideoFormat.pixelFormat.name,
+		          pin->mVideoFormat.cx, pin->mVideoFormat.cy, pin->mSignalledFormat.name,
 		          pin->mVideoFormat.frameInterval);
 	}
 	else
 	{
 		LOG_INFO(mLogData.logger, "[{}] MWCreateVideoCapture succeeded [{}x{} '{}' {}]", mLogData.prefix,
-		         pin->mVideoFormat.cx, pin->mVideoFormat.cy, pin->mVideoFormat.pixelFormat.name,
+		         pin->mVideoFormat.cx, pin->mVideoFormat.cy, pin->mSignalledFormat.name,
 		         pin->mVideoFormat.frameInterval);
 	}
 	#endif
@@ -805,6 +805,7 @@ MagewellVideoCapturePin::MagewellVideoCapturePin(HRESULT* phr, MagewellCaptureFi
 		pPreview ? "VideoPreview" : "VideoCapture",
 		VIDEO_FORMAT{},
 		{
+			{UYVY, {YV16, UYVY_YV16}},
 			{YUY2, {YV16, YUY2_YV16}},
 			{V210, {P210, V210_P210}},
 			{BGR10, {RGB48, BGR10_BGR48}},
@@ -941,6 +942,7 @@ void MagewellVideoCapturePin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL
 		                    : deviceType == USB_PLUS
 		                    ? usbPlusPixelFormats
 		                    : usbProPixelFormats;
+	videoFormat->bottomUpDib = deviceType == PRO;
 	videoFormat->pixelFormat = pixelFormats[pfIdx][subsampling];
 	if (videoFormat->colourFormat == REC709)
 	{
@@ -985,7 +987,7 @@ void MagewellVideoCapturePin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL
 			}
 			tmp += "']";
 
-			LOG_ERROR(mLogData.logger, "[{}] Supported format is {} but card is configured to use {} ",
+			LOG_ERROR(mLogData.logger, "[{}] Supported format is {} but card is configured to use {}, video capture will fail",
 			          mLogData.prefix, videoFormat->pixelFormat.name, tmp);
 			#endif
 		}
@@ -1000,8 +1002,14 @@ void MagewellVideoCapturePin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL
 		}
 		if (!found)
 		{
+			auto requestedInterval = videoFormat->frameInterval;
 			videoFormat->frameInterval = captureFormats->frameIntervals.adwIntervals[captureFormats->frameIntervals.
 				byDefault];
+			#ifndef NO_QUILL
+			LOG_WARNING(mLogData.logger,
+			            "[{}] Requested frame interval {} is not configured, using default of {} instead",
+			            mLogData.prefix, requestedInterval, videoFormat->frameInterval);
+			#endif
 		}
 
 		found = false;
@@ -1015,8 +1023,16 @@ void MagewellVideoCapturePin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL
 		}
 		if (!found)
 		{
+			auto requestedCx = videoFormat->cx;
+			auto requestedCy = videoFormat->cy;
 			videoFormat->cx = captureFormats->frameSizes.aSizes[captureFormats->frameSizes.byDefault].cx;
 			videoFormat->cy = captureFormats->frameSizes.aSizes[captureFormats->frameSizes.byDefault].cy;
+
+			#ifndef NO_QUILL
+			LOG_WARNING(mLogData.logger,
+			            "[{}] Requested frame dimension {}x{} is not configured, using default of {}x{} instead",
+			            mLogData.prefix, requestedCx, requestedCy, videoFormat->cx, videoFormat->cy);
+			#endif
 		}
 	}
 
@@ -1162,6 +1178,22 @@ void MagewellVideoCapturePin::OnFrameWriterStrategyUpdated()
 	default:
 		HdmiVideoCapturePin::OnFrameWriterStrategyUpdated();
 	}
+	// has to happen after signalledFormat has been updated
+	auto resetVideoCapture = mFilter->GetDeviceType() != PRO && !mFirst;
+	if (resetVideoCapture && mVideoCapture)
+		mVideoCapture.reset();
+
+	if (mVideoFormat.imageSize > mVideoFormat.imageSize)
+	{
+		CAutoLock lck(&mCaptureCritSec);
+		delete mCapturedFrame.data;
+		mCapturedFrame.data = new uint8_t[mVideoFormat.imageSize];
+	}
+
+	if (resetVideoCapture)
+	{
+		mVideoCapture = std::make_unique<VideoCapture>(this, mFilter->GetChannelHandle());
+	}
 }
 
 void MagewellVideoCapturePin::OnChangeMediaType()
@@ -1169,17 +1201,6 @@ void MagewellVideoCapturePin::OnChangeMediaType()
 	VideoCapturePin::OnChangeMediaType();
 
 	mFilter->NotifyEvent(EC_VIDEO_SIZE_CHANGED, MAKELPARAM(mVideoFormat.cx, mVideoFormat.cy), 0);
-	if (mFilter->GetDeviceType() != PRO && !mFirst)
-	{
-		if (mVideoCapture) mVideoCapture.reset();
-		mVideoCapture = std::make_unique<VideoCapture>(this, mFilter->GetChannelHandle());
-	}
-	if (mVideoFormat.imageSize > mVideoFormat.imageSize)
-	{
-		CAutoLock lck(&mCaptureCritSec);
-		delete mCapturedFrame.data;
-		mCapturedFrame.data = new uint8_t[mVideoFormat.imageSize];
-	}
 }
 
 void MagewellVideoCapturePin::CaptureFrame(BYTE* pbFrame, int cbFrame, UINT64 u64TimeStamp, void* pParam)

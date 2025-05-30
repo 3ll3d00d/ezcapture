@@ -18,6 +18,7 @@
 #include <ks.h>
 #include <ksmedia.h>
 #include <map>
+#include <optional>
 
 constexpr auto not_present = 1024;
 constexpr LONGLONG dshowTicksPerSecond = 10LL * 1000 * 1000; // 100ns
@@ -74,6 +75,7 @@ struct pixel_format
 		RGB48,
 		YUV2,
 		YUY2,
+		UYVY,
 		YV16,
 		V210,
 		AY10,
@@ -126,6 +128,7 @@ struct pixel_format
 			break;
 		case YUV2:
 		case YUY2:
+		case UYVY:
 		case P010:
 		case P210:
 			cbLine = cx * 2;
@@ -194,6 +197,7 @@ const inline pixel_format BGR24{pixel_format::BGR24, 'B', 'G', 'R', ' ', 8, 24, 
 const inline pixel_format BGR10{pixel_format::BGR10, 'B', 'G', '1', '0', 10, 32, true, RGB_444};
 // magewell usb
 const inline pixel_format YUY2{pixel_format::YUY2, 'Y', 'U', 'Y', '2', 8, 16, false, YUV_422};
+const inline pixel_format UYVY{pixel_format::UYVY, 'U', 'Y', 'V', 'Y', 8, 16, false, YUV_422};
 // blackmagic, generally require conversion due to lack of native renderer support
 const inline pixel_format YUV2{pixel_format::YUV2, '2', 'V', 'U', 'Y', 8, 16, false, YUV_422};
 const inline pixel_format V210{pixel_format::V210, 'v', '2', '1', '0', 10, 16, false, YUV_422, 128};
@@ -210,9 +214,9 @@ const inline pixel_format R10B{pixel_format::R10B, 'R', '1', '0', 'b', 10, 32, f
 const inline pixel_format YV16{pixel_format::YV16, 'Y', 'V', '1', '6', 8, 16, false, YUV_422};
 const inline pixel_format RGB48{pixel_format::RGB48, 'R', 'G', 'B', '0', 16, 48, false, RGB_444};
 // indicates not supported
-const inline pixel_format NA{ pixel_format::FAIL, 'x', 'x', 'x', 'x', 0, 0, false, RGB_444 };
+const inline pixel_format NA{pixel_format::FAIL, 'x', 'x', 'x', 'x', 0, 0, false, RGB_444};
 
-const pixel_format ALL_PIXEL_FORMATS[] = {
+const std::array all_pixel_formats = {
 	NV12,
 	NV16,
 	P010,
@@ -222,6 +226,7 @@ const pixel_format ALL_PIXEL_FORMATS[] = {
 	BGR10,
 	YUV2,
 	YUY2,
+	UYVY,
 	YV16,
 	V210,
 	AY10,
@@ -235,6 +240,17 @@ const pixel_format ALL_PIXEL_FORMATS[] = {
 	R10B,
 	RGB48
 };
+
+inline std::optional<pixel_format> findByFourCC(uint32_t fourcc)
+{
+	const auto match = std::ranges::find_if(all_pixel_formats,
+	                                        [&fourcc](const pixel_format& arg) { return arg.fourcc == fourcc; });
+	if (match != all_pixel_formats.end())
+	{
+		return { *match };
+	}
+	return std::nullopt;
+}
 
 enum protocol
 {
@@ -385,6 +401,7 @@ struct VIDEO_FORMAT
 	std::string colourFormatName{"REC709"};
 	DWORD lineLength{0};
 	DWORD imageSize{0};
+	bool bottomUpDib{true};
 
 	void CalculateDimensions()
 	{
@@ -444,6 +461,7 @@ enum frame_writer_strategy :uint8_t
 	ANY_RGB,
 	YUV2_YV16,
 	YUY2_YV16,
+	UYVY_YV16,
 	V210_P210,
 	R210_BGR48,
 	BGR10_BGR48,
@@ -457,6 +475,7 @@ inline const char* to_string(frame_writer_strategy e)
 	case ANY_RGB: return "ANY_RGB";
 	case YUV2_YV16: return "YUV2_YV16";
 	case YUY2_YV16: return "YUY2_YV16";
+	case UYVY_YV16: return "UYVY_YV16";
 	case V210_P210: return "V210_P210";
 	case R210_BGR48: return "R210_BGR48";
 	case BGR10_BGR48: return "BGR10_BGR48";
@@ -465,4 +484,5 @@ inline const char* to_string(frame_writer_strategy e)
 	}
 }
 
+// TODO support a list of fall back options
 typedef std::map<pixel_format, std::pair<pixel_format, frame_writer_strategy>> pixel_format_fallbacks;

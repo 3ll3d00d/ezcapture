@@ -32,6 +32,7 @@
 #include "v210_p210.h"
 #include "yuv2_yv16.h"
 #include "yuy2_yv16.h"
+#include "uyvy_yv16.h"
 
 EXTERN_C const GUID MEDIASUBTYPE_PCM_IN24;
 EXTERN_C const GUID MEDIASUBTYPE_PCM_IN32;
@@ -47,6 +48,62 @@ constexpr auto unity = 1.0;
 inline bool diff(double x, double y)
 {
 	return fabs(x - y) > 0.000001;
+}
+
+inline void logBitmapHeader(const log_data& log, const std::string& desc, const BITMAPINFOHEADER* bmi)
+{
+	#ifndef NO_QUILL
+	bool rgb = bmi->biCompression == 0;
+	// use transform if we ever have c++23 in msvc
+	auto pix = rgb ? std::nullopt: findByFourCC(bmi->biCompression);
+	if (pix.has_value() || rgb)
+	{
+		auto name = rgb ? "RGB" : pix->name;
+		LOG_WARNING(log.logger, "[{}] {} {},{},{},{},{}", log.prefix, desc, bmi->biBitCount, bmi->biWidth,
+		            bmi->biHeight, bmi->biSizeImage, name);
+	}
+	else
+	{
+		LOG_WARNING(log.logger, "[{}] {} {},{},{},{},{:#08x}", log.prefix, desc, bmi->biBitCount, bmi->biWidth,
+		            bmi->biHeight, bmi->biSizeImage, bmi->biCompression);
+	}
+	#endif
+}
+
+inline void logVideoMediaType(const log_data& log, const std::string& desc, const AM_MEDIA_TYPE* pmt)
+{
+	bool matched = false;
+	if (IsEqualGUID(pmt->majortype, MEDIATYPE_Video) == TRUE)
+	{
+		if (IsEqualGUID(pmt->formattype, FORMAT_VIDEOINFO2) == TRUE)
+		{
+			#ifndef NO_QUILL
+			auto header = reinterpret_cast<VIDEOINFOHEADER2*>(pmt->pbFormat);
+			auto bmi = header->bmiHeader;
+			logBitmapHeader(log, desc + " VIH2", &bmi);
+			#endif
+
+			matched = true;
+		}
+		else if (IsEqualGUID(pmt->formattype, FORMAT_VideoInfo) == TRUE)
+		{
+			#ifndef NO_QUILL
+			auto header = reinterpret_cast<VIDEOINFOHEADER*>(pmt->pbFormat);
+			auto bmi = header->bmiHeader;
+			logBitmapHeader(log, desc + " VIH", &bmi);
+			#endif
+
+			matched = true;
+		}
+	}
+
+	#ifndef NO_QUILL
+	if (!matched)
+	{
+		LOG_WARNING(log.logger, "[{}] {} ignored unknown type {:#08x} - {:#08x}", log.prefix, desc,
+		            pmt->majortype.Data1, pmt->formattype.Data1);
+	}
+	#endif
 }
 
 inline void logHdrMeta(HDR_META newMeta, HDR_META oldMeta, log_data log)
@@ -423,14 +480,98 @@ protected:
  */
 class VideoCapturePin : public CapturePin
 {
+public:
+	STDMETHODIMP SetFormat(AM_MEDIA_TYPE* pmt) override
+	{
+		#ifndef NO_QUILL
+		logVideoMediaType(mLogData, "VideoCapturePin::SetFormat", pmt);
+		#endif
+
+		return VFW_E_INVALIDMEDIATYPE;
+	}
+
+	HRESULT SetMediaType(const CMediaType* pmt) override
+	{
+		#ifndef NO_QUILL
+		logVideoMediaType(mLogData, "VideoCapturePin::SetMediaType", pmt);
+		#endif
+
+		return CapturePin::SetMediaType(pmt);
+	}
+
+	HRESULT CheckMediaType(const CMediaType* pmt) override
+	{
+		#ifndef NO_QUILL
+		logVideoMediaType(mLogData, "VideoCapturePin::CheckMediaType", pmt);
+		#endif
+
+		CAutoLock lock(m_pFilter->pStateLock());
+
+		auto hr = E_FAIL;
+		auto idx = 0;
+		CMediaType mt;
+		if (S_OK == GetMediaType(idx++, &mt))
+		{
+			if (mt == *pmt)
+			{
+				hr = S_OK;
+			}
+			else if (S_OK == GetMediaType(idx, &mt))
+			{
+				if (mt == *pmt)
+				{
+					hr = S_OK;
+				}
+			}
+		}
+
+		#ifndef NO_QUILL
+		LOG_TRACE_L3(mLogData.logger, "[{}] CapturePin::CheckMediaType (idx: {}, res: {:#08x}, sz: {})",
+		             mLogData.prefix, idx, static_cast<unsigned long>(hr), pmt->GetSampleSize());
+		#endif
+
+		return hr;
+	}
+
 protected:
-	VideoCapturePin(HRESULT* phr, CSource* pParent, LPCSTR pObjectName, LPCWSTR pPinName, std::string pLogPrefix) :
-		CapturePin(phr, pParent, pObjectName, pPinName, pLogPrefix)
+	VideoCapturePin(HRESULT* phr, CSource* pParent, LPCSTR pObjectName, LPCWSTR pPinName, std::string pLogPrefix,
+	                const VIDEO_FORMAT& pVideoFormat, pixel_format_fallbacks pFallbacks) :
+		CapturePin(phr, pParent, pObjectName, pPinName, std::move(pLogPrefix)),
+		mVideoFormat(pVideoFormat),
+		mSignalledFormat(pVideoFormat.pixelFormat),
+		mFormatFallbacks(std::move(pFallbacks))
 	{
 	}
 
 	// CSourceStream
-	HRESULT GetMediaType(CMediaType* pmt) override;
+	HRESULT GetMediaType(int iPosition, __inout CMediaType* pMediaType) override
+	{
+		CAutoLock lock(m_pFilter->pStateLock());
+		if (iPosition < 0)
+		{
+			return E_INVALIDARG;
+		}
+		switch (iPosition)
+		{
+		case 0:
+			VideoFormatToMediaType(pMediaType, &mVideoFormat);
+			return S_OK;
+		case 1:
+			const auto s = mFormatFallbacks.find(mSignalledFormat);
+			if (s == mFormatFallbacks.end())
+			{
+				return VFW_S_NO_MORE_ITEMS;
+			}
+			auto fallbackPixelFormat = s->second.first;
+			auto fallbackVideoFormat = mVideoFormat;
+			fallbackVideoFormat.pixelFormat = std::move(fallbackPixelFormat);
+			fallbackVideoFormat.CalculateDimensions();
+			VideoFormatToMediaType(pMediaType, &fallbackVideoFormat);
+			return S_OK;
+		}
+		return VFW_S_NO_MORE_ITEMS;
+	}
+
 	// IAMStreamConfig
 	HRESULT STDMETHODCALLTYPE GetNumberOfCapabilities(int* piCount, int* piSize) override;
 	HRESULT STDMETHODCALLTYPE GetStreamCaps(int iIndex, AM_MEDIA_TYPE** pmt, BYTE* pSCC) override;
@@ -459,6 +600,8 @@ protected:
 	}
 
 	VIDEO_FORMAT mVideoFormat{};
+	pixel_format mSignalledFormat{NA};
+	pixel_format_fallbacks mFormatFallbacks{};
 };
 
 /**
@@ -501,12 +644,9 @@ class HdmiVideoCapturePin : public VideoCapturePin
 public:
 	HdmiVideoCapturePin(HRESULT* phr, F* pParent, LPCSTR pObjectName, LPCWSTR pPinName, std::string pLogPrefix,
 	                    VIDEO_FORMAT pVideoFormat, pixel_format_fallbacks pFallbacks)
-		: VideoCapturePin(phr, pParent, pObjectName, pPinName, pLogPrefix),
-		  mFilter(pParent),
-		  mSignalledFormat(pVideoFormat.pixelFormat),
-		  mFormatFallbacks(std::move(pFallbacks))
+		: VideoCapturePin(phr, pParent, pObjectName, pPinName, pLogPrefix, pVideoFormat, pFallbacks),
+		  mFilter(pParent)
 	{
-		mVideoFormat = std::move(pVideoFormat);
 	}
 
 	void UpdateFrameWriterStrategy()
@@ -520,8 +660,6 @@ protected:
 	F* mFilter;
 	std::unique_ptr<IVideoFrameWriter<VF>> mFrameWriter;
 	frame_writer_strategy mFrameWriterStrategy{UNKNOWN};
-	pixel_format mSignalledFormat{NA};
-	pixel_format_fallbacks mFormatFallbacks{};
 
 	virtual void OnFrameWriterStrategyUpdated()
 	{
@@ -538,6 +676,9 @@ protected:
 			break;
 		case YUY2_YV16:
 			mFrameWriter = std::make_unique<yuy2_yv16<VF>>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
+			break;
+		case UYVY_YV16:
+			mFrameWriter = std::make_unique<uyvy_yv16<VF>>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
 			break;
 		case BGR10_BGR48:
 			mFrameWriter = std::make_unique<bgr10_rgb48<VF>>(mLogData, mVideoFormat.cx, mVideoFormat.cy);

@@ -1625,16 +1625,6 @@ HRESULT BlackmagicVideoCapturePin::OnThreadCreate()
 	return mFilter->PinThreadCreated();
 }
 
-HRESULT BlackmagicVideoCapturePin::CheckMediaType(const CMediaType* media)
-{
-	HRESULT hr = HdmiVideoCapturePin::CheckMediaType(media);
-	#ifndef NO_QUILL
-	LOG_TRACE_L3(mLogData.logger, "[{}] CheckMediaType (res: {:#08x}, sz: {})", mLogData.prefix,
-	             static_cast<unsigned long>(hr), media->GetSampleSize());
-	#endif
-	return hr;
-}
-
 void BlackmagicVideoCapturePin::DoThreadDestroy()
 {
 	#ifndef NO_QUILL

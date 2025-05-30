@@ -384,6 +384,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="bgr10_rgb48.h" />
+    <ClInclude Include="uyvy_yv16.h" />
     <ClInclude Include="yuy2_yv16.h" />
     <ClInclude Include="r210_rgb48.h" />
     <ClInclude Include="v210_p210.h" />

@@ -25,8 +25,6 @@
 #include "any_rgb.h"
 #include "r210_rgb48.h"
 #include "StraightThrough.h"
-#include "v210_p210.h"
-#include "yuv2_yv16.h"
 
 #ifdef NO_QUILL
 #include <memory>
@@ -220,7 +218,6 @@ public:
 	//////////////////////////////////////////////////////////////////////////
 	HRESULT FillBuffer(IMediaSample* pms) override;
 	HRESULT OnThreadCreate(void) override;
-	HRESULT CheckMediaType(const CMediaType*) override;
 
 protected:
 	void DoThreadDestroy() override;
@@ -243,6 +240,7 @@ private:
 			                                                 &mVideoFormat.pixelFormat);
 			break;
 		case YUY2_YV16:
+		case UYVY_YV16:
 		case BGR10_BGR48:
 			#ifndef NO_QUILL
 			LOG_ERROR(mLogData.logger, "[{}] Conversion strategy {} is not supported by bmcapture",

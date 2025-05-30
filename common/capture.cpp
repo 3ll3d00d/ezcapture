@@ -542,7 +542,7 @@ HRESULT CapturePin::DoBufferProcessingLoop(void)
 			{
 				#ifndef NO_QUILL
 				LOG_WARNING(mLogData.logger, "[{}] Failed to GetDeliveryBuffer ({:#08x}), retrying", mLogData.prefix,
-							static_cast<unsigned long>(hrBuf));
+				            static_cast<unsigned long>(hrBuf));
 				#endif
 				SHORT_BACKOFF;
 				continue;
@@ -673,9 +673,9 @@ HRESULT CapturePin::Notify(IBaseFilter* pSelf, Quality q)
 STDMETHODIMP CapturePin::SetFormat(AM_MEDIA_TYPE* pmt)
 {
 	#ifndef NO_QUILL
-	LOG_WARNING(mLogData.logger, "[{}] CapturePin::SetFormat is not supported", mLogData.prefix);
+	LOG_WARNING(mLogData.logger, "[{}] CapturePin::SetFormat ignored MT with GUID {}", mLogData.prefix,
+	            pmt->majortype.Data1);
 	#endif
-
 	return VFW_E_INVALIDMEDIATYPE;
 }
 
@@ -689,10 +689,10 @@ STDMETHODIMP CapturePin::GetFormat(AM_MEDIA_TYPE** ppmt)
 
 HRESULT CapturePin::SetMediaType(const CMediaType* pmt)
 {
-	HRESULT hr = CSourceStream::SetMediaType(pmt);
+	const HRESULT hr = CSourceStream::SetMediaType(pmt);
 
 	#ifndef NO_QUILL
-	LOG_TRACE_L3(mLogData.logger, "[{}] SetMediaType (res: {:#08x})", mLogData.prefix, static_cast<unsigned long>(hr));
+	LOG_TRACE_L3(mLogData.logger, "[{}] CapturePin::SetMediaType ({:#08x})", mLogData.prefix, static_cast<unsigned long>(hr));
 	#endif
 
 	return hr;
@@ -993,7 +993,8 @@ void VideoCapturePin::VideoFormatToMediaType(CMediaType* pmt, VIDEO_FORMAT* vide
 	auto isRgb = videoFormat->pixelFormat.GetBiCompression() == BI_RGB;
 	pvi->bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
 	pvi->bmiHeader.biWidth = videoFormat->cx;
-	pvi->bmiHeader.biHeight = isRgb ? -(videoFormat->cy) : videoFormat->cy; // RGB on windows is upside down
+	pvi->bmiHeader.biHeight = isRgb && videoFormat->bottomUpDib ? -(videoFormat->cy) : videoFormat->cy;
+	// RGB on windows is upside down
 	pvi->bmiHeader.biPlanes = 1;
 	pvi->bmiHeader.biBitCount = videoFormat->pixelFormat.bitsPerPixel;
 	pvi->bmiHeader.biCompression = videoFormat->pixelFormat.GetBiCompression();
@@ -1110,8 +1111,7 @@ HRESULT VideoCapturePin::DoChangeMediaType(const CMediaType* pNewMt, const VIDEO
 	            newVideoFormat->pixelFormat.name, newVideoFormat->colourFormatName,
 	            newVideoFormat->hdrMeta.transferFunction, newVideoFormat->imageSize);
 
-	auto inTraceMode = mLogData.logger->should_log_statement(quill::LogLevel::TraceL3);
-	if (inTraceMode)
+	if (mLogData.logger->should_log_statement(quill::LogLevel::TraceL3))
 	{
 		AM_MEDIA_TYPE currentMt;
 		if (SUCCEEDED(m_Connected->ConnectionMediaType(&currentMt)))
@@ -1147,12 +1147,6 @@ HRESULT VideoCapturePin::DoChangeMediaType(const CMediaType* pNewMt, const VIDEO
 	return retVal;
 }
 
-HRESULT VideoCapturePin::GetMediaType(CMediaType* pmt)
-{
-	VideoFormatToMediaType(pmt, &mVideoFormat);
-	return NOERROR;
-}
-
 STDMETHODIMP VideoCapturePin::GetNumberOfCapabilities(int* piCount, int* piSize)
 {
 	*piCount = 1;
@@ -1171,7 +1165,7 @@ STDMETHODIMP VideoCapturePin::GetStreamCaps(int iIndex, AM_MEDIA_TYPE** pmt, BYT
 		return E_INVALIDARG;
 	}
 	CMediaType cmt;
-	GetMediaType(&cmt);
+	GetMediaType(0, &cmt);
 	*pmt = CreateMediaType(&cmt);
 
 	auto pvi = reinterpret_cast<VIDEOINFOHEADER2*>((*pmt)->pbFormat);
