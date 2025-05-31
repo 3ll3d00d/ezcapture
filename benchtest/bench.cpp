@@ -1096,7 +1096,147 @@ namespace
 		return true;
 	}
 
+	bool convert_yuy2_scalar(const uint8_t* src, uint8_t* yPlane, uint8_t* uPlane, uint8_t* vPlane, int width,
+	                         int height, int padWidth,
+	                         std::chrono::time_point<std::chrono::steady_clock>* t1,
+	                         std::chrono::time_point<std::chrono::steady_clock>* t2)
+	{
+		*t1 = std::chrono::high_resolution_clock::now();
+		for (int y = 0; y < height; ++y)
+		{
+			auto offset = y * (width + padWidth);
+			uint8_t* yOut = yPlane + offset;
+			uint8_t* uOut = uPlane + offset / 2;
+			uint8_t* vOut = vPlane + offset / 2;
+
+			for (int x = 0; x < width; x += 2) // 2 pixels per pass
+			{
+				vOut[0] = src[0];
+				yOut[0] = src[1];
+				uOut[0] = src[2];
+				yOut[1] = src[3];
+
+				yOut += 2;
+				uOut++;
+				vOut++;
+				src += 4;
+			}
+		}
+		*t2 = std::chrono::high_resolution_clock::now();
+		return true;
+	}
+
+	bool convert_uyvy_scalar(const uint8_t* src, uint8_t* yPlane, uint8_t* uPlane, uint8_t* vPlane, int width,
+	                         int height, int padWidth,
+	                         std::chrono::time_point<std::chrono::steady_clock>* t1,
+	                         std::chrono::time_point<std::chrono::steady_clock>* t2)
+	{
+		*t1 = std::chrono::high_resolution_clock::now();
+		for (int y = 0; y < height; ++y)
+		{
+			auto offset = y * (width + padWidth);
+			uint8_t* yOut = yPlane + offset;
+			uint8_t* uOut = uPlane + offset / 2;
+			uint8_t* vOut = vPlane + offset / 2;
+
+			for (int x = 0; x < width; x += 2) // 2 pixels per pass
+			{
+				yOut[1] = src[0];
+				vOut[0] = src[1];
+				yOut[0] = src[2];
+				uOut[0] = src[3];
+
+				yOut += 2;
+				uOut++;
+				vOut++;
+				src += 4;
+			}
+		}
+		*t2 = std::chrono::high_resolution_clock::now();
+		return true;
+	}
+
 	bool convert_yuv2_avx(const uint8_t* src, uint8_t* yPlane, uint8_t* uPlane, uint8_t* vPlane, int width,
+	                      int height, int padWidth, std::chrono::time_point<std::chrono::steady_clock>* t1,
+	                      std::chrono::time_point<std::chrono::steady_clock>* t2)
+	{
+		const __m256i shuffle_1 = _mm256_setr_epi8(
+			2, 6, 10, 14, 0, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15,
+			2, 6, 10, 14, 0, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15
+		);
+		const __m256i permute = _mm256_setr_epi32(0, 4, 1, 5, 2, 3, 6, 7);
+		const int yWidth = width + padWidth;
+		const int uvWidth = yWidth / 2;
+		*t1 = std::chrono::high_resolution_clock::now();
+		for (int y = 0; y < height; ++y)
+		{
+			uint64_t* y_out = reinterpret_cast<uint64_t*>(yPlane + (y * yWidth));
+			uint64_t* u_out = reinterpret_cast<uint64_t*>(uPlane + (y * uvWidth));
+			uint64_t* v_out = reinterpret_cast<uint64_t*>(vPlane + (y * uvWidth));
+			for (int x = 0; x < width; x += 16) // 16 bits per pixel in 256 bit chunks = 16 pixels per pass
+			{
+				__m256i pixels = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src));
+				__m256i shuffled = _mm256_shuffle_epi8(pixels, shuffle_1);
+				__m256i permuted = _mm256_permutevar8x32_epi32(shuffled, permute);
+				const uint64_t* vals = reinterpret_cast<const uint64_t*>(&permuted);
+
+				v_out[0] = vals[0]; // 8 bytes each of UV
+				v_out++;
+				u_out[0] = vals[1];
+				u_out++;
+
+				y_out[0] = vals[2]; // 16 bytes of Y
+				y_out[1] = vals[3];
+				y_out += 2;
+
+				src += 32; // 32 bytes read
+			}
+		}
+		*t2 = std::chrono::high_resolution_clock::now();
+		return true;
+	}
+
+	bool convert_yuy2_avx(const uint8_t* src, uint8_t* yPlane, uint8_t* uPlane, uint8_t* vPlane, int width,
+	                      int height, int padWidth, std::chrono::time_point<std::chrono::steady_clock>* t1,
+	                      std::chrono::time_point<std::chrono::steady_clock>* t2)
+	{
+		const __m256i shuffle_1 = _mm256_setr_epi8(
+			3, 7, 11, 15, 1, 5, 9, 13, 0, 2, 4, 6, 8, 10, 12, 14,
+			3, 7, 11, 15, 1, 5, 9, 13, 0, 2, 4, 6, 8, 10, 12, 14
+		);
+		const __m256i permute = _mm256_setr_epi32(0, 4, 1, 5, 2, 3, 6, 7);
+		const int yWidth = width + padWidth;
+		const int uvWidth = yWidth / 2;
+		*t1 = std::chrono::high_resolution_clock::now();
+		for (int y = 0; y < height; ++y)
+		{
+			uint64_t* y_out = reinterpret_cast<uint64_t*>(yPlane + (y * yWidth));
+			uint64_t* u_out = reinterpret_cast<uint64_t*>(uPlane + (y * uvWidth));
+			uint64_t* v_out = reinterpret_cast<uint64_t*>(vPlane + (y * uvWidth));
+			for (int x = 0; x < width; x += 16) // 16 bits per pixel in 256 bit chunks = 16 pixels per pass
+			{
+				__m256i pixels = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src));
+				__m256i shuffled = _mm256_shuffle_epi8(pixels, shuffle_1);
+				__m256i permuted = _mm256_permutevar8x32_epi32(shuffled, permute);
+				const uint64_t* vals = reinterpret_cast<const uint64_t*>(&permuted);
+
+				v_out[0] = vals[0]; // 8 bytes each of UV
+				v_out++;
+				u_out[0] = vals[1];
+				u_out++;
+
+				y_out[0] = vals[2]; // 16 bytes of Y
+				y_out[1] = vals[3];
+				y_out += 2;
+
+				src += 32; // 32 bytes read
+			}
+		}
+		*t2 = std::chrono::high_resolution_clock::now();
+		return true;
+	}
+
+	bool convert_uyvy_avx(const uint8_t* src, uint8_t* yPlane, uint8_t* uPlane, uint8_t* vPlane, int width,
 	                      int height, int padWidth, std::chrono::time_point<std::chrono::steady_clock>* t1,
 	                      std::chrono::time_point<std::chrono::steady_clock>* t2)
 	{
@@ -1141,7 +1281,9 @@ enum bench_fmt:uint8_t
 {
 	v210,
 	r210,
-	yuv2
+	yuv2,
+	yuy2,
+	uyvy
 };
 
 const char* to_string(bench_fmt e)
@@ -1151,6 +1293,8 @@ const char* to_string(bench_fmt e)
 	case v210: return "v210";
 	case r210: return "r210";
 	case yuv2: return "yuv2";
+	case yuy2: return "yuy2";
+	case uyvy: return "uyvy";
 	default: return "unknown";
 	}
 }
@@ -1158,15 +1302,13 @@ const char* to_string(bench_fmt e)
 enum bench_mode:uint8_t
 {
 	scalar,
+	avx,
 	v210_avx_pack,
 	v210_avx_no_pack,
-	v210_avx_so1,
 	v210_avx_so2,
 	v210_avx_naive,
-	r210_avx,
 	r210_avx_load_only,
-	r210_avx_shift,
-	yuv2_avx
+	r210_avx_shift
 };
 
 const char* to_string(bench_mode e)
@@ -1175,14 +1317,12 @@ const char* to_string(bench_mode e)
 	{
 	case v210_avx_pack: return "v210_avx_pack";
 	case v210_avx_no_pack: return "v210_avx_no_pack";
-	case v210_avx_so1: return "v210_avx_so1";
+	case avx: return "avx";
 	case v210_avx_so2: return "v210_avx_so2";
 	case v210_avx_naive: return "v210_avx_naive";
-	case r210_avx: return "r210_avx";
 	case r210_avx_load_only: return "r210_avx_load";
 	case r210_avx_shift: return "r210_shift";
 	case scalar: return "scalar";
-	case yuv2_avx: return "yuv2_avx";
 	default: return "unknown";
 	}
 }
@@ -1256,7 +1396,7 @@ public:
 						convert_avx_pack(v210Buffer.data(), strides.srcStride, p210Y, p210UV, width, height, padWidth,
 						                 &t1, &t2);
 						break;
-					case v210_avx_so1:
+					case avx:
 						convert_avx_so1(v210Buffer.data(), strides.srcStride, p210Y, p210UV, width, height, padWidth,
 						                &t1, &t2);
 						break;
@@ -1319,7 +1459,7 @@ public:
 					case scalar:
 						convert_scalar_rgb(r210Buffer.data(), rgbBuffer.data(), width, height, padWidth, &t1, &t2);
 						break;
-					case r210_avx:
+					case avx:
 						convert_avx2_rgb(r210Buffer.data(), rgbBuffer.data(), width, height, padWidth, &t1, &t2);
 						break;
 					case r210_avx_load_only:
@@ -1344,7 +1484,7 @@ public:
 					outFile_rgb.write(reinterpret_cast<const char*>(rgbBuffer.data()), rgbBuffer.size());
 				}
 			}
-			else if (bfmt == yuv2)
+			else if (bfmt == yuv2 || bfmt == yuy2 || bfmt == uyvy)
 			{
 				auto ySize = (width + padWidth) * height;
 				auto uvSize = ySize / 2;
@@ -1386,10 +1526,20 @@ public:
 					switch (mode)
 					{
 					case scalar:
-						convert_yuv2_scalar(yuv2Buffer.data(), yv16_y, yv16_u, yv16_v, width, height, padWidth, &t1, &t2);
+						if (bfmt == yuv2)
+							convert_yuv2_scalar(yuv2Buffer.data(), yv16_y, yv16_u, yv16_v, width, height, padWidth, &t1, &t2);
+						else if (bfmt == yuy2)
+							convert_yuy2_scalar(yuv2Buffer.data(), yv16_y, yv16_u, yv16_v, width, height, padWidth, &t1, &t2);
+						else if (bfmt == uyvy)
+							convert_uyvy_scalar(yuv2Buffer.data(), yv16_y, yv16_u, yv16_v, width, height, padWidth, &t1, &t2);
 						break;
-					case yuv2_avx:
-						convert_yuv2_avx(yuv2Buffer.data(), yv16_y, yv16_u, yv16_v, width, height, padWidth, &t1, &t2);
+					case avx:
+						if (bfmt == yuv2)
+							convert_yuv2_avx(yuv2Buffer.data(), yv16_y, yv16_u, yv16_v, width, height, padWidth, &t1, &t2);
+						else if (bfmt == yuy2)
+							convert_yuy2_avx(yuv2Buffer.data(), yv16_y, yv16_u, yv16_v, width, height, padWidth, &t1, &t2);
+						else if (bfmt == uyvy)
+							convert_uyvy_avx(yuv2Buffer.data(), yv16_y, yv16_u, yv16_v, width, height, padWidth, &t1, &t2);
 						break;
 					}
 					auto mics = duration_cast<microseconds>(t2 - t1);
@@ -1437,13 +1587,10 @@ int main(int argc, char* argv[])
 	std::size_t pos;
 	bench_fmt = static_cast<::bench_fmt>(std::stoi(argv[1], &pos));
 	auto i = std::stoi(argv[2], &pos);
-	if (bench_fmt == r210 && i != 0)
+	if (i > 1)
 	{
-		i += 5;
-	}
-	if (bench_fmt == yuv2 && i != 0)
-	{
-		i += 5 + 3;
+		if (bench_fmt == r210) i += 2;
+		if (bench_fmt == yuv2 || bench_fmt == yuy2 || bench_fmt == uyvy) i += 2 + 4;
 	}
 	bench_mode = static_cast<::bench_mode>(i);
 	auto width = std::stoi(argv[3], &pos);

@@ -81,8 +81,8 @@ private:
 	bool convert(const uint8_t* src, uint8_t* yPlane, uint8_t* uPlane, uint8_t* vPlane, int width, int height, int pixelsToPad)
 	{
 		const __m256i shuffle_1 = _mm256_setr_epi8(
-			1, 5, 9, 13, 3, 7, 11, 15, 2, 0, 6, 4, 10, 8, 14, 12,
-			1, 5, 9, 13, 3, 7, 11, 15, 2, 0, 6, 4, 10, 8, 14, 12
+			2, 6, 10, 14, 0, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15,
+			2, 6, 10, 14, 0, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15
 		);
 		const __m256i permute = _mm256_setr_epi32(0, 4, 1, 5, 2, 3, 6, 7);
 		const int yWidth = width + pixelsToPad;
@@ -125,10 +125,10 @@ private:
 
 			for (int x = 0; x < width; x += 2) // 2 pixels per pass
 			{
-				yOut[1] = src[0];
-				vOut[0] = src[1];
-				yOut[0] = src[2];
-				uOut[0] = src[3];
+				uOut[0] = src[0];
+				yOut[0] = src[1];
+				vOut[0] = src[2];
+				yOut[1] = src[3];
 
 				yOut += 2;
 				uOut++;

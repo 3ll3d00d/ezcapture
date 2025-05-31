@@ -77,12 +77,14 @@ public:
 	}
 
 private:
+	// same as yuy2 but v - u order is reverted
+	// y - u - y - v
 	#ifdef __AVX2__
 	bool convert(const uint8_t* src, uint8_t* yPlane, uint8_t* uPlane, uint8_t* vPlane, int width, int height, int pixelsToPad)
 	{
 		const __m256i shuffle_1 = _mm256_setr_epi8(
-			0, 4, 8, 12, 2, 6, 10, 14, 1, 3, 5, 7, 9, 11, 13, 15,
-			0, 4, 8, 12, 2, 6, 10, 14, 1, 3, 5, 7, 9, 11, 13, 15
+			3, 7, 11, 15, 1, 5, 9, 13, 0, 2, 4, 6, 8, 10, 12, 14,
+			3, 7, 11, 15, 1, 5, 9, 13, 0, 2, 4, 6, 8, 10, 12, 14
 		);
 		const __m256i permute = _mm256_setr_epi32(0, 4, 1, 5, 2, 3, 6, 7);
 		const int yWidth = width + pixelsToPad;
@@ -125,10 +127,10 @@ private:
 
 			for (int x = 0; x < width; x += 2) // 2 pixels per pass
 			{
-				vOut[0] = src[0];
-				yOut[0] = src[1];
-				uOut[0] = src[2];
-				yOut[1] = src[3];
+				yOut[1] = src[0];
+				uOut[0] = src[1];
+				yOut[0] = src[2];
+				vOut[0] = src[3];
 
 				yOut += 2;
 				uOut++;
