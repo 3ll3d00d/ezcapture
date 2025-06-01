@@ -70,7 +70,7 @@ CaptureFilter::CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID 
 	mLogData.logger->set_log_level(MIN_LOG_LEVEL);
 	#endif // !NO_QUILL
 
-	mLogData.prefix = pLogPrefix + "CaptureFilter";
+	mLogData.prefix = pLogPrefix;
 }
 
 STDMETHODIMP CaptureFilter::NonDelegatingQueryInterface(REFIID riid, void** ppv)

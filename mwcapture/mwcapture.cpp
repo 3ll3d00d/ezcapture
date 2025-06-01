@@ -872,7 +872,7 @@ MagewellVideoCapturePin::MagewellVideoCapturePin(HRESULT* phr, MagewellCaptureFi
 							tmp += std::to_string(sz.cx) + "x" + std::to_string(sz.cy);
 						}
 						tmp += "']";
-						LOG_INFO(mLogData.logger, "[{}] USB frame intervals {}", mLogData.prefix, tmp);
+						LOG_INFO(mLogData.logger, "[{}] USB frame sizes {}", mLogData.prefix, tmp);
 					}
 					#endif
 				}

@@ -352,9 +352,7 @@ public:
 
 	void OnVideoCaptureLatencyUpdated(const metric& metric)
 	{
-		mVideoCaptureLatencyStatus.min = metric.min();
-		mVideoCaptureLatencyStatus.max = metric.max();
-		mVideoCaptureLatencyStatus.mean = metric.mean();
+		CaptureLatency(metric, mVideoCaptureLatencyStatus, "Video Capture");
 		if (mInfoCallback != nullptr)
 		{
 			mInfoCallback->ReloadV1(&mVideoCaptureLatencyStatus);
@@ -363,9 +361,7 @@ public:
 
 	void OnVideoConversionLatencyUpdated(const metric& metric)
 	{
-		mVideoConversionLatencyStatus.min = metric.min();
-		mVideoConversionLatencyStatus.max = metric.max();
-		mVideoConversionLatencyStatus.mean = metric.mean();
+		CaptureLatency(metric, mVideoConversionLatencyStatus, "Video Conversion");
 		if (mInfoCallback != nullptr)
 		{
 			mInfoCallback->ReloadV2(&mVideoConversionLatencyStatus);
@@ -374,9 +370,7 @@ public:
 
 	void OnAudioCaptureLatencyUpdated(const metric& metric)
 	{
-		mAudioCaptureLatencyStatus.min = metric.min();
-		mAudioCaptureLatencyStatus.max = metric.max();
-		mAudioCaptureLatencyStatus.mean = metric.mean();
+		CaptureLatency(metric, mAudioCaptureLatencyStatus, "Audio");
 		if (mInfoCallback != nullptr)
 		{
 			mInfoCallback->ReloadA(&mAudioCaptureLatencyStatus);
@@ -399,6 +393,22 @@ protected:
 	CAPTURE_LATENCY mAudioCaptureLatencyStatus{};
 	HDR_STATUS mHdrStatus{};
 	ISignalInfoCB* mInfoCallback = nullptr;
+
+private:
+	void CaptureLatency(const metric& metric, CAPTURE_LATENCY& lat, const std::string& desc)
+	{
+		lat.min = metric.min();
+		lat.max = metric.max();
+		lat.mean = metric.mean();
+
+		#ifndef NO_QUILL
+		LOG_TRACE_L2(mLogData.logger, "[{}] {} latency stats {:.3f},{:.3f},{:.3f}", mLogData.prefix,
+		             desc,
+		             static_cast<double>(lat.min) / 1000.0,
+		             lat.mean / 1000.0,
+		             static_cast<double>(lat.max) / 1000.0);
+		#endif
+	}
 };
 
 template <typename D_INF, typename V_SIG, typename A_SIG>
