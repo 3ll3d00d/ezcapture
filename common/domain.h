@@ -367,6 +367,13 @@ struct DISPLAY_STATUS
 	std::wstring status;
 };
 
+struct CAPTURE_LATENCY
+{
+	uint64_t min;
+	uint64_t max;
+	double mean;
+};
+
 struct HDR_STATUS
 {
 	bool hdrOn{false};

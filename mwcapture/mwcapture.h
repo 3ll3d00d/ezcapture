@@ -75,8 +75,6 @@ public:
 	void OnAudioSignalLoaded(AUDIO_SIGNAL* as) override;
 	void OnDeviceUpdated() override;
 
-	HRESULT Reload() override;
-
 private:
 	// Constructor
 	MagewellCaptureFilter(LPUNKNOWN punk, HRESULT* phr);

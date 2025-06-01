@@ -447,22 +447,6 @@ DeviceType MagewellCaptureFilter::GetDeviceType() const
 	return mDeviceInfo.deviceType;
 }
 
-HRESULT MagewellCaptureFilter::Reload()
-{
-	if (mInfoCallback != nullptr)
-	{
-		mInfoCallback->Reload(&mAudioInputStatus);
-		mInfoCallback->Reload(&mAudioOutputStatus);
-		mInfoCallback->Reload(&mVideoInputStatus);
-		mInfoCallback->Reload(&mVideoOutputStatus);
-		mInfoCallback->Reload(&mHdrStatus);
-		mInfoCallback->Reload(&mDeviceStatus);
-		mInfoCallback->Reload(&mDisplayStatus);
-		return S_OK;
-	}
-	return E_FAIL;
-}
-
 //////////////////////////////////////////////////////////////////////////
 //  MagewellVideoCapturePin::VideoCapture
 //////////////////////////////////////////////////////////////////////////
@@ -679,10 +663,7 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 			{
 				pin->SnapCaptureTime();
 
-				#ifndef NO_QUILL
-				const quill::StopWatchTsc swt;
-				#endif
-
+				auto t1 = std::chrono::high_resolution_clock::now();
 				if (pin->mFrameWriterStrategy != STRAIGHT_THROUGH)
 				{
 					VideoSampleBuffer buffer{
@@ -693,9 +674,8 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 					};
 					pin->mFrameWriter->WriteTo(&buffer, pms);
 				}
-				#ifndef NO_QUILL
-				convLat = swt.elapsed_as<std::chrono::microseconds>().count() / 1000.0;
-				#endif
+				auto t2 = std::chrono::high_resolution_clock::now();
+				convLat = duration_cast<std::chrono::microseconds>(t2 - t1).count();
 			}
 		}
 		else
@@ -703,10 +683,7 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 			frameTime = pin->mCapturedFrame.ts;
 			CAutoLock lck(&pin->mCaptureCritSec);
 
-			#ifndef NO_QUILL
-			const quill::StopWatchTsc swt;
-			#endif
-
+			auto t1 = std::chrono::high_resolution_clock::now();
 			if (pin->mFrameWriterStrategy == STRAIGHT_THROUGH)
 			{
 				memcpy(pmsData, pin->mCapturedFrame.data, pin->mCapturedFrame.length);
@@ -721,10 +698,8 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 				};
 				pin->mFrameWriter->WriteTo(&buffer, pms);
 			}
-
-			#ifndef NO_QUILL
-			convLat = swt.elapsed_as<std::chrono::microseconds>().count() / 1000.0;
-			#endif
+			auto t2 = std::chrono::high_resolution_clock::now();
+			convLat = duration_cast<std::chrono::microseconds>(t2 - t1).count();
 			hasFrame = true;
 		}
 	}
@@ -733,9 +708,7 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 		// in place byteswap so no need for frame conversion buffer
 		if (pin->mVideoFormat.pixelFormat.format == pixel_format::AYUV)
 		{
-			#ifndef NO_QUILL
-			const quill::StopWatchTsc swt;
-			#endif
+			auto t1 = std::chrono::high_resolution_clock::now();
 
 			// endianness is wrong on a per pixel basis
 			uint32_t sampleIdx = 0;
@@ -761,10 +734,13 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 				sampleToProcess[sampleIdx] = _byteswap_ulong(sampleToProcess[sampleIdx]);
 			}
 
-			#ifndef NO_QUILL
-			auto execTime = swt.elapsed_as<std::chrono::microseconds>().count() / 1000.0;
-			LOG_TRACE_L2(mLogData.logger, "[{}] Converted VUYA to AYUV in {:.3f} ms", mLogData.prefix, execTime);
+			auto t2 = std::chrono::high_resolution_clock::now();
+			auto execTime = duration_cast<std::chrono::microseconds>(t2 - t1).count();
 			convLat += execTime;
+
+			#ifndef NO_QUILL
+			LOG_TRACE_L2(mLogData.logger, "[{}] Converted VUYA to AYUV in {:.3f} ms", mLogData.prefix,
+			             execTime / 1000.0);
 			#endif
 		}
 
@@ -788,29 +764,34 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 		}
 		pin->AppendHdrSideDataIfNecessary(pms, endTime);
 
-		#ifndef NO_QUILL
 		REFERENCE_TIME now;
 		pin->GetReferenceTime(&now);
+		auto capLat = now - pin->mCaptureTime;
 
+		pin->RecordLatency(convLat, capLat);
+		pin->SnapTemperatureIfNecessary(endTime);
+
+		#ifndef NO_QUILL
 		if (pin->mFrameCounter == 1)
 		{
-			LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame H|f_idx,cap_lat,conv_lat,ptime,ctime,a_int,delta,v_int,len,missed",
+			LOG_TRACE_L1(mLogData.logger,
+			             "[{}] Captured video frame H|f_idx,cap_lat,conv_lat,ptime,ctime,a_int,delta,v_int,len,missed",
 			             mLogData.prefix);
 		}
 		auto frameInterval = pin->mCurrentFrameTime - pin->mPreviousFrameTime;
 		auto sz = pms->GetSize();
-
-		pin->SnapTemperatureIfNecessary(endTime);
 
 		if (pin->mVideoFormat.imageSize != sz)
 		{
 			LOG_TRACE_L3(mLogData.logger, "[{}] Video format size mismatch (format: {} buffer: {})", mLogData.prefix,
 			             pin->mVideoFormat.imageSize, sz);
 		}
-		LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame D|{},{},{:.3f},{},{},{},{},{},{},{}", mLogData.prefix,
-		             pin->mFrameCounter, now - pin->mCaptureTime, convLat, pin->mPreviousFrameTime,
-		             pin->mCurrentFrameTime, frameInterval, frameInterval - pin->mVideoFormat.frameInterval,
-		             pin->mVideoFormat.frameInterval, pin->mVideoFormat.imageSize, missedFrame);
+		LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame D|{},{:.3f},{:.3f},{},{},{},{},{},{},{}",
+		             mLogData.prefix,
+		             pin->mFrameCounter, static_cast<double>(capLat) / 1000.0, static_cast<double>(convLat) / 1000.0,
+		             pin->mPreviousFrameTime, pin->mCurrentFrameTime, frameInterval,
+		             frameInterval - pin->mVideoFormat.frameInterval, pin->mVideoFormat.frameInterval,
+		             pin->mVideoFormat.imageSize, missedFrame);
 		#endif
 	}
 	else
@@ -858,7 +839,7 @@ MagewellVideoCapturePin::MagewellVideoCapturePin(HRESULT* phr, MagewellCaptureFi
 					mUsbCaptureFormats.usb = true;
 					#ifndef NO_QUILL
 					{
-						std::string tmp{ "['" };
+						std::string tmp{"['"};
 						for (int i = 0; i < mUsbCaptureFormats.fourccs.byCount; i++)
 						{
 							if (i != 0) tmp += "', '";
@@ -872,7 +853,7 @@ MagewellVideoCapturePin::MagewellVideoCapturePin(HRESULT* phr, MagewellCaptureFi
 						LOG_INFO(mLogData.logger, "[{}] USB colour formats {}", mLogData.prefix, tmp);
 					}
 					{
-						std::string tmp{ "['" };
+						std::string tmp{"['"};
 						for (int i = 0; i < mUsbCaptureFormats.frameIntervals.byCount; i++)
 						{
 							if (i != 0) tmp += "', '";
@@ -883,7 +864,7 @@ MagewellVideoCapturePin::MagewellVideoCapturePin(HRESULT* phr, MagewellCaptureFi
 					}
 
 					{
-						std::string tmp{ "['" };
+						std::string tmp{"['"};
 						for (int i = 0; i < mUsbCaptureFormats.frameSizes.byCount; i++)
 						{
 							if (i != 0) tmp += "', '";
@@ -1054,7 +1035,8 @@ void MagewellVideoCapturePin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL
 			}
 			tmp += "']";
 
-			LOG_ERROR(mLogData.logger, "[{}] Supported format is {} but card is configured to use {}, video capture will fail",
+			LOG_ERROR(mLogData.logger,
+			          "[{}] Supported format is {} but card is configured to use {}, video capture will fail",
 			          mLogData.prefix, videoFormat->pixelFormat.name, tmp);
 			#endif
 		}
@@ -2933,9 +2915,12 @@ HRESULT MagewellAudioCapturePin::FillBuffer(IMediaSample* pms)
 	auto endTime = mCurrentFrameTime - mStreamStartTime;
 	auto startTime = endTime - static_cast<long>(mAudioFormat.sampleInterval * MWCAP_AUDIO_SAMPLES_PER_FRAME);
 
-	#ifndef NO_QUILL
 	REFERENCE_TIME now;
 	mFilter->GetReferenceTime(&now);
+	auto capLat = now - mCurrentFrameTime;
+	RecordLatency(capLat);
+
+	#ifndef NO_QUILL
 	if (mFrameCounter == 1)
 	{
 		LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame H|codec,since,f_idx,lat,ptime,ctime,delta,len,count",
@@ -2943,7 +2928,7 @@ HRESULT MagewellAudioCapturePin::FillBuffer(IMediaSample* pms)
 	}
 	LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame D|{},{},{},{},{},{},{},{},{}",
 	             mLogData.prefix, codecNames[mAudioFormat.codec], mSinceCodecChange,
-	             mFrameCounter, now - mCurrentFrameTime, mPreviousFrameTime, mCurrentFrameTime,
+	             mFrameCounter, capLat, mPreviousFrameTime, mCurrentFrameTime,
 	             mCurrentFrameTime - mPreviousFrameTime, bytesCaptured, samplesCaptured);
 	#endif
 

@@ -18,6 +18,7 @@
 #include <string>
 #include <utility>
 
+#include "metric.h"
 #include "logging.h"
 #include "signalinfo.h"
 #include "VideoFrameWriter.h"
@@ -313,8 +314,30 @@ public:
 	//////////////////////////////////////////////////////////////////////////
 	//  ISignalInfo
 	//////////////////////////////////////////////////////////////////////////
-	STDMETHODIMP Reload() override = 0;
-	STDMETHODIMP SetCallback(ISignalInfoCB* cb) override;
+	STDMETHODIMP Reload() override
+	{
+		if (mInfoCallback != nullptr)
+		{
+			mInfoCallback->Reload(&mAudioInputStatus);
+			mInfoCallback->Reload(&mAudioOutputStatus);
+			mInfoCallback->Reload(&mVideoInputStatus);
+			mInfoCallback->Reload(&mVideoOutputStatus);
+			mInfoCallback->Reload(&mHdrStatus);
+			mInfoCallback->Reload(&mDeviceStatus);
+			mInfoCallback->Reload(&mDisplayStatus);
+			mInfoCallback->ReloadV1(&mVideoCaptureLatencyStatus);
+			mInfoCallback->ReloadV2(&mVideoConversionLatencyStatus);
+			mInfoCallback->ReloadA(&mAudioCaptureLatencyStatus);
+			return S_OK;
+		}
+		return E_FAIL;
+	}
+
+	STDMETHODIMP SetCallback(ISignalInfoCB* cb) override
+	{
+		mInfoCallback = cb;
+		return S_OK;
+	}
 
 	//////////////////////////////////////////////////////////////////////////
 	//  ISpecifyPropertyPages2
@@ -327,6 +350,39 @@ public:
 	void OnAudioFormatLoaded(AUDIO_FORMAT* af);
 	void OnHdrUpdated(MediaSideDataHDR* hdr, MediaSideDataHDRContentLightLevel* light);
 
+	void OnVideoCaptureLatencyUpdated(const metric& metric)
+	{
+		mVideoCaptureLatencyStatus.min = metric.min();
+		mVideoCaptureLatencyStatus.max = metric.max();
+		mVideoCaptureLatencyStatus.mean = metric.mean();
+		if (mInfoCallback != nullptr)
+		{
+			mInfoCallback->ReloadV1(&mVideoCaptureLatencyStatus);
+		}
+	}
+
+	void OnVideoConversionLatencyUpdated(const metric& metric)
+	{
+		mVideoConversionLatencyStatus.min = metric.min();
+		mVideoConversionLatencyStatus.max = metric.max();
+		mVideoConversionLatencyStatus.mean = metric.mean();
+		if (mInfoCallback != nullptr)
+		{
+			mInfoCallback->ReloadV2(&mVideoConversionLatencyStatus);
+		}
+	}
+
+	void OnAudioCaptureLatencyUpdated(const metric& metric)
+	{
+		mAudioCaptureLatencyStatus.min = metric.min();
+		mAudioCaptureLatencyStatus.max = metric.max();
+		mAudioCaptureLatencyStatus.mean = metric.mean();
+		if (mInfoCallback != nullptr)
+		{
+			mInfoCallback->ReloadA(&mAudioCaptureLatencyStatus);
+		}
+	}
+
 protected:
 	CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID clsid, std::string pLogPrefix);
 
@@ -338,6 +394,9 @@ protected:
 	AUDIO_OUTPUT_STATUS mAudioOutputStatus{};
 	VIDEO_INPUT_STATUS mVideoInputStatus{};
 	VIDEO_OUTPUT_STATUS mVideoOutputStatus{};
+	CAPTURE_LATENCY mVideoCaptureLatencyStatus{};
+	CAPTURE_LATENCY mVideoConversionLatencyStatus{};
+	CAPTURE_LATENCY mAudioCaptureLatencyStatus{};
 	HDR_STATUS mHdrStatus{};
 	ISignalInfoCB* mInfoCallback = nullptr;
 };
@@ -474,6 +533,9 @@ protected:
 	// per frame
 	LONGLONG mPreviousFrameTime{0};
 	LONGLONG mCurrentFrameTime{0};
+	// measurements
+	metric mCaptureLatency{};
+	metric mConversionLatency{};
 };
 
 /**
@@ -655,6 +717,18 @@ public:
 		auto search = mFormatFallbacks.find(mVideoFormat.pixelFormat);
 		SetFrameWriterStrategy(search == mFormatFallbacks.end() ? STRAIGHT_THROUGH : search->second.second,
 		                       mVideoFormat.pixelFormat);
+	}
+
+	void RecordLatency(uint64_t conv, uint64_t cap)
+	{
+		if (mConversionLatency.sample(conv))
+		{
+			mFilter->OnVideoConversionLatencyUpdated(mConversionLatency);
+		}
+		if (mCaptureLatency.sample(cap))
+		{
+			mFilter->OnVideoCaptureLatencyUpdated(mCaptureLatency);
+		}
 	}
 
 protected:
@@ -922,6 +996,14 @@ protected:
 	void GetReferenceTime(REFERENCE_TIME* rt) const override
 	{
 		mFilter->GetReferenceTime(rt);
+	}
+
+	void RecordLatency(uint64_t cap)
+	{
+		if (mCaptureLatency.sample(cap))
+		{
+			mFilter->OnAudioCaptureLatencyUpdated(mCaptureLatency);
+		}
 	}
 };
 

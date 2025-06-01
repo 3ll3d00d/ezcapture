@@ -209,12 +209,6 @@ STDMETHODIMP CaptureFilter::Stop()
 	return CBaseFilter::Stop();
 }
 
-HRESULT CaptureFilter::SetCallback(ISignalInfoCB* cb)
-{
-	mInfoCallback = cb;
-	return S_OK;
-}
-
 STDMETHODIMP CaptureFilter::GetPages(CAUUID* pPages)
 {
 	CheckPointer(pPages, E_POINTER)

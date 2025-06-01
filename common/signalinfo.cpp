@@ -115,7 +115,8 @@ HRESULT CSignalInfoProp::Reload(AUDIO_INPUT_STATUS* payload)
 	SendDlgItemMessage(m_Dlg, IDC_AUDIO_IN_PCM, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 	_snwprintf_s(buffer, _TRUNCATE, L"%d bit", payload->audioInBitDepth);
 	SendDlgItemMessage(m_Dlg, IDC_AUDIO_IN_BIT_DEPTH, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
-	_snwprintf_s(buffer, _TRUNCATE, CHANNEL_VALID_TO_BINARY_PATTERN, CHANNEL_VALID_TO_BINARY(payload->audioInChannelPairs));
+	_snwprintf_s(buffer, _TRUNCATE, CHANNEL_VALID_TO_BINARY_PATTERN,
+	             CHANNEL_VALID_TO_BINARY(payload->audioInChannelPairs));
 	SendDlgItemMessage(m_Dlg, IDC_AUDIO_IN_CH_MASK, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 	_snwprintf_s(buffer, _TRUNCATE, L"%#04x", payload->audioInChannelMap);
 	SendDlgItemMessage(m_Dlg, IDC_AUDIO_IN_CH_MAP, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
@@ -165,7 +166,8 @@ HRESULT CSignalInfoProp::Reload(AUDIO_OUTPUT_STATUS* payload)
 HRESULT CSignalInfoProp::Reload(VIDEO_INPUT_STATUS* payload)
 {
 	WCHAR buffer[28];
-	_snwprintf_s(buffer, _TRUNCATE, L"%d x %d (%d:%d) %d bit", payload->inX, payload->inY, payload->inAspectX, payload->inAspectY, payload->inBitDepth);
+	_snwprintf_s(buffer, _TRUNCATE, L"%d x %d (%d:%d) %d bit", payload->inX, payload->inY, payload->inAspectX,
+	             payload->inAspectY, payload->inBitDepth);
 	SendDlgItemMessage(m_Dlg, IDC_IN_DIMENSIONS, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 	_snwprintf_s(buffer, _TRUNCATE, L"%.3f Hz", payload->inFps);
 	SendDlgItemMessage(m_Dlg, IDC_IN_FPS, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
@@ -187,7 +189,8 @@ HRESULT CSignalInfoProp::Reload(VIDEO_INPUT_STATUS* payload)
 HRESULT CSignalInfoProp::Reload(VIDEO_OUTPUT_STATUS* payload)
 {
 	WCHAR buffer[28];
-	_snwprintf_s(buffer, _TRUNCATE, L"%d x %d (%d:%d) %d bit", payload->outX, payload->outY, payload->outAspectX, payload->outAspectY, payload->outBitDepth);
+	_snwprintf_s(buffer, _TRUNCATE, L"%d x %d (%d:%d) %d bit", payload->outX, payload->outY, payload->outAspectX,
+	             payload->outAspectY, payload->outBitDepth);
 	SendDlgItemMessage(m_Dlg, IDC_OUT_DIMENSIONS, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 	_snwprintf_s(buffer, _TRUNCATE, L"%.3f Hz", payload->outFps);
 	SendDlgItemMessage(m_Dlg, IDC_OUT_FPS, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
@@ -248,9 +251,9 @@ HRESULT CSignalInfoProp::Reload(DEVICE_STATUS* payload)
 	}
 	_snwprintf_s(buffer, _TRUNCATE, L"%.1f C", payload->temperature);
 	SendDlgItemMessage(m_Dlg, IDC_TEMP, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
-	_snwprintf_s(buffer, _TRUNCATE, L"%hs%lld.0", 
-		payload->protocol == PCIE ? "Gen " : "",
-		payload->linkSpeed);
+	_snwprintf_s(buffer, _TRUNCATE, L"%hs%lld.0",
+	             payload->protocol == PCIE ? "Gen " : "",
+	             payload->linkSpeed);
 	SendDlgItemMessage(m_Dlg, IDC_LINKSPEED, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 	if (payload->linkWidth > 0)
 	{
@@ -311,5 +314,32 @@ HRESULT CSignalInfoProp::Reload(DISPLAY_STATUS* payload)
 		_snwprintf_s(buffer, _TRUNCATE, L"%ls", payload->status.c_str());
 		SendDlgItemMessage(m_Dlg, IDC_DISPLAY, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 	}
+	return S_OK;
+}
+
+HRESULT CSignalInfoProp::ReloadV1(CAPTURE_LATENCY* payload)
+{
+	WCHAR buffer[256];
+	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / 1000.0,
+	             payload->mean / 1000.0, static_cast<double>(payload->max) / 1000.0);
+	SendDlgItemMessage(m_Dlg, IDC_VIDEO_CONV_LAT, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+	return S_OK;
+}
+
+HRESULT CSignalInfoProp::ReloadV2(CAPTURE_LATENCY* payload)
+{
+	WCHAR buffer[256];
+	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / 1000.0,
+		payload->mean / 1000.0, static_cast<double>(payload->max) / 1000.0);
+	SendDlgItemMessage(m_Dlg, IDC_VIDEO_CAP_LAT, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+	return S_OK;
+}
+
+HRESULT CSignalInfoProp::ReloadA(CAPTURE_LATENCY* payload)
+{
+	WCHAR buffer[256];
+	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / 1000.0,
+		payload->mean / 1000.0, static_cast<double>(payload->max) / 1000.0);
+	SendDlgItemMessage(m_Dlg, IDC_AUDIO_CAP_LAT, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 	return S_OK;
 }

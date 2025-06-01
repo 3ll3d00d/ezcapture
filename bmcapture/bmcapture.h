@@ -106,8 +106,6 @@ public:
 	void OnAudioSignalLoaded(AUDIO_SIGNAL* as) override;
 	void OnDeviceUpdated() override;
 
-	HRESULT Reload() override;
-
 	// filter <-> pin communication
 	HRESULT PinThreadCreated();
 	HRESULT PinThreadDestroyed();

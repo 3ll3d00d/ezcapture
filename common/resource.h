@@ -100,6 +100,13 @@
 #define IDC_PCIE_MRRS					1096
 #define IDC_FAN_LABEL                   1097
 #define IDC_FAN						    1098
+#define IDC_VIDEO_CONV_LAT_LABEL        1099
+#define IDC_VIDEO_CONV_LAT              1100
+#define IDC_VIDEO_CAP_LAT_LABEL         1101
+#define IDC_VIDEO_CAP_LAT               1102
+#define IDC_AUDIO_CAP_LAT_LABEL         1103
+#define IDC_AUDIO_CAP_LAT               1104
+#define IDC_STATS_BOX                   1105
 
 // Next default values for new objects
 // 

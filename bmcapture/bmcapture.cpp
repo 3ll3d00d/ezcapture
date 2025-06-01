@@ -762,7 +762,8 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			if (missedFrames > 0LL)
 			{
 				#ifndef NO_QUILL
-				LOG_WARNING(mLogData.logger, "[{}] Video capture discontinuity detected, {} frames missed at frame {}, increasing frame time to compensate",
+				LOG_WARNING(mLogData.logger,
+				            "[{}] Video capture discontinuity detected, {} frames missed at frame {}, increasing frame time to compensate",
 				            mLogData.prefix, missedFrames, mCurrentVideoFrameIndex);
 				#endif
 				mVideoFrameTime += missedFrames * frameDuration;
@@ -1032,8 +1033,9 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			if (missedFrames > 0LL)
 			{
 				#ifndef NO_QUILL
-				LOG_WARNING(mLogData.logger, "[{}] Audio capture discontinuity detected, {} frames missed at frame {}, increasing frame time to compensate",
-					mLogData.prefix, missedFrames, mCurrentVideoFrameIndex);
+				LOG_WARNING(mLogData.logger,
+				            "[{}] Audio capture discontinuity detected, {} frames missed at frame {}, increasing frame time to compensate",
+				            mLogData.prefix, missedFrames, mCurrentVideoFrameIndex);
 				#endif
 				mAudioFrameTime += missedFrames * mVideoFormat.frameInterval;
 			}
@@ -1271,22 +1273,6 @@ void BlackmagicCaptureFilter::OnDeviceUpdated()
 	{
 		mInfoCallback->Reload(&mDeviceStatus);
 	}
-}
-
-HRESULT BlackmagicCaptureFilter::Reload()
-{
-	if (mInfoCallback != nullptr)
-	{
-		mInfoCallback->Reload(&mAudioInputStatus);
-		mInfoCallback->Reload(&mAudioOutputStatus);
-		mInfoCallback->Reload(&mVideoInputStatus);
-		mInfoCallback->Reload(&mVideoOutputStatus);
-		mInfoCallback->Reload(&mHdrStatus);
-		mInfoCallback->Reload(&mDeviceStatus);
-		mInfoCallback->Reload(&mDisplayStatus);
-		return S_OK;
-	}
-	return E_FAIL;
 }
 
 HRESULT BlackmagicCaptureFilter::PinThreadCreated()
@@ -1597,22 +1583,22 @@ HRESULT BlackmagicVideoCapturePin::FillBuffer(IMediaSample* pms)
 
 	AppendHdrSideDataIfNecessary(pms, endTime);
 
-	#ifndef NO_QUILL
 	REFERENCE_TIME now;
 	mFilter->GetReferenceTime(&now);
-	#endif
-
-	#ifndef NO_QUILL
-	const quill::StopWatchTsc swt;
-	#endif
+	auto t1 = std::chrono::high_resolution_clock::now();
 
 	if (mFrameWriter->WriteTo(mCurrentFrame.get(), pms) != S_OK)
 	{
 		return S_FALSE;
 	}
 
+	auto t2 = std::chrono::high_resolution_clock::now();
+	auto convLat = duration_cast<std::chrono::microseconds>(t2 - t1).count();
+	auto capLat = now - mCurrentFrame->GetCaptureTime();
+
+	RecordLatency(convLat, capLat);
+
 	#ifndef NO_QUILL
-	auto execMicros = swt.elapsed_as<std::chrono::microseconds>().count() / 1000.0;
 	if (mFrameCounter == 1)
 	{
 		LOG_TRACE_L1(mLogData.logger,
@@ -1620,8 +1606,8 @@ HRESULT BlackmagicVideoCapturePin::FillBuffer(IMediaSample* pms)
 		             mLogData.prefix);
 	}
 	auto frameInterval = mCurrentFrameTime - mPreviousFrameTime;
-	LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame D|{},{},{:.3f},{},{},{},{},{},{},{}", mLogData.prefix,
-	             mFrameCounter, now - mCurrentFrame->GetCaptureTime(), execMicros,
+	LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame D|{},{:.3f},{:.3f},{},{},{},{},{},{},{}", mLogData.prefix,
+	             mFrameCounter, static_cast<double>(capLat) / 1000.0, static_cast<double>(convLat) / 1000.0,
 	             mPreviousFrameTime, mCurrentFrameTime, frameInterval,
 	             frameInterval - mCurrentFrame->GetFrameDuration(), mCurrentFrame->GetFrameDuration(),
 	             mCurrentFrame->GetLength(), gap);
@@ -1948,9 +1934,12 @@ HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
 	mPreviousFrameTime = mCurrentFrameTime;
 	mCurrentFrameTime = endTime;
 
-	#ifndef NO_QUILL
 	REFERENCE_TIME now;
 	mFilter->GetReferenceTime(&now);
+	auto capLat = now - mCurrentFrameTime - mStreamStartTime;
+	RecordLatency(capLat);
+
+	#ifndef NO_QUILL
 	if (mFrameCounter == 1)
 	{
 		LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame H|codec,idx,lat,stime,ptime,ctime,delta,len,count",
@@ -1958,7 +1947,7 @@ HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
 	}
 	LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame D|{},{},{},{},{},{},{},{},{}",
 	             mLogData.prefix, codecNames[mAudioFormat.codec],
-	             mFrameCounter, now - mCurrentFrameTime - mStreamStartTime, startTime, mPreviousFrameTime,
+	             mFrameCounter, capLat, startTime, mPreviousFrameTime,
 	             mCurrentFrameTime, mCurrentFrameTime - mPreviousFrameTime, mCurrentFrame->GetLength(), sampleCount);
 	#endif
 
