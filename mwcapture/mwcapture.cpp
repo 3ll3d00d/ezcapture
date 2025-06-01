@@ -856,6 +856,44 @@ MagewellVideoCapturePin::MagewellVideoCapturePin(HRESULT* phr, MagewellCaptureFi
 				if (MW_SUCCEEDED == MWUSBGetVideoOutputFrameSize(hChannel, &mUsbCaptureFormats.frameSizes))
 				{
 					mUsbCaptureFormats.usb = true;
+					#ifndef NO_QUILL
+					{
+						std::string tmp{ "['" };
+						for (int i = 0; i < mUsbCaptureFormats.fourccs.byCount; i++)
+						{
+							if (i != 0) tmp += "', '";
+							uint32_t adw_fourcc = mUsbCaptureFormats.fourccs.adwFOURCCs[i];
+							tmp += static_cast<char>(adw_fourcc & 0xFF);
+							tmp += static_cast<char>(adw_fourcc >> 8 & 0xFF);
+							tmp += static_cast<char>(adw_fourcc >> 16 & 0xFF);
+							tmp += static_cast<char>(adw_fourcc >> 24 & 0xFF);
+						}
+						tmp += "']";
+						LOG_INFO(mLogData.logger, "[{}] USB colour formats {}", mLogData.prefix, tmp);
+					}
+					{
+						std::string tmp{ "['" };
+						for (int i = 0; i < mUsbCaptureFormats.frameIntervals.byCount; i++)
+						{
+							if (i != 0) tmp += "', '";
+							tmp += std::to_string(mUsbCaptureFormats.frameIntervals.adwIntervals[i]);
+						}
+						tmp += "']";
+						LOG_INFO(mLogData.logger, "[{}] USB frame intervals {}", mLogData.prefix, tmp);
+					}
+
+					{
+						std::string tmp{ "['" };
+						for (int i = 0; i < mUsbCaptureFormats.frameSizes.byCount; i++)
+						{
+							if (i != 0) tmp += "', '";
+							auto sz = mUsbCaptureFormats.frameSizes.aSizes[i];
+							tmp += std::to_string(sz.cx) + "x" + std::to_string(sz.cy);
+						}
+						tmp += "']";
+						LOG_INFO(mLogData.logger, "[{}] USB frame intervals {}", mLogData.prefix, tmp);
+					}
+					#endif
 				}
 				else
 				{

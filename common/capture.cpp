@@ -47,7 +47,7 @@ CaptureFilter::CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID 
 
 	// to a file suffixed with the startdate/time
 	auto fileSink = CustomFrontend::create_or_get_sink<quill::FileSink>(
-		(std::filesystem::temp_directory_path() / (pLogPrefix + "_capture.log")).string(),
+		(std::filesystem::temp_directory_path() / (pLogPrefix + ".log")).string(),
 		[]()
 		{
 			quill::FileSinkConfig cfg;
