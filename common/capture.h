@@ -56,7 +56,7 @@ inline void logBitmapHeader(const log_data& log, const std::string& desc, const 
 	#ifndef NO_QUILL
 	bool rgb = bmi->biCompression == 0;
 	// use transform if we ever have c++23 in msvc
-	auto pix = rgb ? std::nullopt: findByFourCC(bmi->biCompression);
+	auto pix = rgb ? std::nullopt : findByFourCC(bmi->biCompression);
 	if (pix.has_value() || rgb)
 	{
 		auto name = rgb ? "RGB" : pix->name;

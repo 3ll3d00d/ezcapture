@@ -167,6 +167,8 @@ protected:
 	static void LoadSignalFromDisplayMode(VIDEO_SIGNAL* newSignal, IDeckLinkDisplayMode* newDisplayMode);
 	static void LoadFormat(AUDIO_FORMAT* audioFormat, const AUDIO_SIGNAL* audioSignal);
 
+	STDMETHODIMP Run(REFERENCE_TIME tStart) override;
+
 private:
 	// Constructor
 	BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr);
@@ -185,12 +187,15 @@ private:
 	VIDEO_FORMAT mVideoFormat{};
 
 	int64_t mPreviousVideoFrameTime{invalidFrameTime};
+	int64_t mVideoFrameTime{0};
 	uint64_t mCurrentVideoFrameIndex{0};
 	std::shared_ptr<VideoFrame> mVideoFrame;
 	HANDLE mVideoFrameEvent;
 
 	AUDIO_SIGNAL mAudioSignal{};
 	AUDIO_FORMAT mAudioFormat{};
+	int64_t mPreviousAudioFrameTime{invalidFrameTime};
+	int64_t mAudioFrameTime{0};
 	uint64_t mCurrentAudioFrameIndex{0};
 	std::shared_ptr<AudioFrame> mAudioFrame;
 	HANDLE mAudioFrameEvent;

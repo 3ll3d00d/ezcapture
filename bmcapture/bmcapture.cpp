@@ -70,44 +70,34 @@ void BlackmagicCaptureFilter::LoadFormat(VIDEO_FORMAT* videoFormat, const VIDEO_
 	switch (videoSignal->pixelFormat)
 	{
 	case bmdFormat8BitYUV:
-		videoFormat->quantisation = QUANTISATION_UNKNOWN;
 		videoFormat->pixelFormat = YUV2;
 		break;
 	case bmdFormat10BitYUV:
-		videoFormat->quantisation = QUANTISATION_UNKNOWN;
 		videoFormat->pixelFormat = V210;
 		break;
 	case bmdFormat10BitYUVA:
 		// unusual format, Ultrastudio 4k mini only
-		videoFormat->quantisation = QUANTISATION_UNKNOWN;
 		videoFormat->pixelFormat = AY10;
 		break;
 	case bmdFormat8BitARGB:
-		videoFormat->quantisation = QUANTISATION_FULL;
 		videoFormat->pixelFormat = RGBA; // seems dubious but appears to work in practice
 		break;
 	case bmdFormat8BitBGRA:
-		videoFormat->quantisation = QUANTISATION_FULL;
 		videoFormat->pixelFormat = RGBA; // seems dubious but appears to work in practice
 		break;
 	case bmdFormat10BitRGB:
-		videoFormat->quantisation = QUANTISATION_FULL;
 		videoFormat->pixelFormat = R210;
 		break;
 	case bmdFormat12BitRGB:
-		videoFormat->quantisation = QUANTISATION_FULL;
 		videoFormat->pixelFormat = R12B;
 		break;
 	case bmdFormat12BitRGBLE:
-		videoFormat->quantisation = QUANTISATION_FULL;
 		videoFormat->pixelFormat = R12L;
 		break;
 	case bmdFormat10BitRGBXLE:
-		videoFormat->quantisation = QUANTISATION_FULL;
 		videoFormat->pixelFormat = R10L;
 		break;
 	case bmdFormat10BitRGBX:
-		videoFormat->quantisation = QUANTISATION_FULL;
 		videoFormat->pixelFormat = R10B;
 		break;
 	case bmdFormatUnspecified:
@@ -116,6 +106,7 @@ void BlackmagicCaptureFilter::LoadFormat(VIDEO_FORMAT* videoFormat, const VIDEO_
 		// unsupported
 		break;
 	}
+	videoFormat->quantisation = videoFormat->pixelFormat.rgb ? QUANTISATION_FULL : QUANTISATION_UNKNOWN;
 	videoFormat->CalculateDimensions();
 }
 
@@ -732,11 +723,6 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 
 				return E_FAIL;
 			}
-
-			#ifndef NO_QUILL
-			LOG_TRACE_L3(mLogData.logger, "[{}] Captured video frame at {} (duration: {})", mLogData.prefix, frameTime,
-			             frameDuration);
-			#endif
 		}
 		else
 		{
@@ -751,6 +737,8 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 		VIDEO_FORMAT newVideoFormat{};
 		LoadFormat(&newVideoFormat, &mVideoSignal);
 
+		mVideoFrameTime += frameDuration;
+
 		if (mPreviousVideoFrameTime == invalidFrameTime)
 		{
 			mCurrentVideoFrameIndex++;
@@ -759,13 +747,15 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 		{
 			const auto framesSinceLast = (frameTime - mPreviousVideoFrameTime) / frameDuration;
 			mCurrentVideoFrameIndex += framesSinceLast;
-			#ifndef NO_QUILL
-			if (auto missedFrames = std::max(framesSinceLast - 1, 0LL))
+			auto missedFrames = std::max(framesSinceLast - 1, 0LL);
+			if (missedFrames > 0LL)
 			{
-				LOG_WARNING(mLogData.logger, "[{}] Video capture discontinuity detected, {} frames missed at frame {}",
+				#ifndef NO_QUILL
+				LOG_WARNING(mLogData.logger, "[{}] Video capture discontinuity detected, {} frames missed at frame {}, increasing frame time to compensate",
 				            mLogData.prefix, missedFrames, mCurrentVideoFrameIndex);
+				#endif
+				mVideoFrameTime += missedFrames * frameDuration;
 			}
-			#endif
 		}
 		mPreviousVideoFrameTime = frameTime;
 
@@ -975,7 +965,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 		{
 			CAutoLock lock(&mFrameSec);
 			mVideoFormat = newVideoFormat;
-			mVideoFrame = std::make_shared<VideoFrame>(mLogData, newVideoFormat, now, frameTime, frameDuration,
+			mVideoFrame = std::make_shared<VideoFrame>(mLogData, newVideoFormat, now, mVideoFrameTime, frameDuration,
 			                                           mCurrentVideoFrameIndex, videoFrame);
 		}
 
@@ -1021,13 +1011,31 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			return E_FAIL;
 		}
 
+		mAudioFrameTime += mVideoFormat.frameInterval;
+
+		if (mPreviousAudioFrameTime != invalidFrameTime)
+		{
+			const auto framesSinceLast = (frameTime - mPreviousAudioFrameTime) / mVideoFormat.frameInterval;
+			mCurrentAudioFrameIndex += framesSinceLast;
+			auto missedFrames = std::max(framesSinceLast - 1, 0LL);
+			if (missedFrames > 0LL)
+			{
+				#ifndef NO_QUILL
+				LOG_WARNING(mLogData.logger, "[{}] Audio capture discontinuity detected, {} frames missed at frame {}, increasing frame time to compensate",
+					mLogData.prefix, missedFrames, mCurrentVideoFrameIndex);
+				#endif
+				mAudioFrameTime += missedFrames * mVideoFormat.frameInterval;
+			}
+		}
+		mPreviousAudioFrameTime = frameTime;
+
 		{
 			auto audioByteDepth = audioBitDepth / 8;
 			auto audioFrameLength = audioPacket->GetSampleFrameCount() * mDeviceInfo.audioChannelCount * audioByteDepth;
 
 			CAutoLock lock(&mFrameSec);
-			mAudioFrame = std::make_shared<AudioFrame>(mLogData, now, frameTime, audioData, audioFrameLength,
-			                                           mAudioFormat, ++mCurrentAudioFrameIndex, audioPacket);
+			mAudioFrame = std::make_shared<AudioFrame>(mLogData, now, mAudioFrameTime, audioData, audioFrameLength,
+			                                           mAudioFormat, mCurrentAudioFrameIndex, audioPacket);
 		}
 
 		// signal listeners
@@ -1104,6 +1112,13 @@ void BlackmagicCaptureFilter::LoadFormat(AUDIO_FORMAT* audioFormat, const AUDIO_
 		audioFormat->channelOffsets.fill(not_present);
 		audioFormat->lfeChannelIndex = not_present;
 	}
+}
+
+HRESULT BlackmagicCaptureFilter::Run(REFERENCE_TIME tStart)
+{
+	mVideoFrameTime = 0;
+	mAudioFrameTime = 0;
+	return HdmiCaptureFilter::Run(tStart);
 }
 
 HRESULT BlackmagicCaptureFilter::Notify(BMDNotifications topic, ULONGLONG param1, ULONGLONG param2)
@@ -1590,7 +1605,7 @@ HRESULT BlackmagicVideoCapturePin::FillBuffer(IMediaSample* pms)
 	if (mFrameCounter == 1)
 	{
 		LOG_TRACE_L1(mLogData.logger,
-		             "[{}] Captured video frame H|f_idx,cap_lat,conv_lat,ft_0,ft_1,ft_d,ft_o,dur,s_sz,missed",
+		             "[{}] Captured video frame H|f_idx,cap_lat,conv_lat,ptime,ctime,interval,delta,dur,len,gap",
 		             mLogData.prefix);
 	}
 	auto frameInterval = mCurrentFrameTime - mPreviousFrameTime;
@@ -1598,7 +1613,7 @@ HRESULT BlackmagicVideoCapturePin::FillBuffer(IMediaSample* pms)
 	             mFrameCounter, now - mCurrentFrame->GetCaptureTime(), execMicros,
 	             mPreviousFrameTime, mCurrentFrameTime, frameInterval,
 	             frameInterval - mCurrentFrame->GetFrameDuration(), mCurrentFrame->GetFrameDuration(),
-	             mCurrentFrame->GetLength(), gap!=1);
+	             mCurrentFrame->GetLength(), gap);
 	#endif
 
 	mCurrentFrame.reset();
@@ -1927,7 +1942,7 @@ HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
 	mFilter->GetReferenceTime(&now);
 	if (mFrameCounter == 1)
 	{
-		LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame H|codec,f_idx,lat,stime,ft_0,ft_1,ft_d,s_sz,s_ct",
+		LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame H|codec,idx,lat,stime,ptime,ctime,delta,len,count",
 		             mLogData.prefix);
 	}
 	LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame D|{},{},{},{},{},{},{},{},{}",
