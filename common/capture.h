@@ -26,6 +26,7 @@
 #include <dvdmedia.h>
 #include <wmcodecdsp.h>
 #include <cmath>
+#include <memory>
 
 #include "bgr10_rgb48.h"
 #include "r210_rgb48.h"
