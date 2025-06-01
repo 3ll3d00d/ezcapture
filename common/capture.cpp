@@ -40,6 +40,7 @@ CaptureFilter::CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID 
 	// TODO make logging configurable
 	// start logging with reduced cpu load
 	quill::BackendOptions bopt;
+	bopt.thread_name = "QuillBackend_" + pLogPrefix;
 	bopt.enable_yield_when_idle = true;
 	bopt.sleep_duration = std::chrono::nanoseconds(0);
 	quill::Backend::start(bopt);

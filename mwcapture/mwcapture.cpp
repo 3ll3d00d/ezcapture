@@ -34,14 +34,24 @@
 
 #include <cmath>
 #include <algorithm>
-#include "bgr10_rgb48.h"
+#include <ranges>
+
 #include "StraightThrough.h"
-#include "yuy2_yv16.h"
-#include "V210_P210.h"
 
 #define S_PARTIAL_DATABURST    ((HRESULT)2L)
 #define S_POSSIBLE_BITSTREAM    ((HRESULT)3L)
 #define S_NO_CHANNELS    ((HRESULT)2L)
+
+#if CAPTURE_NAME_SUFFIX == 1
+#define LOG_PREFIX_NAME "MagewellCaptureFilterTrace"
+#define WLOG_PREFIX_NAME L"MagewellCaptureFilterTrace"
+#elif CAPTURE_NAME_SUFFIX == 2
+#define LOG_PREFIX_NAME "MagewellCaptureFilterWarn"
+#define WLOG_PREFIX_NAME L"MagewellCaptureFilterWarn"
+#else
+#define LOG_PREFIX_NAME "MagewellCaptureFilter"
+#define WLOG_PREFIX_NAME L"MagewellCaptureFilter"
+#endif
 
 constexpr auto bitstreamDetectionWindowSecs = 0.075;
 constexpr auto bitstreamDetectionRetryAfter = 1.0 / bitstreamDetectionWindowSecs;
@@ -71,7 +81,7 @@ CUnknown* MagewellCaptureFilter::CreateInstance(LPUNKNOWN punk, HRESULT* phr)
 }
 
 MagewellCaptureFilter::MagewellCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
-	HdmiCaptureFilter(L"MagewellCaptureFilter", punk, phr, CLSID_MWCAPTURE_FILTER, "MagewellCaptureFilter")
+	HdmiCaptureFilter(WLOG_PREFIX_NAME, punk, phr, CLSID_MWCAPTURE_FILTER, LOG_PREFIX_NAME)
 {
 	// Initialise the device and validate that it presents some form of data
 	mInited = MWCaptureInitInstance();
@@ -826,7 +836,7 @@ MagewellVideoCapturePin::MagewellVideoCapturePin(HRESULT* phr, MagewellCaptureFi
 		{
 			{UYVY, {YV16, UYVY_YV16}},
 			{YUY2, {YV16, YUY2_YV16}},
-			{V210, {P210, V210_P210}},
+			{Y210, {P210, V210_P210}},
 			{BGR10, {RGB48, BGR10_BGR48}},
 		}
 	),

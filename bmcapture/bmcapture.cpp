@@ -37,6 +37,17 @@
 #include "quill/StopWatch.h"
 #endif
 
+#if CAPTURE_NAME_SUFFIX == 1
+#define LOG_PREFIX_NAME "BlackmagicCaptureFilterTrace"
+#define WLOG_PREFIX_NAME L"BlackmagicCaptureFilterTrace"
+#elif CAPTURE_NAME_SUFFIX == 2
+#define LOG_PREFIX_NAME "BlackmagicCaptureFilterWarn"
+#define WLOG_PREFIX_NAME L"BlackmagicCaptureFilterWarn"
+#else
+#define LOG_PREFIX_NAME "BlackmagicCaptureFilter"
+#define WLOG_PREFIX_NAME L"BlackmagicCaptureFilter"
+#endif
+
 // audio is limited to 48kHz and an audio packet is only delivered with a video frame
 // lowest fps is 23.976 so the max no of samples should be 48000/(24000/1001) = 2002
 // but there can be backlogs so allow for a few frames for safety
@@ -111,7 +122,7 @@ void BlackmagicCaptureFilter::LoadFormat(VIDEO_FORMAT* videoFormat, const VIDEO_
 }
 
 BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
-	HdmiCaptureFilter(L"BlackmagicCaptureFilter", punk, phr, CLSID_BMCAPTURE_FILTER, "Blackmagic"),
+	HdmiCaptureFilter(WLOG_PREFIX_NAME, punk, phr, CLSID_BMCAPTURE_FILTER, LOG_PREFIX_NAME),
 	mVideoFrameEvent(CreateEvent(nullptr, FALSE, FALSE, nullptr)),
 	mAudioFrameEvent(CreateEvent(nullptr, FALSE, FALSE, nullptr))
 {
