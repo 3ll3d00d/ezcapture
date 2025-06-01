@@ -78,7 +78,6 @@ struct pixel_format
 		UYVY,
 		YV16,
 		V210,
-		Y210,
 		AY10,
 		ARGB,
 		BGRA,
@@ -199,7 +198,6 @@ const inline pixel_format BGR10{pixel_format::BGR10, 'B', 'G', '1', '0', 10, 32,
 // magewell usb
 const inline pixel_format YUY2{pixel_format::YUY2, 'Y', 'U', 'Y', '2', 8, 16, false, YUV_422};
 const inline pixel_format UYVY{pixel_format::UYVY, 'U', 'Y', 'V', 'Y', 8, 16, false, YUV_422};
-const inline pixel_format Y210{ pixel_format::Y210, 'Y', '2', '1', '0', 10, 16, false, YUV_422, 128 };
 // blackmagic, generally require conversion due to lack of native renderer support
 const inline pixel_format YUV2{pixel_format::YUV2, '2', 'V', 'U', 'Y', 8, 16, false, YUV_422};
 const inline pixel_format V210{pixel_format::V210, 'v', '2', '1', '0', 10, 16, false, YUV_422, 128};
@@ -231,7 +229,6 @@ const std::array all_pixel_formats = {
 	UYVY,
 	YV16,
 	V210,
-	Y210,
 	AY10,
 	ARGB,
 	BGRA,

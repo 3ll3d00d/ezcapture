@@ -41,9 +41,9 @@ const pixel_format usbPlusPixelFormats[3][4] = {
 };
 
 const pixel_format usbProPixelFormats[3][4] = {
-	{BGR24, Y210, Y210, P010},
-	{BGR24, Y210, Y210, P010},
-	{BGR24, Y210, Y210, P010},
+	{BGR24, V210, V210, P010},
+	{BGR24, V210, V210, P010},
+	{BGR24, V210, V210, P010},
 };
 
 // utility functions
