@@ -24,7 +24,7 @@ template <typename VF>
 class y210_p210 : public IVideoFrameWriter<VF>
 {
 public:
-	y210_p210(const log_data& pLogData, int pX, int pY) : IVideoFrameWriter<VF>(pLogData, pX, pY, &YV16)
+	y210_p210(const log_data& pLogData, int pX, int pY) : IVideoFrameWriter<VF>(pLogData, pX, pY, &P210)
 	{
 	}
 
@@ -40,8 +40,7 @@ public:
 		{
 			return S_FALSE;
 		}
-		const auto actualWidth = width + this->mPixelsToPad;
-		const auto pixelCount = actualWidth * height;
+		auto actualWidth = width + this->mPixelsToPad;
 
 		void* d;
 		srcFrame->Start(&d);
@@ -51,24 +50,25 @@ public:
 		dstFrame->GetPointer(&outData);
 		auto dstSize = dstFrame->GetSize();
 
-		// YV16 format: 
-		auto ySize = pixelCount;
-		auto uvSize = pixelCount / 2;
-
+		// P210 format: 16-bit samples, full res Y plane, half-width U and V planes
 		auto outSpan = std::span(outData, dstSize);
-		uint8_t* yPlane = outSpan.subspan(0, ySize).data();
-		uint8_t* vPlane = outSpan.subspan(ySize, uvSize).data();
-		uint8_t* uPlane = outSpan.subspan(ySize + uvSize, uvSize).data();
+		auto planeSize = actualWidth * height * 2;
+
+		uint8_t* yPlane = outSpan.subspan(0, planeSize).data();
+		uint8_t* uvPlane = outSpan.subspan(planeSize, planeSize).data();
+
+		auto alignedWidth = (width + 47) / 48 * 48;
+		auto srcStride = alignedWidth * 8 / 3;
 
 		#ifndef NO_QUILL
 		const quill::StopWatchTsc swt;
 		#endif
 
-		this->convert(sourceData, yPlane, uPlane, vPlane, width, srcFrame->GetHeight(), this->mPixelsToPad);
+		this->convert(sourceData, srcStride, yPlane, uvPlane, width, height, this->mPixelsToPad);
 
 		#ifndef NO_QUILL
 		auto execTime = swt.elapsed_as<std::chrono::microseconds>().count() / 1000.0;
-		LOG_TRACE_L3(this->mLogData.logger, "[{}] Converted frame to YV16 in {:.3f} ms", this->mLogData.prefix,
+		LOG_TRACE_L3(this->mLogData.logger, "[{}] Converted frame to P210 in {:.3f} ms", this->mLogData.prefix,
 		             execTime);
 		#endif
 
@@ -78,65 +78,59 @@ public:
 	}
 
 private:
-	// same as yuy2 but v - u order is reverted
-	// y - u - y - v
+	// same as yuy2 but each individual value occupies 16 bits
 	#ifdef __AVX2__
-	bool convert(const uint8_t* src, uint8_t* yPlane, uint8_t* uPlane, uint8_t* vPlane, int width, int height, int pixelsToPad)
+	bool convert(const uint8_t* src, int srcStride, uint8_t* dstY, uint8_t* dstUV, int width, int height, int pixelsToPad)
 	{
 		const __m256i shuffle_1 = _mm256_setr_epi8(
-			3, 7, 11, 15, 1, 5, 9, 13, 0, 2, 4, 6, 8, 10, 12, 14,
-			3, 7, 11, 15, 1, 5, 9, 13, 0, 2, 4, 6, 8, 10, 12, 14
+			2, 3, 6, 7, 10, 11, 14, 15, 0, 1, 4, 5, 8, 9, 12, 13,
+			2, 3, 6, 7, 10, 11, 14, 15, 0, 1, 4, 5, 8, 9, 12, 13
 		);
-		const __m256i permute = _mm256_setr_epi32(0, 4, 1, 5, 2, 3, 6, 7);
+		const __m256i permute = _mm256_setr_epi32(0, 1, 4, 5, 2, 3, 6, 7);
 		const int yWidth = width + pixelsToPad;
 		const int uvWidth = yWidth / 2;
-		for (int y = 0; y < height; ++y)
+
+		for (int lineNo = 0; lineNo < height; ++lineNo)
 		{
-			uint64_t* y_out = reinterpret_cast<uint64_t*>(yPlane + (y * yWidth));
-			uint64_t* u_out = reinterpret_cast<uint64_t*>(uPlane + (y * uvWidth));
-			uint64_t* v_out = reinterpret_cast<uint64_t*>(vPlane + (y * uvWidth));
-			for (int x = 0; x < width; x += 16) // 16 bits per pixel in 256 bit chunks = 16 pixels per pass
+			const uint32_t* srcLine = reinterpret_cast<const uint32_t*>(src + lineNo * srcStride);
+			uint16_t* dstLineY = reinterpret_cast<uint16_t*>(dstY + lineNo * effectiveWidth * 2);
+			uint16_t* dstLineUV = reinterpret_cast<uint16_t*>(dstUV + lineNo * effectiveWidth * 2);
+
+			for (int x = 0; x < width; x += 8) // 32 bits per pixel in 256 bit chunks = 8 pixels per pass
 			{
 				__m256i pixels = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src));
 				__m256i shuffled = _mm256_shuffle_epi8(pixels, shuffle_1);
 				__m256i permuted = _mm256_permutevar8x32_epi32(shuffled, permute);
-				const uint64_t* vals = reinterpret_cast<const uint64_t*>(&permuted);
-
-				v_out[0] = vals[0]; // 8 bytes each of UV
-				v_out++;
-				u_out[0] = vals[1];
-				u_out++;
-
-				y_out[0] = vals[2]; // 16 bytes of Y
-				y_out[1] = vals[3];
-				y_out += 2;
-
-				src += 32; // 32 bytes read
+				_mm256_storeu2_m128i(reinterpret_cast<__m128i*>(dstLineY), reinterpret_cast<__m128i*>(dstLineUV), permuted);
+				// 32 bytes read
+				uv_out += 16
+				y_out += 16;
+				src += 32; 
 			}
 		}
 		return true;
 	}
 	#else
-	bool convert(const uint8_t* src, uint8_t* yPlane, uint8_t* uPlane, uint8_t* vPlane, int width, int height,
+	bool convert(const uint8_t* src, int srcStride, uint8_t* dstY, uint8_t* dstUV, int width, int height,
 	             int pixelsToPad)
 	{
-		for (int y = 0; y < height; ++y)
+		auto effectiveWidth = width + pixelsToPad;
+
+		for (int y = 0; y < height; y++)
 		{
-			auto offset = (y * (width + pixelsToPad));
-			uint8_t* yOut = yPlane + offset;
-			uint8_t* uOut = uPlane + offset / 2;
-			uint8_t* vOut = vPlane + offset / 2;
+			const uint16_t* srcLine = reinterpret_cast<const uint16_t*>(src + y * srcStride);
+			uint16_t* dstLineY = reinterpret_cast<uint16_t*>(dstY + y * effectiveWidth * 2);
+			uint16_t* dstLineUV = reinterpret_cast<uint16_t*>(dstUV + y * effectiveWidth * 2);
 
 			for (int x = 0; x < width; x += 2) // 2 pixels per pass
 			{
-				yOut[1] = src[0];
-				uOut[0] = src[1];
-				yOut[0] = src[2];
-				vOut[0] = src[3];
+				dstLineY[0] = srcLine[0];
+				dstLineY[1] = srcLine[2];
+				dstLineUV[0] = srcLine[1];
+				dstLineUV[1] = srcLine[3];
 
-				yOut += 2;
-				uOut++;
-				vOut++;
+				dstLineY += 2;
+				dstLineUV += 2;
 				src += 4;
 			}
 		}
