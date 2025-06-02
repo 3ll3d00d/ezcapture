@@ -78,6 +78,7 @@ struct pixel_format
 		UYVY,
 		YV16,
 		V210,
+		Y210,
 		AY10,
 		ARGB,
 		BGRA,
@@ -131,6 +132,7 @@ struct pixel_format
 		case UYVY:
 		case P010:
 		case P210:
+		case Y210:
 			cbLine = cx * 2;
 			break;
 		case BGR24:
@@ -164,7 +166,7 @@ struct pixel_format
 		{
 			*imageBytes = *imageBytes * 3 / 2;
 		}
-		else if (format == YV16 || format == NV16 || format == P210)
+		else if (format == YV16 || format == NV16 || format == P210 || format || Y210)
 		{
 			*imageBytes = *imageBytes * 2;
 		}
@@ -198,6 +200,7 @@ const inline pixel_format BGR10{pixel_format::BGR10, 'B', 'G', '1', '0', 10, 32,
 // magewell usb
 const inline pixel_format YUY2{pixel_format::YUY2, 'Y', 'U', 'Y', '2', 8, 16, false, YUV_422};
 const inline pixel_format UYVY{pixel_format::UYVY, 'U', 'Y', 'V', 'Y', 8, 16, false, YUV_422};
+const inline pixel_format Y210{pixel_format::Y210, 'Y', '2', '1', '0', 10, 16, false, YUV_422};
 // blackmagic, generally require conversion due to lack of native renderer support
 const inline pixel_format YUV2{pixel_format::YUV2, '2', 'V', 'U', 'Y', 8, 16, false, YUV_422};
 const inline pixel_format V210{pixel_format::V210, 'v', '2', '1', '0', 10, 16, false, YUV_422, 128};
@@ -229,6 +232,7 @@ const std::array all_pixel_formats = {
 	UYVY,
 	YV16,
 	V210,
+	Y210,
 	AY10,
 	ARGB,
 	BGRA,
@@ -470,6 +474,7 @@ enum frame_writer_strategy :uint8_t
 	YUY2_YV16,
 	UYVY_YV16,
 	V210_P210,
+	Y210_P210,
 	R210_BGR48,
 	BGR10_BGR48,
 	STRAIGHT_THROUGH
@@ -484,6 +489,7 @@ inline const char* to_string(frame_writer_strategy e)
 	case YUY2_YV16: return "YUY2_YV16";
 	case UYVY_YV16: return "UYVY_YV16";
 	case V210_P210: return "V210_P210";
+	case Y210_P210: return "Y210_P210";
 	case R210_BGR48: return "R210_BGR48";
 	case BGR10_BGR48: return "BGR10_BGR48";
 	case STRAIGHT_THROUGH: return "STRAIGHT_THROUGH";

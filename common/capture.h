@@ -31,10 +31,11 @@
 
 #include "bgr10_rgb48.h"
 #include "r210_rgb48.h"
+#include "uyvy_yv16.h"
 #include "v210_p210.h"
+#include "y210_p210.h"
 #include "yuv2_yv16.h"
 #include "yuy2_yv16.h"
-#include "uyvy_yv16.h"
 
 EXTERN_C const GUID MEDIASUBTYPE_PCM_IN24;
 EXTERN_C const GUID MEDIASUBTYPE_PCM_IN32;
@@ -766,14 +767,17 @@ protected:
 		case R210_BGR48:
 			mFrameWriter = std::make_unique<r210_rgb48<VF>>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
 			break;
+		case BGR10_BGR48:
+			mFrameWriter = std::make_unique<bgr10_rgb48<VF>>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
+			break;
+		case Y210_P210:
+			mFrameWriter = std::make_unique<y210_p210<VF>>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
+			break;
 		case YUY2_YV16:
 			mFrameWriter = std::make_unique<yuy2_yv16<VF>>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
 			break;
 		case UYVY_YV16:
 			mFrameWriter = std::make_unique<uyvy_yv16<VF>>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
-			break;
-		case BGR10_BGR48:
-			mFrameWriter = std::make_unique<bgr10_rgb48<VF>>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
 			break;
 		default:
 			// ugly back to workaround inability of c++ to call pure virtual function

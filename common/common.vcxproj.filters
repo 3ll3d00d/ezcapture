@@ -62,16 +62,19 @@
     <ClInclude Include="yuv2_yv16.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="yuy2_yv16.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="bgr10_rgb48.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="uyvy_yv16.h">
+    <ClInclude Include="metric.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="metric.h">
+    <ClInclude Include="y210_p210.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="yuy2_yv16.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="uyvy_yv16.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

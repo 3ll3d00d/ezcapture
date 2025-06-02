@@ -21,14 +21,14 @@
 #endif
 
 template <typename VF>
-class yuy2_yv16 : public IVideoFrameWriter<VF>
+class y210_p210 : public IVideoFrameWriter<VF>
 {
 public:
-	yuy2_yv16(const log_data& pLogData, int pX, int pY) : IVideoFrameWriter<VF>(pLogData, pX, pY, &YV16)
+	y210_p210(const log_data& pLogData, int pX, int pY) : IVideoFrameWriter<VF>(pLogData, pX, pY, &YV16)
 	{
 	}
 
-	~yuy2_yv16() override = default;
+	~y210_p210() override = default;
 
 	HRESULT WriteTo(VF* srcFrame, IMediaSample* dstFrame) override
 	{

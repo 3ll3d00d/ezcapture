@@ -20,7 +20,7 @@
 #include <quill/StopWatch.h>
 #endif
 
-template <typename VF>
+template<typename VF>
 class uyvy_yv16 : public IVideoFrameWriter<VF>
 {
 public:

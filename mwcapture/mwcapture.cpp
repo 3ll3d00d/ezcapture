@@ -815,7 +815,7 @@ MagewellVideoCapturePin::MagewellVideoCapturePin(HRESULT* phr, MagewellCaptureFi
 		{
 			{UYVY, {YV16, UYVY_YV16}},
 			{YUY2, {YV16, YUY2_YV16}},
-			{V210, {P210, V210_P210}},
+			{Y210, {P210, Y210_P210}},
 			{BGR10, {RGB48, BGR10_BGR48}},
 		}
 	),

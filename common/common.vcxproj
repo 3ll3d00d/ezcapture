@@ -385,10 +385,10 @@
   <ItemGroup>
     <ClInclude Include="bgr10_rgb48.h" />
     <ClInclude Include="metric.h" />
-    <ClInclude Include="uyvy_yv16.h" />
-    <ClInclude Include="yuy2_yv16.h" />
     <ClInclude Include="r210_rgb48.h" />
+    <ClInclude Include="uyvy_yv16.h" />
     <ClInclude Include="v210_p210.h" />
+    <ClInclude Include="y210_p210.h" />
     <ClInclude Include="yuv2_yv16.h" />
     <ClInclude Include="capture.h" />
     <ClInclude Include="domain.h" />
@@ -400,6 +400,7 @@
     <ClInclude Include="version.h" />
     <ClInclude Include="version_rev.h" />
     <ClInclude Include="VideoFrameWriter.h" />
+    <ClInclude Include="yuy2_yv16.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\directshow_baseclasses\directshow_baseclasses.vcxproj">

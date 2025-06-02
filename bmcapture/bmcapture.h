@@ -243,6 +243,7 @@ private:
 			                                                 &mVideoFormat.pixelFormat);
 			break;
 		case YUY2_YV16:
+		case Y210_P210:
 		case UYVY_YV16:
 		case BGR10_BGR48:
 			#ifndef NO_QUILL
