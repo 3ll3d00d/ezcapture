@@ -166,7 +166,7 @@ struct pixel_format
 		{
 			*imageBytes = *imageBytes * 3 / 2;
 		}
-		else if (format == YV16 || format == NV16 || format == P210 || format || Y210)
+		else if (format == YV16 || format == NV16 || format == P210 || format == Y210)
 		{
 			*imageBytes = *imageBytes * 2;
 		}

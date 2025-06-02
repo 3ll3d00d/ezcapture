@@ -524,9 +524,10 @@ public:
 
 	void ResizeMetrics(double expectedRefreshRatePerSecond)
 	{
-		auto newSize = std::lrint(expectedRefreshRatePerSecond * 4 / 3); // aim for metrics to update approx once every 750ms
+		// aim for metrics to update approx once every 1500ms
+		auto newSize = std::lrint(expectedRefreshRatePerSecond * 3 / 2);
 		mConversionLatency.resize(newSize);
-		mConversionLatency.resize(newSize);
+		mCaptureLatency.resize(newSize);
 	}
 
 protected:

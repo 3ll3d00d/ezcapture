@@ -706,7 +706,8 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 	if (hasFrame)
 	{
 		// in place byteswap so no need for frame conversion buffer
-		if (pin->mVideoFormat.pixelFormat.format == pixel_format::AYUV)
+		if (pin->mVideoFormat.pixelFormat.format == pixel_format::AYUV
+			|| pin->mVideoFormat.pixelFormat.format == pixel_format::P010)
 		{
 			auto t1 = std::chrono::high_resolution_clock::now();
 
@@ -739,8 +740,16 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 			convLat += execTime;
 
 			#ifndef NO_QUILL
-			LOG_TRACE_L2(mLogData.logger, "[{}] Converted VUYA to AYUV in {:.3f} ms", mLogData.prefix,
-			             execTime / 1000.0);
+			if (pin->mVideoFormat.pixelFormat.format == pixel_format::AYUV)
+			{
+				LOG_TRACE_L2(mLogData.logger, "[{}] Converted VUYA to AYUV in {:.3f} ms", mLogData.prefix,
+					static_cast<double>(execTime) / 1000.0);
+			}
+			else
+			{
+				LOG_TRACE_L2(mLogData.logger, "[{}] Converted 010P to P010 in {:.3f} ms", mLogData.prefix,
+					static_cast<double>(execTime) / 1000.0);
+			}
 			#endif
 		}
 
@@ -3560,7 +3569,8 @@ HRESULT MagewellAudioCapturePin::ParseBitstreamBuffer(uint16_t bufSize, enum Cod
 					#endif
 					// e.g. 24576 / 768 = 32 for EAC3 will produce a new output sample every 32nd inbound sample
 					// at 192kHz there are 1000 samples per second hence effective snap rate is 1000 / 32 = ~31Hzd
-					mCompressedAudioRefreshRate = static_cast<double>(mAudioFormat.fs / MWCAP_AUDIO_SAMPLES_PER_FRAME) / ((mBytesSincePaPb - 3) / bufSize);
+					mCompressedAudioRefreshRate = static_cast<double>(mAudioFormat.fs / MWCAP_AUDIO_SAMPLES_PER_FRAME) /
+						((mBytesSincePaPb - 3) / bufSize);
 					mBytesSincePaPb = 4;
 					maybeBitstream = false;
 					break;
