@@ -24,13 +24,13 @@
 // linking side data GUIDs fails without this
 #include <initguid.h>
 
+#include "mwcapture.h"
+
 #ifndef NO_QUILL
 #include "quill/Backend.h"
 #include "quill/sinks/FileSink.h"
 #include <quill/StopWatch.h>
 #endif
-
-#include "mwcapture.h"
 
 #include <cmath>
 #include <algorithm>
@@ -245,10 +245,10 @@ MagewellCaptureFilter::MagewellCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 
 	mClock = new MWReferenceClock(phr, mDeviceInfo.hChannel, mDeviceInfo.deviceType == PRO);
 
-	auto pin = new MagewellVideoCapturePin(phr, this, false);
-	pin->UpdateFrameWriterStrategy();
-	pin = new MagewellVideoCapturePin(phr, this, true);
-	pin->UpdateFrameWriterStrategy();
+	auto vp = new MagewellVideoCapturePin(phr, this, false);
+	vp->UpdateFrameWriterStrategy();
+	vp = new MagewellVideoCapturePin(phr, this, true);
+	vp->UpdateFrameWriterStrategy();
 
 	new MagewellAudioCapturePin(phr, this, false);
 	new MagewellAudioCapturePin(phr, this, true);
@@ -764,9 +764,7 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 		}
 		pin->AppendHdrSideDataIfNecessary(pms, endTime);
 
-		REFERENCE_TIME now;
-		pin->GetReferenceTime(&now);
-		auto capLat = now - pin->mCaptureTime;
+		auto capLat = pin->mCaptureTime - frameTime;
 
 		pin->RecordLatency(convLat, capLat);
 		pin->SnapTemperatureIfNecessary(endTime);
@@ -928,6 +926,8 @@ MagewellVideoCapturePin::MagewellVideoCapturePin(HRESULT* phr, MagewellCaptureFi
 		#endif
 	}
 	mFilter->OnVideoFormatLoaded(&mVideoFormat);
+
+	ResizeMetrics(mVideoFormat.fps);
 
 	mCapturedFrame.data = new uint8_t[mVideoFormat.imageSize];
 }
@@ -1333,6 +1333,8 @@ HRESULT MagewellVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 		VIDEO_FORMAT newVideoFormat;
 		LoadFormat(&newVideoFormat, &mVideoSignal, &mUsbCaptureFormats);
 
+		auto shouldResize = newVideoFormat.frameInterval != mVideoFormat.frameInterval;
+
 		hr = OnVideoSignal(newVideoFormat);
 
 		if (hr != S_RECONNECTION_UNNECESSARY || (hadSignal && !mHasSignal))
@@ -1344,6 +1346,11 @@ HRESULT MagewellVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 		{
 			BACKOFF;
 			continue;
+		}
+
+		if (shouldResize)
+		{
+			ResizeMetrics(mVideoFormat.fps);
 		}
 
 		// grab next frame 
@@ -2790,9 +2797,12 @@ HRESULT MagewellAudioCapturePin::FillBuffer(IMediaSample* pms)
 		samplesCaptured++;
 		bytesCaptured = mDataBurstPayloadSize;
 		mDataBurstPayloadSize = 0;
+		ResizeMetrics(mCompressedAudioRefreshRate);
 	}
 	else
 	{
+		ResizeMetrics(static_cast<double>(mAudioFormat.fs) / MWCAP_AUDIO_SAMPLES_PER_FRAME);
+
 		// channel order on input is L0-L3,R0-R3 which has to be remapped to L0,R0,L1,R1,L2,R2,L3,R3
 		// each 4 byte sample is left zero padded if the incoming stream is a lower bit depth (which is typically the case for HDMI audio)
 		// must also apply the channel offsets to ensure each input channel is offset as necessary to be written to the correct output channel index
@@ -3548,6 +3558,9 @@ HRESULT MagewellAudioCapturePin::ParseBitstreamBuffer(uint16_t bufSize, enum Cod
 						LOG_TRACE_L2(mLogData.logger, "[{}] Found PaPb at position {}-{} ({} since last)", mLogData.prefix,
 					             bytesRead - 4, bytesRead, mBytesSincePaPb);
 					#endif
+					// e.g. 24576 / 768 = 32 for EAC3 will produce a new output sample every 32nd inbound sample
+					// at 192kHz there are 1000 samples per second hence effective snap rate is 1000 / 32 = ~31Hzd
+					mCompressedAudioRefreshRate = static_cast<double>(mAudioFormat.fs / MWCAP_AUDIO_SAMPLES_PER_FRAME) / ((mBytesSincePaPb - 3) / bufSize);
 					mBytesSincePaPb = 4;
 					maybeBitstream = false;
 					break;

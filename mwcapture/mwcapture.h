@@ -249,6 +249,7 @@ protected:
 	uint16_t mDataBurstSize{0};
 	uint16_t mDataBurstPayloadSize{0};
 	uint32_t mBytesSincePaPb{0};
+	double mCompressedAudioRefreshRate{0.0};
 	uint64_t mSinceCodecChange{0};
 	bool mPacketMayBeCorrupt{false};
 	BYTE mCompressedBuffer[maxFrameLengthInBytes];

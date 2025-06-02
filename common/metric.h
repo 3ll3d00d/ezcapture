@@ -16,47 +16,54 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <numeric>
-#include <vector>
 
 class metric
 {
 public:
-    metric(uint8_t sz = 24)
-    {
-        mSamples.reserve(sz);
-        mSamples.resize(sz);
-        mCapacity = sz;
-    }
+	metric(uint16_t sz = 24) : mSize(0), mCapacity(sz)
+	{
+	}
 
-    bool sample(uint64_t sample)
-    {
-        mSamples[mIdx++] = sample;
-        if (mIdx == mSamples.capacity())
-        {
-            mIdx = 0;
-            return true;
-        }
-        return false;
-    }
+	void resize(uint16_t sz)
+	{
+		mCapacity = sz;
+	}
 
-    double mean() const
-    {
-        return static_cast<double>(std::reduce(mSamples.begin(), mSamples.end())) / mCapacity;
-    }
+	bool sample(uint64_t sample)
+	{
+		if (sample == 0) return false;
+		mMin = std::min(sample, mMin);
+		mMax = std::max(sample, mMax);
+		mSum += sample;
+		if (++mSize >= mCapacity)
+		{
+			mMean = static_cast<double>(mSum) / mCapacity;
+			mSize = 0;
+			return true;
+		}
+		return false;
+	}
 
-    uint64_t min() const
-    {
-        return *std::ranges::min_element(mSamples);
-    }
+	double mean() const
+	{
+		return mMean;
+	}
 
-    uint64_t max() const
-    {
-        return *std::ranges::max_element(mSamples);
-    }
+	uint64_t min() const
+	{
+		return mMin;
+	}
+
+	uint64_t max() const
+	{
+		return mMax;
+	}
 
 private:
-    std::vector<uint64_t> mSamples;
-    uint8_t mIdx{0};
-    uint8_t mCapacity;
+	uint16_t mSize;
+	uint16_t mCapacity;
+	uint64_t mMin{0};
+	uint64_t mMax{0};
+	uint64_t mSum{0};
+	double mMean{0.0};
 };

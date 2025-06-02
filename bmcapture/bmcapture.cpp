@@ -76,7 +76,7 @@ void BlackmagicCaptureFilter::LoadFormat(VIDEO_FORMAT* videoFormat, const VIDEO_
 	videoFormat->cy = videoSignal->cy;
 	videoFormat->fps = static_cast<double>(videoSignal->frameDurationScale) / static_cast<double>(videoSignal->
 		frameDuration);
-	videoFormat->frameInterval = 10000000 / videoFormat->fps;
+	videoFormat->frameInterval = 10000000LL / videoFormat->fps;
 	videoFormat->saturation = SATURATION_FULL;
 	switch (videoSignal->pixelFormat)
 	{
@@ -509,10 +509,12 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		mVideoFormat.hdrMeta.transferFunction, mVideoFormat.imageSize);
 	#endif
 
-	auto pin = new BlackmagicVideoCapturePin(phr, this, false, mVideoFormat);
-	pin->UpdateFrameWriterStrategy();
-	pin = new BlackmagicVideoCapturePin(phr, this, true, mVideoFormat);
-	pin->UpdateFrameWriterStrategy();
+	auto vp = new BlackmagicVideoCapturePin(phr, this, false, mVideoFormat);
+	vp->UpdateFrameWriterStrategy();
+	vp->ResizeMetrics(mVideoFormat.fps);
+	vp = new BlackmagicVideoCapturePin(phr, this, true, mVideoFormat);
+	vp->UpdateFrameWriterStrategy();
+	vp->ResizeMetrics(mVideoFormat.fps);
 
 	if (mDeviceInfo.audioChannelCount > 0)
 	{
@@ -522,8 +524,11 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		OnAudioSignalLoaded(&mAudioSignal);
 		OnAudioFormatLoaded(&mAudioFormat);
 
-		new BlackmagicAudioCapturePin(phr, this, false);
-		new BlackmagicAudioCapturePin(phr, this, true);
+		auto ap = new BlackmagicAudioCapturePin(phr, this, false);
+		ap->ResizeMetrics(mVideoFormat.fps);
+
+		ap = new BlackmagicAudioCapturePin(phr, this, true);
+		ap->ResizeMetrics(mVideoFormat.fps);
 	}
 
 	if (deckLinkIterator)
@@ -976,6 +981,16 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 
 		{
 			CAutoLock lock(&mFrameSec);
+
+			if (newVideoFormat.frameInterval != mVideoFormat.frameInterval)
+			{
+				for (auto i = 0; i < m_iPins; i++)
+				{
+					auto pin = dynamic_cast<CapturePin*>(m_paStreams[i]);
+					pin->ResizeMetrics(newVideoFormat.fps);
+				}
+			}
+
 			mVideoFormat = newVideoFormat;
 			mVideoFrame = std::make_shared<VideoFrame>(mLogData, newVideoFormat, now, mVideoFrameTime, frameDuration,
 			                                           mCurrentVideoFrameIndex, videoFrame);

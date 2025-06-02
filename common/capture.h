@@ -521,6 +521,13 @@ public:
 	HRESULT GetMaxStreamOffset(REFERENCE_TIME* prtMaxOffset) override { return E_NOTIMPL; }
 	HRESULT SetMaxStreamOffset(REFERENCE_TIME rtMaxOffset) override { return E_NOTIMPL; }
 
+	void ResizeMetrics(double expectedRefreshRatePerSecond)
+	{
+		auto newSize = std::lrint(expectedRefreshRatePerSecond * 4 / 3); // aim for metrics to update approx once every 750ms
+		mConversionLatency.resize(newSize);
+		mConversionLatency.resize(newSize);
+	}
+
 protected:
 	CapturePin(HRESULT* phr, CSource* pParent, LPCSTR pObjectName, LPCWSTR pPinName, std::string pLogPrefix);
 
