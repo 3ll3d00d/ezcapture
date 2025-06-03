@@ -31,7 +31,7 @@ public:
 
 	bool sample(uint64_t sample)
 	{
-		if (sample == 0) return false;
+		if (sample <= 0) return false;
 		mSnappedMin = std::min(sample, mMin);
 		mSnappedMax = std::max(sample, mMax);
 		mSum += sample;

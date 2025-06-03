@@ -1861,7 +1861,7 @@ HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
 	auto sampleLength = mAudioFormat.bitDepthInBytes * mAudioFormat.outputChannelCount;
 	auto sampleCount = size / sampleLength;
 	auto frameDuration = mAudioFormat.sampleInterval * sampleCount;
-	auto startTime = endTime - static_cast<int64_t>(frameDuration);
+	auto startTime = std::max(endTime - static_cast<int64_t>(frameDuration), 0LL);
 
 	if (mAudioFormat.outputChannelCount == 2)
 	{
@@ -1951,7 +1951,7 @@ HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
 
 	REFERENCE_TIME now;
 	mFilter->GetReferenceTime(&now);
-	auto capLat = now - mCurrentFrameTime - mStreamStartTime;
+	auto capLat = now - mCurrentFrameTime;
 	RecordLatency(capLat);
 
 	#ifndef NO_QUILL
