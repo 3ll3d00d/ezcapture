@@ -89,6 +89,7 @@ private:
 		const __m256i permute = _mm256_setr_epi32(0, 1, 4, 5, 2, 3, 6, 7);
 		const int yWidth = width + pixelsToPad;
 		const int uvWidth = yWidth / 2;
+		const int effectiveWidth = width + pixelsToPad;
 
 		for (int lineNo = 0; lineNo < height; ++lineNo)
 		{
@@ -103,8 +104,8 @@ private:
 				__m256i permuted = _mm256_permutevar8x32_epi32(shuffled, permute);
 				_mm256_storeu2_m128i(reinterpret_cast<__m128i*>(dstLineY), reinterpret_cast<__m128i*>(dstLineUV), permuted);
 				// 32 bytes read
-				uv_out += 16
-				y_out += 16;
+				dstLineUV += 16;
+				dstLineY += 16;
 				src += 32; 
 			}
 		}

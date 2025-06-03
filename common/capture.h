@@ -433,7 +433,33 @@ protected:
 class IAMTimeAware
 {
 public:
-	void SetStartTime(LONGLONG streamStartTime);
+	void SetStartTime(LONGLONG streamStartTime)
+	{
+		mStreamStartTime = streamStartTime;
+
+		#ifndef NO_QUILL
+		LOG_WARNING(mLogData.logger, "[{}] CapturePin::SetStartTime at {}", mLogData.prefix, streamStartTime);
+		#endif
+	}
+
+	virtual void SetStopTime(LONGLONG streamStopTime)
+	{
+		mStreamStopTime = streamStopTime;
+
+		#ifndef NO_QUILL
+		LOG_WARNING(mLogData.logger, "[{}] CapturePin::SetStopTime at {}", mLogData.prefix, streamStopTime);
+		#endif
+	}
+
+	boolean IAmStarted()
+	{
+		return mStreamStartTime > mStreamStopTime;
+	}
+
+	boolean IAmStopped()
+	{
+		return !IAmStarted();
+	}
 
 protected:
 	IAMTimeAware(std::string pLogPrefix, const std::string& pLoggerName)
@@ -446,6 +472,7 @@ protected:
 
 	log_data mLogData{};
 	LONGLONG mStreamStartTime{-1LL};
+	LONGLONG mStreamStopTime{-1LL};
 };
 
 

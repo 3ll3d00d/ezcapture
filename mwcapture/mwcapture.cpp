@@ -1298,7 +1298,7 @@ HRESULT MagewellVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 
 			break;
 		}
-		if (mStreamStartTime < 0)
+		if (IAmStopped())
 		{
 			#ifndef NO_QUILL
 			LOG_TRACE_L1(mLogData.logger, "[{}] Stream has not started, retry after backoff", mLogData.prefix);
@@ -3103,7 +3103,7 @@ HRESULT MagewellAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 			break;
 		}
 
-		if (mStreamStartTime < 0)
+		if (IAmStopped())
 		{
 			#ifndef NO_QUILL
 			LOG_TRACE_L1(mLogData.logger, "[{}] Stream has not started, retry after backoff", mLogData.prefix);

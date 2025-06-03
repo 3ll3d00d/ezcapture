@@ -193,18 +193,27 @@ STDMETHODIMP CaptureFilter::Pause()
 {
 	for (auto i = 0; i < m_iPins; i++)
 	{
-		auto stream = dynamic_cast<CBaseStreamControl*>(m_paStreams[i]);
-		stream->NotifyFilterState(State_Paused);
+		auto s1 = dynamic_cast<CBaseStreamControl*>(m_paStreams[i]);
+		s1->NotifyFilterState(State_Paused);
 	}
 	return CBaseFilter::Pause();
 }
 
 STDMETHODIMP CaptureFilter::Stop()
 {
+	REFERENCE_TIME rt;
+	GetReferenceTime(&rt);
+
+	#ifndef NO_QUILL
+	LOG_INFO(mLogData.logger, "[{}] Filter has stopped running at {}", mLogData.prefix, rt);
+	#endif
+
 	for (auto i = 0; i < m_iPins; i++)
 	{
-		auto stream = dynamic_cast<CBaseStreamControl*>(m_paStreams[i]);
-		stream->NotifyFilterState(State_Stopped);
+		auto stream = dynamic_cast<IAMTimeAware*>(m_paStreams[i]);
+		stream->SetStopTime(rt);
+		auto s1 = dynamic_cast<CBaseStreamControl*>(m_paStreams[i]);
+		s1->NotifyFilterState(State_Stopped);
 	}
 	return CBaseFilter::Stop();
 }
@@ -417,16 +426,6 @@ void CaptureFilter::OnAudioFormatLoaded(AUDIO_FORMAT* af)
 	}
 }
 
-void IAMTimeAware::SetStartTime(LONGLONG streamStartTime)
-{
-	mStreamStartTime = streamStartTime;
-
-	#ifndef NO_QUILL
-	LOG_WARNING(mLogData.logger, "[{}] CapturePin::SetStartTime at {}", mLogData.prefix, streamStartTime);
-	#endif
-}
-
-
 //////////////////////////////////////////////////////////////////////////
 // CapturePin
 //////////////////////////////////////////////////////////////////////////
@@ -475,7 +474,7 @@ HRESULT CapturePin::OnThreadStartPlay()
 
 	PrintResolution(mLogData);
 
-	if (mStreamStartTime < 0)
+	if (IAmStopped())
 	{
 		LOG_WARNING(mLogData.logger, "[{}] Pin worker thread starting at {} but stream not started yet",
 		            mLogData.prefix, rt);

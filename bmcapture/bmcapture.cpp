@@ -1514,7 +1514,7 @@ HRESULT BlackmagicVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, RE
 			mHasSignal = false;
 			break;
 		}
-		if (mStreamStartTime < 0)
+		if (IAmStopped())
 		{
 			#ifndef NO_QUILL
 			LOG_TRACE_L1(mLogData.logger, "[{}] Stream has not started, retry after backoff", mLogData.prefix);
@@ -1730,7 +1730,7 @@ HRESULT BlackmagicAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, RE
 			break;
 		}
 
-		if (mStreamStartTime < 0)
+		if (IAmStopped())
 		{
 			#ifndef NO_QUILL
 			LOG_TRACE_L1(mLogData.logger, "[{}] Stream has not started, retry after backoff", mLogData.prefix);

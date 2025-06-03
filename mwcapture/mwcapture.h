@@ -105,6 +105,19 @@ public:
 	HRESULT FillBuffer(IMediaSample* pms) override;
 	HRESULT OnThreadCreate(void) override;
 
+	//////////////////////////////////////////////////////////////////////////
+	//  IAmTimeAware
+	//////////////////////////////////////////////////////////////////////////
+	void SetStopTime(LONGLONG streamStopTime) override
+	{
+		mStreamStartTime = -1LL;
+		mStreamStopTime = -1LL;
+
+		#ifndef NO_QUILL
+		LOG_WARNING(mLogData.logger, "[{}] MagewellVideoCapturePin::SetStopTime at {}", mLogData.prefix, streamStopTime);
+		#endif
+	}
+
 	void SnapCaptureTime()
 	{
 		GetReferenceTime(&mCaptureTime);
@@ -214,6 +227,19 @@ public:
 	//////////////////////////////////////////////////////////////////////////
 	HRESULT OnThreadCreate(void) override;
 	HRESULT FillBuffer(IMediaSample* pms) override;
+
+	//////////////////////////////////////////////////////////////////////////
+	//  IAmTimeAware
+	//////////////////////////////////////////////////////////////////////////
+	void SetStopTime(LONGLONG streamStopTime) override
+	{
+		mStreamStartTime = -1LL;
+		mStreamStopTime = -1LL;
+
+		#ifndef NO_QUILL
+		LOG_WARNING(mLogData.logger, "[{}] MagewellAudioCapturePin::SetStopTime at {}", mLogData.prefix, streamStopTime);
+		#endif
+	}
 
 protected:
 	class AudioCapture
