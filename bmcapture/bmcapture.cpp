@@ -53,6 +53,15 @@
 // but there can be backlogs so allow for a few frames for safety
 constexpr uint16_t maxSamplesPerFrame = 8192;
 constexpr uint16_t minDisplayWidth = 4096;
+using mics = std::chrono::microseconds;
+constexpr BMDTimeScale referenceTimescale = mics(std::chrono::seconds(1)).count();
+
+static int64_t get_steady_clock_uptime_mics()
+{
+	auto now = std::chrono::steady_clock::now();
+	auto referenceTime = std::chrono::time_point_cast<mics>(now);
+	return referenceTime.time_since_epoch().count();
+}
 
 //////////////////////////////////////////////////////////////////////////
 // BlackmagicCaptureFilter
@@ -650,6 +659,9 @@ HRESULT BlackmagicCaptureFilter::VideoInputFormatChanged(BMDVideoInputFormatChan
 				LOG_INFO(mLogData.logger, "[{}] Restarting video capture on input format change", mLogData.prefix);
 				#endif
 
+				REFERENCE_TIME t1;
+				GetReferenceTime(&t1);
+
 				// Pause the stream, update the capture format, flush and start streams
 				auto result = mDeckLinkInput->PauseStreams();
 				if (S_OK != result)
@@ -703,8 +715,17 @@ HRESULT BlackmagicCaptureFilter::VideoInputFormatChanged(BMDVideoInputFormatChan
 				}
 				else
 				{
+					REFERENCE_TIME t2;
+					GetReferenceTime(&t2);
+
+					auto delta = t2 - t1;
+					mVideoFrameTime += delta;
+					mAudioFrameTime += delta;
+
 					#ifndef NO_QUILL
-					LOG_INFO(mLogData.logger, "[{}] Restarted video capture on input format change", mLogData.prefix);
+					LOG_INFO(mLogData.logger,
+					         "[{}] Restarted video capture on input format change, frame time increased by {} to compensate",
+					         mLogData.prefix, delta);
 					#endif
 				}
 			}
@@ -743,12 +764,23 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 		else
 		{
 			#ifndef NO_QUILL
-			LOG_ERROR(mLogData.logger, "[{}] Discarding video frame, unable to get reference timestamp {:#08x}",
+			LOG_ERROR(mLogData.logger, "[{}] Discarding video frame, unable to get stream time {:#08x}",
 			          mLogData.prefix, static_cast<unsigned long>(result));
 			#endif
 
 			return E_FAIL;
 		}
+
+		int64_t referenceFrameTime;
+		int64_t referenceFrameDuration;
+
+		// Get the captured timestamp for the incoming frame
+		if (videoFrame->GetHardwareReferenceTimestamp(referenceTimescale, &referenceFrameTime, &referenceFrameDuration)
+			!= S_OK)
+			return E_FAIL;
+
+		// The time for start of frame on the wire is the timestamp attached to the frame at completion minus the frame duration
+		auto captureTime = referenceFrameTime - referenceFrameDuration;
 
 		VIDEO_FORMAT newVideoFormat{};
 		LoadFormat(&newVideoFormat, &mVideoSignal);
@@ -992,7 +1024,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			}
 
 			mVideoFormat = newVideoFormat;
-			mVideoFrame = std::make_shared<VideoFrame>(mLogData, newVideoFormat, now, mVideoFrameTime, frameDuration,
+			mVideoFrame = std::make_shared<VideoFrame>(mLogData, newVideoFormat, captureTime, mVideoFrameTime, frameDuration,
 			                                           mCurrentVideoFrameIndex, videoFrame);
 		}
 
@@ -1598,8 +1630,8 @@ HRESULT BlackmagicVideoCapturePin::FillBuffer(IMediaSample* pms)
 
 	AppendHdrSideDataIfNecessary(pms, endTime);
 
-	REFERENCE_TIME now;
-	mFilter->GetReferenceTime(&now);
+	auto now = get_steady_clock_uptime_mics();
+
 	auto t1 = std::chrono::high_resolution_clock::now();
 
 	if (mFrameWriter->WriteTo(mCurrentFrame.get(), pms) != S_OK)
@@ -1801,7 +1833,7 @@ HRESULT BlackmagicAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, RE
 				hasFrame = true;
 				mFrameCounter++;
 				#ifndef NO_QUILL
-				LOG_TRACE_L2(mLogData.logger, "[{}] Reading frame {}", mLogData.prefix, mFrameCounter);
+				LOG_TRACE_L3(mLogData.logger, "[{}] Reading frame {}", mLogData.prefix, mFrameCounter);
 				#endif
 			}
 			else
@@ -1951,7 +1983,7 @@ HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
 
 	REFERENCE_TIME now;
 	mFilter->GetReferenceTime(&now);
-	auto capLat = now - mCurrentFrameTime;
+	auto capLat = now - mCurrentFrame->GetCaptureTime();
 	RecordLatency(capLat);
 
 	#ifndef NO_QUILL

@@ -3309,7 +3309,7 @@ HRESULT MagewellAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 		{
 			mFrameCounter++;
 			#ifndef NO_QUILL
-			LOG_TRACE_L2(mLogData.logger, "[{}] Reading frame {}", mLogData.prefix, mFrameCounter);
+			LOG_TRACE_L3(mLogData.logger, "[{}] Reading frame {}", mLogData.prefix, mFrameCounter);
 			#endif
 
 			#ifdef RECORD_RAW
