@@ -19,32 +19,132 @@
 #include <LibMWCapture/MWHDMIPackets.h>
 #include "domain.h"
 
+enum DeviceType : uint8_t
+{
+	USB_PLUS,
+	USB_PRO,
+	PRO
+};
+
+inline const char* devicetype_to_name(DeviceType e)
+{
+	switch (e)
+	{
+	case USB_PLUS: return "USB_PLUS";
+	case USB_PRO: return "USB_PRO";
+	case PRO: return "PRO";
+	default: return "unknown";
+	}
+}
+
 constexpr auto chromaticity_scale_factor = 0.00002;
 constexpr auto high_luminance_scale_factor = 1.0;
 constexpr auto low_luminance_scale_factor = 0.0001;
 
+constexpr int bitDepthCount = 3;
+constexpr int subsamplingCount = 4;
+
+typedef std::array<std::array<pixel_format, 4>, 3> pixel_format_by_bit_depth_subsampling;
+typedef std::map<pixel_format, std::vector<pixel_format>> pixel_format_alternatives;
+
 // bit depth -> pixel_encoding -> pixel_format
 // rgb - 4:2:2 - 4:4:4 - 4:2:0
-const pixel_format proPixelFormats[3][4] = {
-	// 8 bit
-	{BGR24, NV16, AYUV, NV12},
-	// 10 bit
-	{BGR10, P210, AYUV, P010},
-	// 12 bit
-	{BGR10, P210, AYUV, P010}
+// 8 - 10 - 12 bit
+const pixel_format_by_bit_depth_subsampling proPixelFormats{
+	{
+		{BGR24, NV16, AYUV, NV12},
+		{BGR10, P210, AYUV, P010},
+		{BGR10, P210, AYUV, P010}
+	}
 };
 
-const pixel_format usbPlusPixelFormats[3][4] = {
-	{BGR24, UYVY, UYVY, NV12},
-	{BGR24, UYVY, UYVY, NV12},
-	{BGR24, UYVY, UYVY, NV12},
+const pixel_format_by_bit_depth_subsampling usbPlusPixelFormats{
+	{
+		{BGR24, UYVY, UYVY, NV12},
+		{BGR24, UYVY, UYVY, NV12},
+		{BGR24, UYVY, UYVY, NV12},
+	}
 };
 
-const pixel_format usbProPixelFormats[3][4] = {
-	{BGR24, Y210, Y210, P010},
-	{BGR24, Y210, Y210, P010},
-	{BGR24, Y210, Y210, P010},
+const pixel_format_by_bit_depth_subsampling usbProPixelFormats{
+	{
+		{BGR24, Y210, Y210, P010},
+		{BGR24, Y210, Y210, P010},
+		{BGR24, Y210, Y210, P010},
+	}
 };
+
+const pixel_format_alternatives usbProPixelFormatAlternatives = {
+	{BGR24, {Y210, UYVY, YUY2, P010, NV12}},
+	{Y210, {P010, BGR24, UYVY, YUY2, NV12}},
+	{P010, {Y210, BGR24, NV12, UYVY, YUY2}},
+};
+
+const pixel_format_alternatives usbPlusPixelFormatAlternatives = {
+	{BGR24, {UYVY, YUY2, NV12}},
+	{UYVY, {YUY2, BGR24, NV12}},
+	{NV12, {UYVY, YUY2, BGR24}},
+};
+
+const std::map<DeviceType, pixel_format_alternatives> formatAlternativesByDeviceType = {
+	{USB_PLUS, usbPlusPixelFormatAlternatives},
+	{USB_PRO, usbProPixelFormatAlternatives}
+};
+
+inline pixel_format_by_bit_depth_subsampling generatePixelFormatMatrix(DeviceType deviceType,
+                                                                       const std::vector<DWORD>& fourccs)
+{
+	if (deviceType == PRO)
+	{
+		return proPixelFormats;
+	}
+
+	pixel_format_alternatives alternatives = deviceType == USB_PRO
+		                                         ? usbProPixelFormatAlternatives
+		                                         : usbPlusPixelFormatAlternatives;
+	pixel_format_by_bit_depth_subsampling proposed = deviceType == USB_PRO ? usbProPixelFormats : usbPlusPixelFormats;
+
+
+	auto formatExists = [&, fourccs](DWORD target) { return std::ranges::find(fourccs, target) != fourccs.end(); };
+	auto findReplacement = [&, deviceType](const pixel_format& format)
+	{
+		auto formatAlternatives = formatAlternativesByDeviceType.find(deviceType);
+		if (formatAlternatives != formatAlternativesByDeviceType.end())
+		{
+			auto fallbacksByDeviceType = formatAlternatives->second;
+			auto fallbacks = fallbacksByDeviceType.find(format);
+			if (fallbacks != fallbacksByDeviceType.end())
+			{
+				for (auto& fallback : fallbacks->second)
+				{
+					if (formatExists(fallback.fourcc))
+					{
+						return fallback;
+					}
+				}
+			}
+		}
+		return NA;
+	};
+
+
+	for (int i = 0; i < bitDepthCount; ++i)
+	{
+		for (int j = 0; j < subsamplingCount; j++)
+		{
+			auto& format = proposed[i][j];
+			if (!formatExists(format.fourcc))
+			{
+				auto replacement = findReplacement(format);
+				if (replacement != NA)
+				{
+					proposed[i][j] = replacement;
+				}
+			}
+		}
+	}
+	return proposed;
+}
 
 // utility functions
 inline void LoadHdrMeta(HDR_META* meta, const HDMI_HDR_INFOFRAME_PAYLOAD* frame)
@@ -158,7 +258,7 @@ EXTERN_C const GUID CLSID_MWCAPTURE_FILTER;
 
 struct USB_CAPTURE_FORMATS
 {
-	bool usb{ false };
+	bool usb{false};
 	MWCAP_VIDEO_OUTPUT_FOURCC fourccs;
 	MWCAP_VIDEO_OUTPUT_FRAME_INTERVAL frameIntervals;
 	MWCAP_VIDEO_OUTPUT_FRAME_SIZE frameSizes;
@@ -182,38 +282,20 @@ struct AUDIO_SIGNAL
 	HDMI_AUDIO_INFOFRAME_PAYLOAD audioInfo;
 };
 
-enum DeviceType : uint8_t
-{
-	USB_PLUS,
-	USB_PRO,
-	PRO
-};
-
-inline const char* devicetype_to_name(DeviceType e)
-{
-	switch (e)
-	{
-	case USB_PLUS: return "USB_PLUS";
-	case USB_PRO: return "USB_PRO";
-	case PRO: return "PRO";
-	default: return "unknown";
-	}
-}
-
 struct DEVICE_INFO
 {
 	DeviceType deviceType;
 	std::string serialNo{};
 	WCHAR devicePath[128];
 	HCHANNEL hChannel;
-	double temperature{ 0.0 };
-	int64_t linkSpeed{ 0 };
+	double temperature{0.0};
+	int64_t linkSpeed{0};
 	// pcie only
-	int64_t linkWidth{ -1 };
-	int16_t maxPayloadSize{ -1 };
-	int16_t maxReadRequestSize{ -1 };
+	int64_t linkWidth{-1};
+	int16_t maxPayloadSize{-1};
+	int16_t maxReadRequestSize{-1};
 	// usb pro only
-	int16_t fanSpeed{ -1 };
+	int16_t fanSpeed{-1};
 };
 
 struct captured_frame

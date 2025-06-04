@@ -183,6 +183,7 @@ protected:
 		HANDLE mEvent;
 	};
 
+	pixel_format_by_bit_depth_subsampling mPixelFormatMatrix;
 	// Common - temp 
 	HNOTIFY mNotify;
 	uint64_t mStatusBits = 0;

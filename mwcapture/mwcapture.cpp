@@ -831,10 +831,11 @@ MagewellVideoCapturePin::MagewellVideoCapturePin(HRESULT* phr, MagewellCaptureFi
 	mNotify(nullptr),
 	mCaptureEvent(nullptr),
 	mNotifyEvent(CreateEvent(nullptr, FALSE, FALSE, nullptr)),
-	mLastMwResult()
+	mLastMwResult(),
+	mPixelFormatMatrix(proPixelFormats)
 {
 	auto hChannel = mFilter->GetChannelHandle();
-
+	
 	if (mFilter->GetDeviceType() != PRO)
 	{
 		if (MW_SUCCEEDED == MWUSBGetVideoOutputFOURCC(hChannel, &mUsbCaptureFormats.fourccs))
@@ -882,6 +883,9 @@ MagewellVideoCapturePin::MagewellVideoCapturePin(HRESULT* phr, MagewellCaptureFi
 						LOG_INFO(mLogData.logger, "[{}] USB frame sizes {}", mLogData.prefix, tmp);
 					}
 					#endif
+
+					std::vector<DWORD> fourccs(mUsbCaptureFormats.fourccs.adwFOURCCs, std::end(mUsbCaptureFormats.fourccs.adwFOURCCs));
+					mPixelFormatMatrix = generatePixelFormatMatrix(mFilter->GetDeviceType(), fourccs);
 				}
 				else
 				{
@@ -994,13 +998,8 @@ void MagewellVideoCapturePin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL
 	auto pfIdx = bitDepth == 8 ? 0 : bitDepth == 10 ? 1 : 2;
 
 	auto deviceType = mFilter->GetDeviceType();
-	auto pixelFormats = deviceType == PRO
-		                    ? proPixelFormats
-		                    : deviceType == USB_PLUS
-		                    ? usbPlusPixelFormats
-		                    : usbProPixelFormats;
 	videoFormat->bottomUpDib = deviceType == PRO;
-	videoFormat->pixelFormat = pixelFormats[pfIdx][subsampling];
+	videoFormat->pixelFormat = mPixelFormatMatrix[pfIdx][subsampling];
 	if (videoFormat->colourFormat == REC709)
 	{
 		videoFormat->colourFormatName = "REC709";
