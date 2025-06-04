@@ -743,12 +743,12 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 			if (pin->mVideoFormat.pixelFormat.format == pixel_format::AYUV)
 			{
 				LOG_TRACE_L2(mLogData.logger, "[{}] Converted VUYA to AYUV in {:.3f} ms", mLogData.prefix,
-					static_cast<double>(execTime) / 1000.0);
+				             static_cast<double>(execTime) / 1000.0);
 			}
 			else
 			{
 				LOG_TRACE_L2(mLogData.logger, "[{}] Converted 010P to P010 in {:.3f} ms", mLogData.prefix,
-					static_cast<double>(execTime) / 1000.0);
+				             static_cast<double>(execTime) / 1000.0);
 			}
 			#endif
 		}
@@ -835,7 +835,7 @@ MagewellVideoCapturePin::MagewellVideoCapturePin(HRESULT* phr, MagewellCaptureFi
 	mPixelFormatMatrix(proPixelFormats)
 {
 	auto hChannel = mFilter->GetChannelHandle();
-	
+
 	if (mFilter->GetDeviceType() != PRO)
 	{
 		if (MW_SUCCEEDED == MWUSBGetVideoOutputFOURCC(hChannel, &mUsbCaptureFormats.fourccs))
@@ -884,8 +884,22 @@ MagewellVideoCapturePin::MagewellVideoCapturePin(HRESULT* phr, MagewellCaptureFi
 					}
 					#endif
 
-					std::vector<DWORD> fourccs(mUsbCaptureFormats.fourccs.adwFOURCCs, std::end(mUsbCaptureFormats.fourccs.adwFOURCCs));
+					std::vector<DWORD> fourccs(mUsbCaptureFormats.fourccs.adwFOURCCs,
+					                           std::end(mUsbCaptureFormats.fourccs.adwFOURCCs));
 					mPixelFormatMatrix = generatePixelFormatMatrix(mFilter->GetDeviceType(), fourccs);
+					#ifndef NO_QUILL
+					{
+						for (int i = 0; i < bitDepthCount; ++i)
+						{
+							auto& formats = mPixelFormatMatrix[i];
+							auto tmp = std::format("[RGB: {}, 4:2:0: {}, 4:2:2: {}, 4:4:4: {}]",
+							                       formats[0].name, formats[3].name, formats[1].name, formats[2].name);
+							auto depth = i == 0 ? "8" : i == 1 ? "10" : "12";
+							LOG_INFO(mLogData.logger, "[{}] Pixel format mapping: {} bit {}", mLogData.prefix, depth,
+							         tmp);
+						}
+					}
+					#endif
 				}
 				else
 				{
