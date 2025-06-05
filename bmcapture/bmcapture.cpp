@@ -705,6 +705,8 @@ HRESULT BlackmagicCaptureFilter::VideoInputFormatChanged(BMDVideoInputFormatChan
 				}
 				#endif
 
+				mPreviousVideoFrameTime = invalidFrameTime;
+
 				result = mDeckLinkInput->StartStreams();
 				if (S_OK != result)
 				{
@@ -807,6 +809,10 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			}
 		}
 		mPreviousVideoFrameTime = frameTime;
+
+		#ifndef NO_QUILL
+		LOG_TRACE_L2(mLogData.logger, "[{}] Captured video frame {} at {}", mLogData.prefix, mCurrentVideoFrameIndex, frameTime);
+		#endif
 
 		// metadata
 		auto doubleValue = 0.0;
@@ -1086,12 +1092,16 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 				#ifndef NO_QUILL
 				LOG_WARNING(mLogData.logger,
 				            "[{}] Audio capture discontinuity detected, {} frames missed at frame {}, increasing frame time to compensate",
-				            mLogData.prefix, missedFrames, mCurrentVideoFrameIndex);
+				            mLogData.prefix, missedFrames, mCurrentAudioFrameIndex);
 				#endif
 				mAudioFrameTime += missedFrames * mVideoFormat.frameInterval;
 			}
 		}
 		mPreviousAudioFrameTime = frameTime;
+
+		#ifndef NO_QUILL
+		LOG_TRACE_L2(mLogData.logger, "[{}] Captured audio frame {} at {}", mLogData.prefix, mCurrentAudioFrameIndex, frameTime);
+		#endif
 
 		{
 			auto audioByteDepth = audioBitDepth / 8;
