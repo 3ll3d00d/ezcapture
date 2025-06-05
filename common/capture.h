@@ -109,8 +109,9 @@ inline void logVideoMediaType(const log_data& log, const std::string& desc, cons
 	#endif
 }
 
-void doLogHdrMeta(HDR_META newMeta, const log_data& log, bool logPrimaries, bool logWp, bool logMax, bool logTf)
+inline void doLogHdrMeta(HDR_META newMeta, const log_data& log, bool logPrimaries, bool logWp, bool logMax, bool logTf)
 {
+	#ifndef NO_QUILL
 	if (logPrimaries)
 	{
 		LOG_INFO(log.logger, "[{}] Primaries RGB {:.4f} x {:.4f} {:.4f} x {:.4f} {:.4f} x {:.4f}",
@@ -132,6 +133,7 @@ void doLogHdrMeta(HDR_META newMeta, const log_data& log, bool logPrimaries, bool
 	{
 		LOG_INFO(log.logger, "[{}] Transfer Function {}", log.prefix, newMeta.transferFunction);
 	}
+	#endif
 }
 
 inline void logHdrMeta(HDR_META newMeta, HDR_META oldMeta, log_data log)
