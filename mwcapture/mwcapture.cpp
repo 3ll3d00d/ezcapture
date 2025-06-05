@@ -706,8 +706,8 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 	if (hasFrame)
 	{
 		// in place byteswap so no need for frame conversion buffer
-		if (pin->mVideoFormat.pixelFormat.format == pixel_format::AYUV
-			|| pin->mVideoFormat.pixelFormat.format == pixel_format::P010)
+		if (pin->mVideoFormat.pixelFormat.format == pixel_format::AYUV)
+			// || pin->mVideoFormat.pixelFormat.format == pixel_format::P010)
 		{
 			auto t1 = std::chrono::high_resolution_clock::now();
 

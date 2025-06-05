@@ -1001,6 +1001,10 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			{
 				logHdrMeta(hdr, mVideoFormat.hdrMeta, mLogData);
 			}
+			else
+			{
+				
+			}
 			#endif
 		}
 

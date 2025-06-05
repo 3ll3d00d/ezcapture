@@ -109,6 +109,31 @@ inline void logVideoMediaType(const log_data& log, const std::string& desc, cons
 	#endif
 }
 
+void doLogHdrMeta(HDR_META newMeta, const log_data& log, bool logPrimaries, bool logWp, bool logMax, bool logTf)
+{
+	if (logPrimaries)
+	{
+		LOG_INFO(log.logger, "[{}] Primaries RGB {:.4f} x {:.4f} {:.4f} x {:.4f} {:.4f} x {:.4f}",
+		         log.prefix,
+		         newMeta.r_primary_x, newMeta.r_primary_y, newMeta.g_primary_x, newMeta.g_primary_y,
+		         newMeta.b_primary_x, newMeta.b_primary_y);
+	}
+	if (logWp)
+	{
+		LOG_INFO(log.logger, "[{}] Whitepoint {:.4f} x {:.4f}", log.prefix,
+		         newMeta.whitepoint_x, newMeta.whitepoint_y);
+	}
+	if (logMax)
+	{
+		LOG_INFO(log.logger, "[{}] DML/MaxCLL/MaxFALL {:.4f} / {:.4f} {} {}", log.prefix,
+		         newMeta.minDML, newMeta.maxDML, newMeta.maxCLL, newMeta.maxFALL);
+	}
+	if (logTf)
+	{
+		LOG_INFO(log.logger, "[{}] Transfer Function {}", log.prefix, newMeta.transferFunction);
+	}
+}
+
 inline void logHdrMeta(HDR_META newMeta, HDR_META oldMeta, log_data log)
 {
 	#ifndef NO_QUILL
@@ -149,33 +174,14 @@ inline void logHdrMeta(HDR_META newMeta, HDR_META oldMeta, log_data log)
 			LOG_INFO(log.logger, "[{}] HDR metadata is now present", log.prefix);
 		}
 
-		if (logPrimaries)
-		{
-			LOG_INFO(log.logger, "[{}] Primaries RGB {:.4f} x {:.4f} {:.4f} x {:.4f} {:.4f} x {:.4f}",
-			         log.prefix,
-			         newMeta.r_primary_x, newMeta.r_primary_y, newMeta.g_primary_x, newMeta.g_primary_y,
-			         newMeta.b_primary_x, newMeta.b_primary_y);
-		}
-		if (logWp)
-		{
-			LOG_INFO(log.logger, "[{}] Whitepoint {:.4f} x {:.4f}", log.prefix,
-			         newMeta.whitepoint_x, newMeta.whitepoint_y);
-		}
-		if (logMax)
-		{
-			LOG_INFO(log.logger, "[{}] DML/MaxCLL/MaxFALL {:.4f} / {:.4f} {} {}", log.prefix,
-			         newMeta.minDML, newMeta.maxDML, newMeta.maxCLL, newMeta.maxFALL);
-		}
-		if (logTf)
-		{
-			LOG_INFO(log.logger, "[{}] Transfer Function {}", log.prefix, newMeta.transferFunction);
-		}
+		doLogHdrMeta(newMeta, log, logPrimaries, logWp, logMax, logTf);
 	}
 	else
 	{
 		LOG_WARNING(log.logger,
 		            "[{}] HDR InfoFrame parsing failure, values are present but no metadata exists",
 		            log.prefix);
+		doLogHdrMeta(newMeta, log, true, true, true, false);
 	}
 	#endif
 }
