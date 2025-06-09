@@ -49,7 +49,7 @@ TEST(HDR, CanParseHDRInfoFrame)
 
 	LoadHdrMeta(&o, &i);
 
-	EXPECT_TRUE(o.exists);
+	EXPECT_TRUE(o.exists());
 	EXPECT_EQ(o.r_primary_x, 35400);
 	EXPECT_EQ(o.r_primary_y, 14600);
 	EXPECT_EQ(o.g_primary_x, 8500);

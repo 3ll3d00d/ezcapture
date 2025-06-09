@@ -251,7 +251,7 @@ inline std::optional<pixel_format> findByFourCC(uint32_t fourcc)
 	                                        [&fourcc](const pixel_format& arg) { return arg.fourcc == fourcc; });
 	if (match != all_pixel_formats.end())
 	{
-		return { *match };
+		return {*match};
 	}
 	return std::nullopt;
 }
@@ -276,7 +276,6 @@ struct DEVICE_STATUS
 
 struct HDR_META
 {
-	bool exists{false};
 	double r_primary_x{0.0};
 	double r_primary_y{0.0};
 	double g_primary_x{0.0};
@@ -290,6 +289,23 @@ struct HDR_META
 	int maxCLL{0};
 	int maxFALL{0};
 	int transferFunction{4};
+
+	boolean exists() const
+	{
+		return
+			r_primary_x != 0.0 &&
+			r_primary_y != 0.0 &&
+			g_primary_x != 0.0 &&
+			g_primary_y != 0.0 &&
+			b_primary_x != 0.0 &&
+			b_primary_y != 0.0 &&
+			whitepoint_x != 0.0 &&
+			whitepoint_y != 0.0 &&
+			minDML != 0.0 &&
+			maxDML != 0.0 &&
+			maxCLL != 0 &&
+			maxFALL != 0;
+	}
 };
 
 inline boolean hdrMetaExists(const HDR_META* hdrOut)

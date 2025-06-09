@@ -213,8 +213,6 @@ inline void LoadHdrMeta(HDR_META* meta, const HDMI_HDR_INFOFRAME_PAYLOAD* frame)
 	hdrOut->maxFALL = hdrIn.maximum_frame_average_light_level_lsb + (hdrIn.maximum_frame_average_light_level_msb << 8);
 
 	hdrOut->transferFunction = hdrIn.byEOTF == 0x2 ? 15 : 4;
-
-	hdrOut->exists = hdrMetaExists(hdrOut);
 }
 
 // HDMI Audio Bitstream Codec Identification metadata

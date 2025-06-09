@@ -109,7 +109,7 @@ inline void logVideoMediaType(const log_data& log, const std::string& desc, cons
 	#endif
 }
 
-inline void doLogHdrMeta(HDR_META newMeta, const log_data& log, bool logPrimaries, bool logWp, bool logMax, bool logTf)
+inline void doLogHdrMeta(const HDR_META& newMeta, const log_data& log, bool logPrimaries, bool logWp, bool logMax, bool logTf)
 {
 	#ifndef NO_QUILL
 	if (logPrimaries)
@@ -136,16 +136,16 @@ inline void doLogHdrMeta(HDR_META newMeta, const log_data& log, bool logPrimarie
 	#endif
 }
 
-inline void logHdrMeta(HDR_META newMeta, HDR_META oldMeta, log_data log)
+inline void logHdrMeta(const HDR_META& newMeta, const HDR_META& oldMeta, const log_data& log)
 {
 	#ifndef NO_QUILL
-	if (newMeta.exists)
+	if (newMeta.exists())
 	{
 		bool logPrimaries;
 		bool logWp;
 		bool logMax;
 		bool logTf;
-		if (oldMeta.exists)
+		if (oldMeta.exists())
 		{
 			logPrimaries =
 				diff(newMeta.r_primary_x, oldMeta.r_primary_x)
@@ -871,7 +871,7 @@ protected:
 		if (endTime > mLastSentHdrMetaAt + dshowTicksPerSecond)
 		{
 			mLastSentHdrMetaAt = endTime;
-			if (mVideoFormat.hdrMeta.exists)
+			if (mVideoFormat.hdrMeta.exists())
 			{
 				// This can fail if you have a filter behind this which does not understand side data
 				IMediaSideData* pMediaSideData = nullptr;

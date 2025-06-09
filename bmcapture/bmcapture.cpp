@@ -811,7 +811,8 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 		mPreviousVideoFrameTime = frameTime;
 
 		#ifndef NO_QUILL
-		LOG_TRACE_L2(mLogData.logger, "[{}] Captured video frame {} at {}", mLogData.prefix, mCurrentVideoFrameIndex, frameTime);
+		LOG_TRACE_L2(mLogData.logger, "[{}] Captured video frame {} at {}", mLogData.prefix, mCurrentVideoFrameIndex,
+		             frameTime);
 		#endif
 
 		// metadata
@@ -1000,22 +1001,14 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			{
 				// not present or invalid
 			}
-			newVideoFormat.hdrMeta.exists = hdrMetaExists(&hdr);
 
 			#ifndef NO_QUILL
-			if (newVideoFormat.hdrMeta.exists)
-			{
-				logHdrMeta(hdr, mVideoFormat.hdrMeta, mLogData);
-			}
-			else
-			{
-				
-			}
+			logHdrMeta(hdr, mVideoFormat.hdrMeta, mLogData);
 			#endif
 		}
 
 		#ifndef NO_QUILL
-		if (!newVideoFormat.hdrMeta.exists && mVideoFormat.hdrMeta.exists)
+		if (!newVideoFormat.hdrMeta.exists() && mVideoFormat.hdrMeta.exists())
 		{
 			LOG_TRACE_L1(mLogData.logger, "[{}] HDR metadata has been removed", mLogData.prefix);
 		}
@@ -1034,7 +1027,8 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			}
 
 			mVideoFormat = newVideoFormat;
-			mVideoFrame = std::make_shared<VideoFrame>(mLogData, newVideoFormat, captureTime, mVideoFrameTime, frameDuration,
+			mVideoFrame = std::make_shared<VideoFrame>(mLogData, newVideoFormat, captureTime, mVideoFrameTime,
+			                                           frameDuration,
 			                                           mCurrentVideoFrameIndex, videoFrame);
 		}
 
@@ -1100,7 +1094,8 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 		mPreviousAudioFrameTime = frameTime;
 
 		#ifndef NO_QUILL
-		LOG_TRACE_L2(mLogData.logger, "[{}] Captured audio frame {} at {}", mLogData.prefix, mCurrentAudioFrameIndex, frameTime);
+		LOG_TRACE_L2(mLogData.logger, "[{}] Captured audio frame {} at {}", mLogData.prefix, mCurrentAudioFrameIndex,
+		             frameTime);
 		#endif
 
 		{
@@ -1660,16 +1655,19 @@ HRESULT BlackmagicVideoCapturePin::FillBuffer(IMediaSample* pms)
 	RecordLatency(convLat, capLat);
 
 	#ifndef NO_QUILL
+	REFERENCE_TIME rt;
+	GetReferenceTime(&rt);
+
 	if (mFrameCounter == 1)
 	{
 		LOG_TRACE_L1(mLogData.logger,
-		             "[{}] Captured video frame H|f_idx,cap_lat,conv_lat,ptime,ctime,interval,delta,dur,len,gap",
+		             "[{}] Captured video frame H|f_idx,cap_lat,conv_lat,pt,st,et,ct,interval,delta,dur,len,gap",
 		             mLogData.prefix);
 	}
 	auto frameInterval = mCurrentFrameTime - mPreviousFrameTime;
-	LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame D|{},{:.3f},{:.3f},{},{},{},{},{},{},{}", mLogData.prefix,
-	             mFrameCounter, static_cast<double>(capLat) / 1000.0, static_cast<double>(convLat) / 1000.0,
-	             mPreviousFrameTime, mCurrentFrameTime, frameInterval,
+	LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame D|{},{:.3f},{:.3f},{},{},{},{},{},{},{},{},{}",
+	             mLogData.prefix, mFrameCounter, static_cast<double>(capLat) / 1000.0,
+	             static_cast<double>(convLat) / 1000.0, mPreviousFrameTime, startTime, endTime, rt, frameInterval,
 	             frameInterval - mCurrentFrame->GetFrameDuration(), mCurrentFrame->GetFrameDuration(),
 	             mCurrentFrame->GetLength(), gap);
 	#endif
@@ -1710,11 +1708,13 @@ void BlackmagicVideoCapturePin::DoThreadDestroy()
 void BlackmagicVideoCapturePin::LogHdrMetaIfPresent(const VIDEO_FORMAT* newVideoFormat)
 {
 	#ifndef NO_QUILL
-	if (newVideoFormat->hdrMeta.exists && !mVideoFormat.hdrMeta.exists)
+	auto nowExists = newVideoFormat->hdrMeta.exists();
+	auto didExist = mVideoFormat.hdrMeta.exists();
+	if (nowExists && !didExist)
 	{
 		logHdrMeta(newVideoFormat->hdrMeta, mVideoFormat.hdrMeta, mLogData);
 	}
-	if (!newVideoFormat->hdrMeta.exists && mVideoFormat.hdrMeta.exists)
+	if (!nowExists && didExist)
 	{
 		LOG_TRACE_L1(mLogData.logger, "[{}] HDR metadata has been removed", mLogData.prefix);
 	}
@@ -2003,13 +2003,15 @@ HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
 	#ifndef NO_QUILL
 	if (mFrameCounter == 1)
 	{
-		LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame H|codec,idx,lat,stime,ptime,ctime,delta,len,count",
+		LOG_TRACE_L1(mLogData.logger,
+		             "[{}] Captured audio frame H|codec,idx,lat,pt,st,et,ct,delta,len,count",
 		             mLogData.prefix);
 	}
-	LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame D|{},{},{},{},{},{},{},{},{}",
+	LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame D|{},{},{},{},{},{},{},{},{},{}",
 	             mLogData.prefix, codecNames[mAudioFormat.codec],
 	             mFrameCounter, capLat, startTime, mPreviousFrameTime,
-	             mCurrentFrameTime, mCurrentFrameTime - mPreviousFrameTime, mCurrentFrame->GetLength(), sampleCount);
+	             mCurrentFrameTime, mCurrentFrameTime - mPreviousFrameTime, now,
+	             mCurrentFrame->GetLength(), sampleCount);
 	#endif
 
 	if (mUpdatedMediaType)

@@ -707,7 +707,7 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 	{
 		// in place byteswap so no need for frame conversion buffer
 		if (pin->mVideoFormat.pixelFormat.format == pixel_format::AYUV)
-			// || pin->mVideoFormat.pixelFormat.format == pixel_format::P010)
+		// || pin->mVideoFormat.pixelFormat.format == pixel_format::P010)
 		{
 			auto t1 = std::chrono::high_resolution_clock::now();
 
@@ -782,23 +782,25 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 		if (pin->mFrameCounter == 1)
 		{
 			LOG_TRACE_L1(mLogData.logger,
-			             "[{}] Captured video frame H|f_idx,cap_lat,conv_lat,ptime,ctime,a_int,delta,v_int,len,missed",
+			             "[{}] Captured video frame H|f_idx,cap_lat,conv_lat,pft,st,et,ct,cft,a_int,delta,v_int,len,missed",
 			             mLogData.prefix);
 		}
 		auto frameInterval = pin->mCurrentFrameTime - pin->mPreviousFrameTime;
 		auto sz = pms->GetSize();
+
+		REFERENCE_TIME rt;
+		pin->GetReferenceTime(&rt);
 
 		if (pin->mVideoFormat.imageSize != sz)
 		{
 			LOG_TRACE_L3(mLogData.logger, "[{}] Video format size mismatch (format: {} buffer: {})", mLogData.prefix,
 			             pin->mVideoFormat.imageSize, sz);
 		}
-		LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame D|{},{:.3f},{:.3f},{},{},{},{},{},{},{}",
-		             mLogData.prefix,
-		             pin->mFrameCounter, static_cast<double>(capLat) / 1000.0, static_cast<double>(convLat) / 1000.0,
-		             pin->mPreviousFrameTime, pin->mCurrentFrameTime, frameInterval,
-		             frameInterval - pin->mVideoFormat.frameInterval, pin->mVideoFormat.frameInterval,
-		             pin->mVideoFormat.imageSize, missedFrame);
+		LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame D|{},{:.3f},{:.3f},{},{},{},{},{},{},{},{},{},{}",
+		             mLogData.prefix, pin->mFrameCounter, static_cast<double>(capLat) / 1000.0,
+		             static_cast<double>(convLat) / 1000.0, pin->mPreviousFrameTime, startTime, endTime, rt,
+		             pin->mCurrentFrameTime, frameInterval, frameInterval - pin->mVideoFormat.frameInterval,
+		             pin->mVideoFormat.frameInterval, pin->mVideoFormat.imageSize, missedFrame);
 		#endif
 	}
 	else
@@ -1127,7 +1129,7 @@ void MagewellVideoCapturePin::LogHdrMetaIfPresent(const VIDEO_FORMAT* newVideoFo
 	{
 		logHdrMeta(newVideoFormat->hdrMeta, mVideoFormat.hdrMeta, mLogData);
 	}
-	if (!newVideoFormat->hdrMeta.exists && mVideoFormat.hdrMeta.exists)
+	if (!newVideoFormat->hdrMeta.exists() && mVideoFormat.hdrMeta.exists())
 	{
 		LOG_TRACE_L1(mLogData.logger, "[{}] HDR metadata has been removed", mLogData.prefix);
 	}
@@ -2955,13 +2957,14 @@ HRESULT MagewellAudioCapturePin::FillBuffer(IMediaSample* pms)
 	#ifndef NO_QUILL
 	if (mFrameCounter == 1)
 	{
-		LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame H|codec,since,f_idx,lat,ptime,ctime,delta,len,count",
+		LOG_TRACE_L1(mLogData.logger,
+		             "[{}] Captured audio frame H|codec,since,f_idx,lat,pft,pt,st,et,ct,delta,len,count",
 		             mLogData.prefix);
 	}
-	LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame D|{},{},{},{},{},{},{},{},{}",
+	LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame D|{},{},{},{},{},{},{},{},{},{},{},{}",
 	             mLogData.prefix, codecNames[mAudioFormat.codec], mSinceCodecChange,
-	             mFrameCounter, capLat, mPreviousFrameTime, mCurrentFrameTime,
-	             mCurrentFrameTime - mPreviousFrameTime, bytesCaptured, samplesCaptured);
+	             mFrameCounter, capLat, mPreviousFrameTime, startTime, endTime, now,
+	             endTime - startTime, bytesCaptured, samplesCaptured);
 	#endif
 
 	pms->SetTime(&startTime, &endTime);
