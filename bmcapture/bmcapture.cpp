@@ -518,10 +518,48 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		mVideoFormat.hdrMeta.transferFunction, mVideoFormat.imageSize);
 	#endif
 
-	auto vp = new BlackmagicVideoCapturePin(phr, this, false, mVideoFormat);
+	HKEY hKey{};
+	LSTATUS retVal = RegOpenKeyEx(HKEY_CURRENT_USER, L"Software\\3ll3d00d\\BMCapture", 0, KEY_READ, &hKey);
+	if (ERROR_SUCCESS == retVal)
+	{
+		DWORD dwSize = sizeof(DWORD);
+		DWORD dwVal = 0;
+		retVal = RegQueryValueEx(hKey, L"BlockFilterOnRR", nullptr, nullptr,
+		                         reinterpret_cast<LPBYTE>(&dwVal), &dwSize);
+		if (ERROR_SUCCESS == retVal)
+		{
+			if (dwVal)
+			{
+				#ifndef NO_QUILL
+				LOG_INFO(mLogData.logger,
+				         "[{}] BlockFilterOnRR is set, refresh rate changes will be performed in the filter thread and will block audio and video frame capture",
+				         mLogData.prefix);
+				#endif
+				mBlockFilterOnRefreshRateChange = true;
+			}
+		}
+		else
+		{
+			#ifndef NO_QUILL
+			LOG_WARNING(mLogData.logger,
+			            "[{}] Failed to read BlockFilterOnRR, refresh rate change will be done in the pin thread (res: {})",
+			            mLogData.prefix, retVal);
+			#endif
+		}
+	}
+	else
+	{
+		#ifndef NO_QUILL
+		LOG_WARNING(mLogData.logger,
+		            "[{}] Failed to open Software\\3ll3d00d\\BMCapture, refresh rate change will be done in the pin thread (res: {})",
+		            mLogData.prefix, retVal);
+		#endif
+	}
+
+	auto vp = new BlackmagicVideoCapturePin(phr, this, false, mVideoFormat, !mBlockFilterOnRefreshRateChange);
 	vp->UpdateFrameWriterStrategy();
 	vp->ResizeMetrics(mVideoFormat.fps);
-	vp = new BlackmagicVideoCapturePin(phr, this, true, mVideoFormat);
+	vp = new BlackmagicVideoCapturePin(phr, this, true, mVideoFormat, !mBlockFilterOnRefreshRateChange);
 	vp->UpdateFrameWriterStrategy();
 	vp->ResizeMetrics(mVideoFormat.fps);
 
@@ -881,6 +919,9 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 
 		if (videoFrame->GetFlags() & bmdFrameContainsHDRMetadata)
 		{
+			#ifndef NO_QUILL
+			std::string invalids{};
+			#endif
 			// Primaries
 			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRDisplayPrimariesBlueX, &doubleValue);
 			if (S_OK == result && isInCieRange(doubleValue))
@@ -889,7 +930,10 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			}
 			else
 			{
-				// not present or invalid
+				#ifndef NO_QUILL
+				invalids += invalids.empty() ? ", " : "";
+				invalids += to_string(bmdDeckLinkFrameMetadataHDRDisplayPrimariesBlueX);
+				#endif
 			}
 			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRDisplayPrimariesBlueY, &doubleValue);
 			if (S_OK == result && isInCieRange(doubleValue))
@@ -898,7 +942,10 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			}
 			else
 			{
-				// not present or invalid
+				#ifndef NO_QUILL
+				invalids += invalids.empty() ? ", " : "";
+				invalids += to_string(bmdDeckLinkFrameMetadataHDRDisplayPrimariesBlueY);
+				#endif
 			}
 
 			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRDisplayPrimariesRedX, &doubleValue);
@@ -908,7 +955,10 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			}
 			else
 			{
-				// not present or invalid
+				#ifndef NO_QUILL
+				invalids += invalids.empty() ? ", " : "";
+				invalids += to_string(bmdDeckLinkFrameMetadataHDRDisplayPrimariesRedX);
+				#endif
 			}
 			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRDisplayPrimariesRedY, &doubleValue);
 			if (S_OK == result && isInCieRange(doubleValue))
@@ -917,7 +967,10 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			}
 			else
 			{
-				// not present or invalid
+				#ifndef NO_QUILL
+				invalids += invalids.empty() ? ", " : "";
+				invalids += to_string(bmdDeckLinkFrameMetadataHDRDisplayPrimariesRedY);
+				#endif
 			}
 
 			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRDisplayPrimariesGreenX, &doubleValue);
@@ -927,7 +980,10 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			}
 			else
 			{
-				// not present or invalid
+				#ifndef NO_QUILL
+				invalids += invalids.empty() ? ", " : "";
+				invalids += to_string(bmdDeckLinkFrameMetadataHDRDisplayPrimariesGreenX);
+				#endif
 			}
 			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRDisplayPrimariesGreenY, &doubleValue);
 			if (S_OK == result && isInCieRange(doubleValue))
@@ -936,7 +992,10 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			}
 			else
 			{
-				// not present or invalid
+				#ifndef NO_QUILL
+				invalids += invalids.empty() ? ", " : "";
+				invalids += to_string(bmdDeckLinkFrameMetadataHDRDisplayPrimariesGreenY);
+				#endif
 			}
 
 			// White point
@@ -947,7 +1006,10 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			}
 			else
 			{
-				// not present or invalid
+				#ifndef NO_QUILL
+				invalids += invalids.empty() ? ", " : "";
+				invalids += to_string(bmdDeckLinkFrameMetadataHDRWhitePointX);
+				#endif
 			}
 			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRWhitePointY, &doubleValue);
 			if (S_OK == result && isInCieRange(doubleValue))
@@ -956,7 +1018,10 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			}
 			else
 			{
-				// not present or invalid
+				#ifndef NO_QUILL
+				invalids += invalids.empty() ? ", " : "";
+				invalids += to_string(bmdDeckLinkFrameMetadataHDRWhitePointY);
+				#endif
 			}
 
 			// DML
@@ -968,7 +1033,10 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			}
 			else
 			{
-				// not present or invalid
+				#ifndef NO_QUILL
+				invalids += invalids.empty() ? ", " : "";
+				invalids += to_string(bmdDeckLinkFrameMetadataHDRMinDisplayMasteringLuminance);
+				#endif
 			}
 			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRMaxDisplayMasteringLuminance,
 			                                      &doubleValue);
@@ -978,7 +1046,10 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			}
 			else
 			{
-				// not present or invalid
+				#ifndef NO_QUILL
+				invalids += invalids.empty() ? ", " : "";
+				invalids += to_string(bmdDeckLinkFrameMetadataHDRMaxDisplayMasteringLuminance);
+				#endif
 			}
 
 			// MaxCLL MaxFALL
@@ -989,7 +1060,10 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			}
 			else
 			{
-				// not present or invalid
+				#ifndef NO_QUILL
+				invalids += invalids.empty() ? ", " : "";
+				invalids += to_string(bmdDeckLinkFrameMetadataHDRMaximumContentLightLevel);
+				#endif
 			}
 			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRMaximumFrameAverageLightLevel,
 			                                      &doubleValue);
@@ -999,10 +1073,18 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			}
 			else
 			{
-				// not present or invalid
+				#ifndef NO_QUILL
+				invalids += invalids.empty() ? ", " : "";
+				invalids += to_string(bmdDeckLinkFrameMetadataHDRMaximumFrameAverageLightLevel);
+				#endif
 			}
 
 			#ifndef NO_QUILL
+			if (!invalids.empty())
+			{
+				LOG_INFO(mLogData.logger, "[{}] HDR Metadata is present but some values are invalid [{}]",
+				         mLogData.prefix, invalids);
+			}
 			logHdrMeta(hdr, mVideoFormat.hdrMeta, mLogData);
 			#endif
 		}
@@ -1024,12 +1106,25 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 					auto pin = dynamic_cast<CapturePin*>(m_paStreams[i]);
 					pin->ResizeMetrics(newVideoFormat.fps);
 				}
+
+				if (mBlockFilterOnRefreshRateChange)
+				{
+					#ifndef NO_QUILL
+					LOG_TRACE_L3(mLogData.logger, "[{}] Refresh rate trigger in filter thread", mLogData.prefix);
+					#endif
+
+					auto currRate = newVideoFormat.CalcRefreshRate();
+					if (S_OK == ChangeResolution(mLogData, currRate))
+					{
+						auto values = GetDisplayStatus();
+						OnDisplayUpdated(std::get<0>(values), std::get<1>(values));
+					}
+				}
 			}
 
 			mVideoFormat = newVideoFormat;
 			mVideoFrame = std::make_shared<VideoFrame>(mLogData, newVideoFormat, captureTime, mVideoFrameTime,
-			                                           frameDuration,
-			                                           mCurrentVideoFrameIndex, videoFrame);
+			                                           frameDuration, mCurrentVideoFrameIndex, videoFrame);
 		}
 
 		// signal listeners
@@ -1508,7 +1603,7 @@ HRESULT BlackmagicCaptureFilter::PinThreadDestroyed()
 // BlackmagicVideoCapturePin
 ///////////////////////////////////////////////////////////
 BlackmagicVideoCapturePin::BlackmagicVideoCapturePin(HRESULT* phr, BlackmagicCaptureFilter* pParent, bool pPreview,
-                                                     VIDEO_FORMAT pVideoFormat):
+                                                     VIDEO_FORMAT pVideoFormat, bool pDoRefreshRateSwitches):
 	HdmiVideoCapturePin(
 		phr,
 		pParent,
@@ -1528,7 +1623,8 @@ BlackmagicVideoCapturePin::BlackmagicVideoCapturePin(HRESULT* phr, BlackmagicCap
 			{R10B, {RGBA, ANY_RGB}},
 			{R10L, {RGBA, ANY_RGB}},
 		}
-	), mRateSwitcher(pPreview ? "VideoPreview" : "VideoCapture", pParent)
+	), mRateSwitcher(pPreview ? "VideoPreview" : "VideoCapture", pParent),
+	mDoRefreshRateSwitches(pDoRefreshRateSwitches)
 {
 }
 
@@ -1693,6 +1789,23 @@ HRESULT BlackmagicVideoCapturePin::OnThreadCreate()
 
 	UpdateDisplayStatus();
 
+	if (mDoRefreshRateSwitches && mRateSwitcher.GetThreadHandle() == nullptr)
+	{
+		if (mRateSwitcher.CreateThread())
+		{
+			#ifndef NO_QUILL
+			LOG_INFO(mLogData.logger, "[{}] Initialised refresh rate switcher thread with id {}", mLogData.prefix,
+			         mRateSwitcher.GetThreadId());
+			#endif
+		}
+		else
+		{
+			#ifndef NO_QUILL
+			LOG_ERROR(mLogData.logger, "[{}] Failed to initialise refresh rate switcher thread", mLogData.prefix);
+			#endif
+		}
+	}
+
 	return mFilter->PinThreadCreated();
 }
 
@@ -1743,13 +1856,22 @@ void BlackmagicVideoCapturePin::OnChangeMediaType()
 
 void BlackmagicVideoCapturePin::DoChangeRefreshRate()
 {
-	auto target = CalcRefreshRate();
+	if (mDoRefreshRateSwitches)
+	{
+		auto target = mVideoFormat.CalcRefreshRate();
 
-	#ifndef NO_QUILL
-	LOG_INFO(mLogData.logger, "[{}] Triggering refresh rate change to {} Hz", mLogData.prefix, target);
-	#endif
+		#ifndef NO_QUILL
+		LOG_INFO(mLogData.logger, "[{}] Triggering refresh rate change to {} Hz", mLogData.prefix, target);
+		#endif
 
-	mRateSwitcher.PutThreadMsg(0, target, nullptr);
+		mRateSwitcher.PutThreadMsg(0, target, nullptr);
+	}
+	else
+	{
+		#ifndef NO_QUILL
+		LOG_TRACE_L3(mLogData.logger, "[{}] Ignoring refresh rate change", mLogData.prefix);
+		#endif
+	}
 }
 
 ///////////////////////////////////////////////////////////

@@ -19,6 +19,7 @@
 #include <ksmedia.h>
 #include <map>
 #include <optional>
+#include <cmath>
 
 constexpr auto not_present = 1024;
 constexpr LONGLONG dshowTicksPerSecond = 10LL * 1000 * 1000; // 100ns
@@ -433,6 +434,11 @@ struct VIDEO_FORMAT
 	void CalculateDimensions()
 	{
 		pixelFormat.GetImageDimensions(cx, cy, &lineLength, &imageSize);
+	}
+
+	long CalcRefreshRate() const
+	{
+		return std::lround(fps - 0.49); // 23.976 will become 23, 24 will become 24 etc;
 	}
 };
 

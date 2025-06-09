@@ -383,3 +383,27 @@ inline const char* to_string(BMDPixelFormat e)
 	default: return "unknown";
 	}
 }
+
+inline const char* to_string(BMDDeckLinkFrameMetadataID e)
+{
+	switch (e)
+	{
+	case bmdDeckLinkFrameMetadataColorspace: return "Colorspace";
+	case bmdDeckLinkFrameMetadataHDRElectroOpticalTransferFunc: return "EOTF";
+	case bmdDeckLinkFrameMetadataDolbyVision: return "DV";
+	case bmdDeckLinkFrameMetadataHDRDisplayPrimariesRedX: return "RedX";
+	case bmdDeckLinkFrameMetadataHDRDisplayPrimariesRedY: return "RedY";
+	case bmdDeckLinkFrameMetadataHDRDisplayPrimariesGreenX: return "GreenX";
+	case bmdDeckLinkFrameMetadataHDRDisplayPrimariesGreenY: return "GreenY";
+	case bmdDeckLinkFrameMetadataHDRDisplayPrimariesBlueX: return "BlueX";
+	case bmdDeckLinkFrameMetadataHDRDisplayPrimariesBlueY: return "BlueY";
+	case bmdDeckLinkFrameMetadataHDRWhitePointX: return "WP_X";
+	case bmdDeckLinkFrameMetadataHDRWhitePointY: return "WP_Y";
+	case bmdDeckLinkFrameMetadataHDRMaxDisplayMasteringLuminance: return "MaxDML";
+	case bmdDeckLinkFrameMetadataHDRMinDisplayMasteringLuminance: return "MinDML";
+	case bmdDeckLinkFrameMetadataHDRMaximumContentLightLevel: return "MaxCLL";
+	case bmdDeckLinkFrameMetadataHDRMaximumFrameAverageLightLevel: return "MaxFALL";
+	default: return "unknown";
+	}
+}
+

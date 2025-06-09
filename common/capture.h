@@ -245,7 +245,7 @@ inline HRESULT ChangeResolution(const log_data& ld, DWORD targetRefreshRate)
 		return E_FAIL;
 	}
 
-	auto t1 = std::chrono::high_resolution_clock::now();
+	const auto t1 = std::chrono::high_resolution_clock::now();
 
 	HMONITOR activeMonitor = MonitorFromWindow(GetActiveWindow(), MONITOR_DEFAULTTONEAREST);
 	MONITORINFOEX monitorInfo{{.cbSize = sizeof(MONITORINFOEX)}};
@@ -254,7 +254,7 @@ inline HRESULT ChangeResolution(const log_data& ld, DWORD targetRefreshRate)
 	if (GetMonitorInfo(activeMonitor, &monitorInfo)
 		&& EnumDisplaySettings(monitorInfo.szDevice, ENUM_CURRENT_SETTINGS, &devMode))
 	{
-		auto t2 = std::chrono::high_resolution_clock::now();
+		const auto t2 = std::chrono::high_resolution_clock::now();
 
 		auto width = devMode.dmPelsWidth;
 		auto height = devMode.dmPelsHeight;
@@ -277,9 +277,9 @@ inline HRESULT ChangeResolution(const log_data& ld, DWORD targetRefreshRate)
 
 		auto res = ChangeDisplaySettings(&devMode, 0);
 
-		auto t3 = std::chrono::high_resolution_clock::now();
-		auto getLat = duration_cast<std::chrono::microseconds>(t2 - t1).count();
-		auto chgLat = duration_cast<std::chrono::microseconds>(t3 - t2).count();
+		const auto t3 = std::chrono::high_resolution_clock::now();
+		const auto getLat = duration_cast<std::chrono::microseconds>(t2 - t1).count();
+		const auto chgLat = duration_cast<std::chrono::microseconds>(t3 - t2).count();
 
 		switch (res)
 		{
@@ -723,13 +723,6 @@ protected:
 	HRESULT DoChangeMediaType(const CMediaType* pNewMt, const VIDEO_FORMAT* newVideoFormat);
 	virtual void UpdateDisplayStatus() = 0;
 
-	long CalcRefreshRate() const
-	{
-		auto fps = mVideoFormat.fps;
-		auto refreshRate = std::lround(fps - 0.49); // 23.976 will become 23, 24 will become 24 etc
-		return refreshRate;
-	}
-
 	virtual void OnChangeMediaType()
 	{
 		if (mHasSignal)
@@ -738,11 +731,7 @@ protected:
 		}
 	}
 
-	virtual void DoChangeRefreshRate()
-	{
-		ChangeResolution(mLogData, CalcRefreshRate());
-		UpdateDisplayStatus();
-	}
+	virtual void DoChangeRefreshRate() = 0;
 
 	VIDEO_FORMAT mVideoFormat{};
 	pixel_format mSignalledFormat{NA};

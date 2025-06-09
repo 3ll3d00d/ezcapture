@@ -197,6 +197,8 @@ private:
 	uint64_t mCurrentAudioFrameIndex{0};
 	std::shared_ptr<AudioFrame> mAudioFrame;
 	HANDLE mAudioFrameEvent;
+
+	bool mBlockFilterOnRefreshRateChange{false};
 };
 
 class AsyncRefreshRateSwitcher final : public CMsgThread
@@ -206,12 +208,16 @@ public:
 	{
 		#ifndef NO_QUILL
 		mLogData.prefix = std::move(pLogPrefix);
-		mLogData.logger = CustomFrontend::get_logger("refreshRateSwitcher");
+		mLogData.logger = CustomFrontend::get_logger("filter");
 		#endif
 	}
 
 	LRESULT ThreadMessageProc(UINT uMsg, DWORD dwFlags, LPVOID lpParam, CAMEvent* pEvent) override
 	{
+		#ifndef NO_QUILL
+		LOG_TRACE_L3(mLogData.logger, "[{}] AsyncRefreshRateSwitcher::ThreadMessageProc {}", mLogData.prefix, dwFlags);
+		#endif
+
 		if (S_OK == ChangeResolution(mLogData, dwFlags))
 		{
 			auto values = GetDisplayStatus();
@@ -242,7 +248,8 @@ class BlackmagicVideoCapturePin final :
 	public HdmiVideoCapturePin<BlackmagicCaptureFilter, VideoFrame>
 {
 public:
-	BlackmagicVideoCapturePin(HRESULT* phr, BlackmagicCaptureFilter* pParent, bool pPreview, VIDEO_FORMAT pVideoFormat);
+	BlackmagicVideoCapturePin(HRESULT* phr, BlackmagicCaptureFilter* pParent, bool pPreview, VIDEO_FORMAT pVideoFormat,
+	                          bool pDoRefreshRateSwitches);
 	~BlackmagicVideoCapturePin() override;
 
 	//////////////////////////////////////////////////////////////////////////
@@ -294,6 +301,7 @@ private:
 	}
 
 	AsyncRefreshRateSwitcher mRateSwitcher;
+	bool mDoRefreshRateSwitches{true};
 };
 
 /**
