@@ -1528,7 +1528,7 @@ BlackmagicVideoCapturePin::BlackmagicVideoCapturePin(HRESULT* phr, BlackmagicCap
 			{R10B, {RGBA, ANY_RGB}},
 			{R10L, {RGBA, ANY_RGB}},
 		}
-	)
+	), mRateSwitcher(pPreview ? "VideoPreview" : "VideoCapture", pParent)
 {
 }
 
@@ -1739,6 +1739,17 @@ void BlackmagicVideoCapturePin::OnChangeMediaType()
 		             mLogData.prefix, frameSize, bufferSize);
 		#endif
 	}
+}
+
+void BlackmagicVideoCapturePin::DoChangeRefreshRate()
+{
+	auto target = CalcRefreshRate();
+
+	#ifndef NO_QUILL
+	LOG_INFO(mLogData.logger, "[{}] Triggering refresh rate change to {} Hz", mLogData.prefix, target);
+	#endif
+
+	mRateSwitcher.PutThreadMsg(0, target, nullptr);
 }
 
 ///////////////////////////////////////////////////////////

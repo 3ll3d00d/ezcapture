@@ -109,7 +109,8 @@ inline void logVideoMediaType(const log_data& log, const std::string& desc, cons
 	#endif
 }
 
-inline void doLogHdrMeta(const HDR_META& newMeta, const log_data& log, bool logPrimaries, bool logWp, bool logMax, bool logTf)
+inline void doLogHdrMeta(const HDR_META& newMeta, const log_data& log, bool logPrimaries, bool logWp, bool logMax,
+                         bool logTf)
 {
 	#ifndef NO_QUILL
 	if (logPrimaries)
@@ -234,6 +235,18 @@ inline HRESULT PrintResolution(const log_data& ld)
 
 inline HRESULT ChangeResolution(const log_data& ld, DWORD targetRefreshRate)
 {
+	if (targetRefreshRate == 0L || targetRefreshRate > 240L)
+	{
+		#ifndef NO_QUILL
+		LOG_ERROR(ld.logger, "[{}] Invalid refresh rate change requested to {} Hz, ignoring", ld.prefix,
+		          targetRefreshRate);
+		#endif
+
+		return E_FAIL;
+	}
+
+	auto t1 = std::chrono::high_resolution_clock::now();
+
 	HMONITOR activeMonitor = MonitorFromWindow(GetActiveWindow(), MONITOR_DEFAULTTONEAREST);
 	MONITORINFOEX monitorInfo{{.cbSize = sizeof(MONITORINFOEX)}};
 	DEVMODE devMode{.dmSize = sizeof(DEVMODE)};
@@ -241,6 +254,8 @@ inline HRESULT ChangeResolution(const log_data& ld, DWORD targetRefreshRate)
 	if (GetMonitorInfo(activeMonitor, &monitorInfo)
 		&& EnumDisplaySettings(monitorInfo.szDevice, ENUM_CURRENT_SETTINGS, &devMode))
 	{
+		auto t2 = std::chrono::high_resolution_clock::now();
+
 		auto width = devMode.dmPelsWidth;
 		auto height = devMode.dmPelsHeight;
 		auto freq = devMode.dmDisplayFrequency;
@@ -261,18 +276,26 @@ inline HRESULT ChangeResolution(const log_data& ld, DWORD targetRefreshRate)
 		devMode.dmDisplayFrequency = targetRefreshRate;
 
 		auto res = ChangeDisplaySettings(&devMode, 0);
+
+		auto t3 = std::chrono::high_resolution_clock::now();
+		auto getLat = duration_cast<std::chrono::microseconds>(t2 - t1).count();
+		auto chgLat = duration_cast<std::chrono::microseconds>(t3 - t2).count();
+
 		switch (res)
 		{
 		case DISP_CHANGE_SUCCESSFUL:
 			#ifndef NO_QUILL
-			LOG_INFO(ld.logger, "[{}] Completed change from {} {} x {} @ {} Hz to {} Hz", ld.prefix,
-			         std::wstring{ monitorInfo.szDevice }, width, height, freq, targetRefreshRate);
+			LOG_INFO(ld.logger, "[{}] Completed change from {} {} x {} @ {} Hz to {} Hz ({:.3f}ms / {:.3f}ms)",
+			         ld.prefix, std::wstring{ monitorInfo.szDevice }, width, height, freq, targetRefreshRate,
+			         static_cast<double>(getLat) / 1000, static_cast<double>(chgLat) / 1000);
 			#endif
 			return S_OK;
 		default:
 			#ifndef NO_QUILL
-			LOG_INFO(ld.logger, "[{}] Failed to change from = {} {} x {} @ {} Hz to {} Hz due to {}", ld.prefix,
-			         std::wstring{ monitorInfo.szDevice }, width, height, freq, targetRefreshRate, res);
+			LOG_INFO(ld.logger,
+			         "[{}] Failed to change from = {} {} x {} @ {} Hz to {} Hz due to {} ({:.3f}ms / {:.3f}ms)",
+			         ld.prefix, std::wstring{ monitorInfo.szDevice }, width, height, freq, targetRefreshRate, res,
+			         static_cast<double>(getLat) / 1000, static_cast<double>(chgLat) / 1000);
 			#endif
 			return E_FAIL;
 		}
@@ -354,7 +377,7 @@ public:
 	STDMETHODIMP GetPages(CAUUID* pPages) override;
 	STDMETHODIMP CreatePage(const GUID& guid, IPropertyPage** ppPage) override;
 
-	void OnDisplayUpdated(std::wstring status, int freq);
+	void OnDisplayUpdated(const std::wstring& status, int freq);
 	void OnVideoFormatLoaded(VIDEO_FORMAT* vf);
 	void OnAudioFormatLoaded(AUDIO_FORMAT* af);
 	void OnHdrUpdated(MediaSideDataHDR* hdr, MediaSideDataHDRContentLightLevel* light);
@@ -711,9 +734,14 @@ protected:
 	{
 		if (mHasSignal)
 		{
-			ChangeResolution(mLogData, CalcRefreshRate());
-			UpdateDisplayStatus();
+			DoChangeRefreshRate();
 		}
+	}
+
+	virtual void DoChangeRefreshRate()
+	{
+		ChangeResolution(mLogData, CalcRefreshRate());
+		UpdateDisplayStatus();
 	}
 
 	VIDEO_FORMAT mVideoFormat{};

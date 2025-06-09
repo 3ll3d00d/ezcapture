@@ -256,9 +256,9 @@ STDMETHODIMP CaptureFilter::CreatePage(const GUID& guid, IPropertyPage** ppPage)
 	return E_FAIL;
 }
 
-void CaptureFilter::OnDisplayUpdated(std::wstring status, int freq)
+void CaptureFilter::OnDisplayUpdated(const std::wstring& status, int freq)
 {
-	mDisplayStatus.status = status;
+	mDisplayStatus.status = std::move(status);
 	mDisplayStatus.freq = freq;
 	if (mInfoCallback != nullptr)
 	{

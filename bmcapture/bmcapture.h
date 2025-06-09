@@ -199,6 +199,41 @@ private:
 	HANDLE mAudioFrameEvent;
 };
 
+class AsyncRefreshRateSwitcher final : public CMsgThread
+{
+public:
+	AsyncRefreshRateSwitcher(std::string pLogPrefix, BlackmagicCaptureFilter* pFilter) : mFilter(pFilter)
+	{
+		#ifndef NO_QUILL
+		mLogData.prefix = std::move(pLogPrefix);
+		mLogData.logger = CustomFrontend::get_logger("refreshRateSwitcher");
+		#endif
+	}
+
+	LRESULT ThreadMessageProc(UINT uMsg, DWORD dwFlags, LPVOID lpParam, CAMEvent* pEvent) override
+	{
+		if (S_OK == ChangeResolution(mLogData, dwFlags))
+		{
+			auto values = GetDisplayStatus();
+			mFilter->OnDisplayUpdated(std::get<0>(values), std::get<1>(values));
+		}
+		return S_OK;
+	}
+
+	void OnThreadInit() override
+	{
+		#ifndef NO_QUILL
+		CustomFrontend::preallocate();
+
+		LOG_INFO(mLogData.logger, "[{}] AsyncRefreshRateSwitcher::OnThreadInit", mLogData.prefix);
+		#endif
+	}
+
+private:
+	log_data mLogData{};
+	BlackmagicCaptureFilter* mFilter;
+};
+
 
 /**
  * A video stream flowing from the capture device to an output pin.
@@ -228,6 +263,8 @@ protected:
 	void LogHdrMetaIfPresent(const VIDEO_FORMAT* newVideoFormat) override;
 	void OnChangeMediaType() override;
 
+	void DoChangeRefreshRate() override;
+
 	std::shared_ptr<VideoFrame> mCurrentFrame;
 
 private:
@@ -255,6 +292,8 @@ private:
 			HdmiVideoCapturePin::OnFrameWriterStrategyUpdated();
 		}
 	}
+
+	AsyncRefreshRateSwitcher mRateSwitcher;
 };
 
 /**
