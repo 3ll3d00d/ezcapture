@@ -245,7 +245,9 @@ inline HRESULT ChangeResolution(const log_data& ld, DWORD targetRefreshRate)
 		return E_FAIL;
 	}
 
+	#ifndef NO_QUILL
 	const auto t1 = std::chrono::high_resolution_clock::now();
+	#endif
 
 	HMONITOR activeMonitor = MonitorFromWindow(GetActiveWindow(), MONITOR_DEFAULTTONEAREST);
 	MONITORINFOEX monitorInfo{{.cbSize = sizeof(MONITORINFOEX)}};
@@ -254,7 +256,9 @@ inline HRESULT ChangeResolution(const log_data& ld, DWORD targetRefreshRate)
 	if (GetMonitorInfo(activeMonitor, &monitorInfo)
 		&& EnumDisplaySettings(monitorInfo.szDevice, ENUM_CURRENT_SETTINGS, &devMode))
 	{
+		#ifndef NO_QUILL
 		const auto t2 = std::chrono::high_resolution_clock::now();
+		#endif
 
 		auto width = devMode.dmPelsWidth;
 		auto height = devMode.dmPelsHeight;
@@ -277,9 +281,11 @@ inline HRESULT ChangeResolution(const log_data& ld, DWORD targetRefreshRate)
 
 		auto res = ChangeDisplaySettings(&devMode, 0);
 
+		#ifndef NO_QUILL
 		const auto t3 = std::chrono::high_resolution_clock::now();
 		const auto getLat = duration_cast<std::chrono::microseconds>(t2 - t1).count();
 		const auto chgLat = duration_cast<std::chrono::microseconds>(t3 - t2).count();
+		#endif
 
 		switch (res)
 		{
