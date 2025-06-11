@@ -781,8 +781,8 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 		#ifndef NO_QUILL
 		if (pin->mFrameCounter == 1)
 		{
-			LOG_TRACE_L1(mLogData.logger,
-			             "[{}] Captured video frame H|f_idx,cap_lat,conv_lat,pft,st,et,ct,cft,a_int,delta,v_int,len,missed",
+			LOG_TRACE_L1(mLogData.videoLat,
+			             "{},f_idx,cap_lat,conv_lat,pft,st,et,ct,cft,a_int,delta,v_int,len,missed",
 			             mLogData.prefix);
 		}
 		auto frameInterval = pin->mCurrentFrameTime - pin->mPreviousFrameTime;
@@ -796,7 +796,7 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 			LOG_TRACE_L3(mLogData.logger, "[{}] Video format size mismatch (format: {} buffer: {})", mLogData.prefix,
 			             pin->mVideoFormat.imageSize, sz);
 		}
-		LOG_TRACE_L1(mLogData.logger, "[{}] Captured video frame D|{},{:.3f},{:.3f},{},{},{},{},{},{},{},{},{},{}",
+		LOG_TRACE_L1(mLogData.videoLat, "{},{},{:.3f},{:.3f},{},{},{},{},{},{},{},{},{},{}",
 		             mLogData.prefix, pin->mFrameCounter, static_cast<double>(capLat) / 1000.0,
 		             static_cast<double>(convLat) / 1000.0, pin->mPreviousFrameTime, startTime, endTime, rt,
 		             pin->mCurrentFrameTime, frameInterval, frameInterval - pin->mVideoFormat.frameInterval,
@@ -2957,11 +2957,11 @@ HRESULT MagewellAudioCapturePin::FillBuffer(IMediaSample* pms)
 	#ifndef NO_QUILL
 	if (mFrameCounter == 1)
 	{
-		LOG_TRACE_L1(mLogData.logger,
-		             "[{}] Captured audio frame H|codec,since,f_idx,lat,pft,pt,st,et,ct,delta,len,count",
+		LOG_TRACE_L1(mLogData.audioLat,
+		             "{},codec,since,f_idx,lat,pft,pt,st,et,ct,delta,len,count",
 		             mLogData.prefix);
 	}
-	LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame D|{},{},{},{},{},{},{},{},{},{},{},{}",
+	LOG_TRACE_L1(mLogData.audioLat, "{},{},{},{},{},{},{},{},{},{},{},{},{}",
 	             mLogData.prefix, codecNames[mAudioFormat.codec], mSinceCodecChange,
 	             mFrameCounter, capLat, mPreviousFrameTime, startTime, endTime, now,
 	             endTime - startTime, bytesCaptured, samplesCaptured);

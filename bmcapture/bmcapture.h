@@ -204,12 +204,9 @@ private:
 class AsyncRefreshRateSwitcher final : public CMsgThread
 {
 public:
-	AsyncRefreshRateSwitcher(std::string pLogPrefix, BlackmagicCaptureFilter* pFilter) : mFilter(pFilter)
+	AsyncRefreshRateSwitcher(const std::string& pLogPrefix, BlackmagicCaptureFilter* pFilter) : mFilter(pFilter)
 	{
-		#ifndef NO_QUILL
-		mLogData.prefix = std::move(pLogPrefix);
-		mLogData.logger = CustomFrontend::get_logger("filter");
-		#endif
+		mLogData.init(pLogPrefix);
 	}
 
 	LRESULT ThreadMessageProc(UINT uMsg, DWORD dwFlags, LPVOID lpParam, CAMEvent* pEvent) override

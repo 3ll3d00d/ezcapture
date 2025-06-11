@@ -19,7 +19,7 @@
 #include "quill/Frontend.h"
 #include "quill/LogMacros.h"
 #include "quill/Logger.h"
-#include "quill/sinks/FileSink.h"
+#include "quill/sinks/RotatingFileSink.h"
 #include <string_view>
 #include <utility>
 #endif // !NO_QUILL
@@ -36,41 +36,92 @@
 CaptureFilter::CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID clsid, std::string pLogPrefix) :
 	CSource(pName, punk, clsid)
 {
+	mLogData.prefix = pLogPrefix;
+
 	#ifndef NO_QUILL
-	// TODO make logging configurable
-	// start logging with reduced cpu load
 	quill::BackendOptions bopt;
 	bopt.thread_name = "QuillBackend_" + pLogPrefix;
 	bopt.enable_yield_when_idle = true;
 	bopt.sleep_duration = std::chrono::nanoseconds(0);
 	quill::Backend::start(bopt);
 
-	// to a file suffixed with the startdate/time
-	auto fileSink = CustomFrontend::create_or_get_sink<quill::FileSink>(
+	auto filterFileSink = CustomFrontend::create_or_get_sink<quill::RotatingFileSink>(
 		(std::filesystem::temp_directory_path() / (pLogPrefix + ".log")).string(),
 		[]()
 		{
-			quill::FileSinkConfig cfg;
-			cfg.set_open_mode('w');
+			quill::RotatingFileSinkConfig cfg;
+			cfg.set_open_mode('a');
+			cfg.set_max_backup_files(12);
+			cfg.set_rotation_frequency_and_interval('H', 1);
+			cfg.set_rotation_naming_scheme(quill::RotatingFileSinkConfig::RotationNamingScheme::DateAndTime);
 			cfg.set_filename_append_option(quill::FilenameAppendOption::StartDateTime);
 			return cfg;
 		}(),
 		quill::FileEventNotifier{});
 	mLogData.logger =
-		CustomFrontend::create_or_get_logger("filter",
-		                                     std::move(fileSink),
+		CustomFrontend::create_or_get_logger(std::string{filterLoggerName},
+		                                     std::move(filterFileSink),
 		                                     quill::PatternFormatterOptions{
 			                                     "%(time) [%(thread_id)] %(short_source_location:<28) "
 			                                     "LOG_%(log_level:<9) %(logger:<12) %(message)",
 			                                     "%H:%M:%S.%Qns",
 			                                     quill::Timezone::GmtTime
 		                                     });
+	auto audioLatencySink = CustomFrontend::create_or_get_sink<quill::RotatingFileSink>(
+		(std::filesystem::temp_directory_path() / (pLogPrefix + "_audio_latency.csv")).string(),
+		[]()
+		{
+			quill::RotatingFileSinkConfig cfg;
+			cfg.set_open_mode('a');
+			cfg.set_max_backup_files(3);
+			cfg.set_rotation_time_daily("00:00");
+			cfg.set_rotation_naming_scheme(quill::RotatingFileSinkConfig::RotationNamingScheme::Date);
+			cfg.set_filename_append_option(quill::FilenameAppendOption::StartDate);
+			return cfg;
+		}(),
+		quill::FileEventNotifier{});
+	mLogData.audioLat =
+		CustomFrontend::create_or_get_logger(std::string{audioLatencyLoggerName},
+		                                     std::move(audioLatencySink),
+		                                     quill::PatternFormatterOptions{
+			                                     "%(time),%(thread_id),%(logger:<12),%(message)",
+			                                     "%H:%M:%S.%Qns",
+			                                     quill::Timezone::GmtTime
+		                                     });
+	auto videoLatencySink = CustomFrontend::create_or_get_sink<quill::RotatingFileSink>(
+		(std::filesystem::temp_directory_path() / (pLogPrefix + "_video_latency.csv")).string(),
+		[]()
+		{
+			quill::RotatingFileSinkConfig cfg;
+			cfg.set_open_mode('a');
+			cfg.set_max_backup_files(3);
+			cfg.set_rotation_time_daily("00:00");
+			cfg.set_rotation_naming_scheme(quill::RotatingFileSinkConfig::RotationNamingScheme::Date);
+			cfg.set_filename_append_option(quill::FilenameAppendOption::StartDate);
+			return cfg;
+		}(),
+		quill::FileEventNotifier{});
+	mLogData.videoLat =
+		CustomFrontend::create_or_get_logger(std::string{videoLatencyLoggerName},
+		                                     std::move(videoLatencySink),
+		                                     quill::PatternFormatterOptions{
+			                                     "%(time),%(thread_id),%(logger:<12),%(message)",
+			                                     "%H:%M:%S.%Qns",
+			                                     quill::Timezone::GmtTime
+		                                     });
 
 	// printing absolutely everything we may ever log
 	mLogData.logger->set_log_level(MIN_LOG_LEVEL);
+	mLogData.audioLat->set_log_level(MIN_LOG_LEVEL);
+	mLogData.videoLat->set_log_level(MIN_LOG_LEVEL);
 	#endif // !NO_QUILL
 
-	mLogData.prefix = pLogPrefix;
+	auto monitorConfig = GetAllSupportedRefreshRates();
+	mRefreshRates = std::move(monitorConfig.refreshRates);
+	#ifndef NO_QUILL
+	LOG_INFO(mLogData.logger, "[{}] Monitor {} supported {} ignored {}", mLogData.prefix,
+	         monitorConfig.name, monitorConfig.supportedModes, monitorConfig.ignoredModes);
+	#endif
 }
 
 STDMETHODIMP CaptureFilter::NonDelegatingQueryInterface(REFIID riid, void** ppv)
@@ -429,14 +480,12 @@ void CaptureFilter::OnAudioFormatLoaded(AUDIO_FORMAT* af)
 //////////////////////////////////////////////////////////////////////////
 // CapturePin
 //////////////////////////////////////////////////////////////////////////
-CapturePin::CapturePin(HRESULT* phr, CSource* pParent, LPCSTR pObjectName, LPCWSTR pPinName, std::string pLogPrefix) :
+CapturePin::CapturePin(HRESULT* phr, CSource* pParent, LPCSTR pObjectName, LPCWSTR pPinName,
+                       const std::string& pLogPrefix) :
 	CSourceStream(pObjectName, phr, pParent, pPinName),
-	IAMTimeAware(pLogPrefix, "filter")
+	IAMTimeAware(pLogPrefix)
 {
-	#ifndef NO_QUILL
-	mLogData.prefix = std::move(pLogPrefix);
-	mLogData.logger = CustomFrontend::get_logger("filter");
-	#endif
+	mLogData.init(pLogPrefix);
 }
 
 HRESULT CapturePin::HandleStreamStateChange(IMediaSample* pms)
@@ -686,7 +735,8 @@ HRESULT CapturePin::SetMediaType(const CMediaType* pmt)
 	const HRESULT hr = CSourceStream::SetMediaType(pmt);
 
 	#ifndef NO_QUILL
-	LOG_TRACE_L3(mLogData.logger, "[{}] CapturePin::SetMediaType ({:#08x})", mLogData.prefix, static_cast<unsigned long>(hr));
+	LOG_TRACE_L3(mLogData.logger, "[{}] CapturePin::SetMediaType ({:#08x})", mLogData.prefix,
+	             static_cast<unsigned long>(hr));
 	#endif
 
 	return hr;

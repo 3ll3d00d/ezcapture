@@ -28,6 +28,7 @@
 #include <wmcodecdsp.h>
 #include <cmath>
 #include <memory>
+#include <set>
 
 #include "bgr10_rgb48.h"
 #include "r210_rgb48.h"
@@ -45,6 +46,14 @@ EXTERN_C const AMOVIESETUP_PIN sMIPPins[];
 #define BACKOFF Sleep(20)
 #define SHORT_BACKOFF Sleep(1)
 #define S_RECONNECTION_UNNECESSARY ((HRESULT)1024L)
+
+struct monitor_config
+{
+	std::set<DWORD> refreshRates;
+	std::string ignoredModes;
+	std::string supportedModes;
+	std::wstring name;
+};
 
 constexpr auto unity = 1.0;
 
@@ -187,6 +196,72 @@ inline void logHdrMeta(const HDR_META& newMeta, const HDR_META& oldMeta, const l
 		doLogHdrMeta(newMeta, log, true, true, true, false);
 	}
 	#endif
+}
+
+inline monitor_config GetAllSupportedRefreshRates()
+{
+	HMONITOR activeMonitor = MonitorFromWindow(GetActiveWindow(), MONITOR_DEFAULTTONEAREST);
+
+	MONITORINFOEX monitorInfo{{.cbSize = sizeof(MONITORINFOEX)}};
+	DEVMODE devMode{.dmSize = sizeof(DEVMODE)};
+
+	std::set<DWORD> supportedRates;
+	std::set<std::string> ignoredModes;
+	std::string supportedModes{};
+	std::wstring name{};
+	if (GetMonitorInfo(activeMonitor, &monitorInfo))
+	{
+		name = monitorInfo.szDevice;
+		if (EnumDisplaySettings(monitorInfo.szDevice, ENUM_CURRENT_SETTINGS, &devMode))
+		{
+			auto width = devMode.dmPelsWidth;
+			auto height = devMode.dmPelsHeight;
+			auto modeNum = 0;
+			while (EnumDisplaySettings(monitorInfo.szDevice, modeNum++, &devMode))
+			{
+				if (devMode.dmPelsWidth == width && devMode.dmPelsHeight == height)
+				{
+					auto res = supportedRates.insert(devMode.dmDisplayFrequency);
+					if (res.second)
+					{
+						#ifndef NO_QUILL
+						if (!supportedModes.empty())
+						{
+							supportedModes += ", ";
+						}
+						supportedModes += std::format("{}", devMode.dmDisplayFrequency);
+						#endif
+					}
+				}
+				else
+				{
+					#ifndef NO_QUILL
+					auto formatted = std::format("{}x{} @ {} Hz", devMode.dmPelsWidth, devMode.dmPelsHeight,
+					                             devMode.dmDisplayFrequency);
+					ignoredModes.insert(formatted);
+					#endif
+				}
+			}
+			#ifndef NO_QUILL
+			supportedModes = std::format("{}x{} [{}]", width, height, supportedModes);
+			#endif
+		}
+	}
+	std::string ignoredModesDesc{};
+	for (const auto& ignoredMode : ignoredModes)
+	{
+		if (!ignoredModesDesc.empty())
+		{
+			ignoredModesDesc += ", ";
+		}
+		ignoredModesDesc += ignoredMode;
+	}
+	return {
+		.refreshRates = std::move(supportedRates),
+		.ignoredModes = std::format("[{}]", ignoredModesDesc),
+		.supportedModes = std::move(supportedModes),
+		.name = std::move(name)
+	};
 }
 
 inline std::tuple<std::wstring, int> GetDisplayStatus()
@@ -443,6 +518,7 @@ protected:
 	CAPTURE_LATENCY mAudioCaptureLatencyStatus{};
 	HDR_STATUS mHdrStatus{};
 	ISignalInfoCB* mInfoCallback = nullptr;
+	std::set<DWORD> mRefreshRates{};
 
 private:
 	void CaptureLatency(const metric& metric, CAPTURE_LATENCY& lat, const std::string& desc)
@@ -511,12 +587,9 @@ public:
 	}
 
 protected:
-	IAMTimeAware(std::string pLogPrefix, const std::string& pLoggerName)
+	IAMTimeAware(const std::string& pLogPrefix)
 	{
-		mLogData.prefix = std::move(pLogPrefix);
-		#ifndef NO_QUILL
-		mLogData.logger = CustomFrontend::get_logger(pLoggerName);
-		#endif
+		mLogData.init(pLogPrefix);
 	}
 
 	log_data mLogData{};
@@ -607,7 +680,7 @@ public:
 	}
 
 protected:
-	CapturePin(HRESULT* phr, CSource* pParent, LPCSTR pObjectName, LPCWSTR pPinName, std::string pLogPrefix);
+	CapturePin(HRESULT* phr, CSource* pParent, LPCSTR pObjectName, LPCWSTR pPinName, const std::string& pLogPrefix);
 
 	virtual void DoThreadDestroy() = 0;
 	virtual bool ProposeBuffers(ALLOCATOR_PROPERTIES* pProperties) = 0;
