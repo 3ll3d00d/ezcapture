@@ -297,11 +297,23 @@ inline HRESULT ChangeResolution(const log_data& ld, DWORD targetRefreshRate)
 			#endif
 			return S_OK;
 		default:
+			auto reason =
+				res == DISP_CHANGE_FAILED
+					? "failed"
+					: res == DISP_CHANGE_BADMODE
+					? "bad mode"
+					: res == DISP_CHANGE_NOTUPDATED
+					? "not updated"
+					: res == DISP_CHANGE_BADFLAGS
+					? "bad flags"
+					: res == DISP_CHANGE_BADPARAM
+					? "bad param"
+					: "?";
 			#ifndef NO_QUILL
 			LOG_INFO(ld.logger,
-			         "[{}] Failed to change from = {} {} x {} @ {} Hz to {} Hz due to {} ({:.3f}ms / {:.3f}ms)",
+			         "[{}] Failed to change from {} {} x {} @ {} Hz to {} Hz due to {} / {} ({:.3f}ms / {:.3f}ms)",
 			         ld.prefix, std::wstring{ monitorInfo.szDevice }, width, height, freq, targetRefreshRate, res,
-			         static_cast<double>(getLat) / 1000, static_cast<double>(chgLat) / 1000);
+			         reason, static_cast<double>(getLat) / 1000, static_cast<double>(chgLat) / 1000);
 			#endif
 			return E_FAIL;
 		}

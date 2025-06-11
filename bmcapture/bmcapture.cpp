@@ -1153,13 +1153,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 
 		int64_t frameTime;
 		result = audioPacket->GetPacketTime(&frameTime, dshowTicksPerSecond);
-		if (S_OK == result)
-		{
-			#ifndef NO_QUILL
-			LOG_TRACE_L3(mLogData.logger, "[{}] Captured audio frame at {}", mLogData.prefix, frameTime);
-			#endif
-		}
-		else
+		if (S_OK != result)
 		{
 			#ifndef NO_QUILL
 			LOG_WARNING(mLogData.logger, "[{}] Failed to get audioFrame bytes {:#08x})", mLogData.prefix,
@@ -2137,7 +2131,7 @@ HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
 	if (mFrameCounter == 1)
 	{
 		LOG_TRACE_L1(mLogData.logger,
-		             "[{}] Captured audio frame H|codec,idx,lat,pt,st,et,ct,delta,len,count",
+		             "[{}] Captured audio frame H|codec,idx,lat,pt,st,et,ct,delta,now,len,count",
 		             mLogData.prefix);
 	}
 	LOG_TRACE_L1(mLogData.logger, "[{}] Captured audio frame D|{},{},{},{},{},{},{},{},{},{}",
