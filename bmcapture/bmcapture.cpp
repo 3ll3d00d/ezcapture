@@ -744,6 +744,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFormatChanged(BMDVideoInputFormatChan
 				#endif
 
 				mPreviousVideoFrameTime = invalidFrameTime;
+				mPreviousAudioFrameTime = invalidFrameTime;
 
 				result = mDeckLinkInput->StartStreams();
 				if (S_OK != result)
@@ -764,8 +765,8 @@ HRESULT BlackmagicCaptureFilter::VideoInputFormatChanged(BMDVideoInputFormatChan
 
 					#ifndef NO_QUILL
 					LOG_INFO(mLogData.logger,
-					         "[{}] Restarted video capture on input format change, frame time increased by {} to compensate",
-					         mLogData.prefix, delta);
+					         "[{}] Restarted video capture on input format change at {}, frame time increased by {} to compensate",
+					         mLogData.prefix, t2, delta);
 					#endif
 				}
 			}
@@ -789,6 +790,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 	{
 		int64_t frameTime = 0;
 		int64_t frameDuration = 0;
+		bool locked = true;
 		auto result = videoFrame->GetStreamTime(&frameTime, &frameDuration, dshowTicksPerSecond);
 		if (S_OK == result)
 		{
@@ -798,7 +800,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 				LOG_TRACE_L2(mLogData.logger, "[{}] Signal is not locked at {}", mLogData.prefix, frameTime);
 				#endif
 
-				return E_FAIL;
+				locked = false;
 			}
 		}
 		else
@@ -810,20 +812,6 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 
 			return E_FAIL;
 		}
-
-		int64_t referenceFrameTime;
-		int64_t referenceFrameDuration;
-
-		// Get the captured timestamp for the incoming frame
-		if (videoFrame->GetHardwareReferenceTimestamp(referenceTimescale, &referenceFrameTime, &referenceFrameDuration)
-			!= S_OK)
-			return E_FAIL;
-
-		// The time for start of frame on the wire is the timestamp attached to the frame at completion minus the frame duration
-		auto captureTime = referenceFrameTime - referenceFrameDuration;
-
-		VIDEO_FORMAT newVideoFormat{};
-		LoadFormat(&newVideoFormat, &mVideoSignal);
 
 		mVideoFrameTime += frameDuration;
 
@@ -848,12 +836,28 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 		}
 		mPreviousVideoFrameTime = frameTime;
 
+		if (!locked)
+		{
+			return E_FAIL;
+		}
+
+		int64_t referenceFrameTime;
+		int64_t referenceFrameDuration;
+
+		// Get the captured timestamp for the incoming frame
+		if (videoFrame->GetHardwareReferenceTimestamp(referenceTimescale, &referenceFrameTime, &referenceFrameDuration)
+			!= S_OK)
+			return E_FAIL;
+
 		#ifndef NO_QUILL
 		LOG_TRACE_L2(mLogData.logger, "[{}] Captured video frame {} at {}", mLogData.prefix, mCurrentVideoFrameIndex,
 		             frameTime);
 		#endif
 
 		// metadata
+		VIDEO_FORMAT newVideoFormat{};
+		LoadFormat(&newVideoFormat, &mVideoSignal);
+
 		auto doubleValue = 0.0;
 		auto intValue = 0LL;
 		CComQIPtr<IDeckLinkVideoFrameMetadataExtensions> metadataExtensions(videoFrame);
@@ -1121,6 +1125,9 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 					}
 				}
 			}
+
+			// The time for start of frame on the wire is the timestamp attached to the frame at completion minus the frame duration
+			auto captureTime = referenceFrameTime - referenceFrameDuration;
 
 			mVideoFormat = newVideoFormat;
 			mVideoFrame = std::make_shared<VideoFrame>(mLogData, newVideoFormat, captureTime, mVideoFrameTime,

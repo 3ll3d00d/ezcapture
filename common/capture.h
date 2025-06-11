@@ -38,6 +38,10 @@
 #include "yuv2_yv16.h"
 #include "yuy2_yv16.h"
 
+#ifndef NO_QUILL
+#include <quill/Backend.h>
+#endif
+
 EXTERN_C const GUID MEDIASUBTYPE_PCM_IN24;
 EXTERN_C const GUID MEDIASUBTYPE_PCM_IN32;
 EXTERN_C const GUID MEDIASUBTYPE_PCM_SOWT;
@@ -503,7 +507,13 @@ public:
 	}
 
 protected:
-	CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID clsid, std::string pLogPrefix);
+	CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID clsid, const std::string& pLogPrefix);
+	~CaptureFilter() override
+	{
+		#ifndef NO_QUILL
+		quill::Backend::stop();
+		#endif
+	}
 
 	log_data mLogData{};
 	IReferenceClock* mClock;

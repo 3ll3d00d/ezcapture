@@ -33,7 +33,7 @@
 #define MIN_LOG_LEVEL quill::LogLevel::TraceL2
 #endif
 
-CaptureFilter::CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID clsid, std::string pLogPrefix) :
+CaptureFilter::CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID clsid, const std::string& pLogPrefix) :
 	CSource(pName, punk, clsid)
 {
 	mLogData.prefix = pLogPrefix;
@@ -50,7 +50,6 @@ CaptureFilter::CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID 
 		[]()
 		{
 			quill::RotatingFileSinkConfig cfg;
-			cfg.set_open_mode('a');
 			cfg.set_max_backup_files(12);
 			cfg.set_rotation_frequency_and_interval('H', 1);
 			cfg.set_rotation_naming_scheme(quill::RotatingFileSinkConfig::RotationNamingScheme::DateAndTime);
@@ -72,7 +71,6 @@ CaptureFilter::CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID 
 		[]()
 		{
 			quill::RotatingFileSinkConfig cfg;
-			cfg.set_open_mode('a');
 			cfg.set_max_backup_files(3);
 			cfg.set_rotation_time_daily("00:00");
 			cfg.set_rotation_naming_scheme(quill::RotatingFileSinkConfig::RotationNamingScheme::Date);
@@ -93,7 +91,6 @@ CaptureFilter::CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID 
 		[]()
 		{
 			quill::RotatingFileSinkConfig cfg;
-			cfg.set_open_mode('a');
 			cfg.set_max_backup_files(3);
 			cfg.set_rotation_time_daily("00:00");
 			cfg.set_rotation_naming_scheme(quill::RotatingFileSinkConfig::RotationNamingScheme::Date);
@@ -114,7 +111,7 @@ CaptureFilter::CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID 
 	mLogData.logger->set_log_level(MIN_LOG_LEVEL);
 	mLogData.audioLat->set_log_level(MIN_LOG_LEVEL);
 	mLogData.videoLat->set_log_level(MIN_LOG_LEVEL);
-	#endif // !NO_QUILL
+	#endif
 
 	auto monitorConfig = GetAllSupportedRefreshRates();
 	mRefreshRates = std::move(monitorConfig.refreshRates);
