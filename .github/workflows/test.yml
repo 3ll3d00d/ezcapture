@@ -31,6 +31,13 @@ jobs:
         tagRegex: |
           "^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"
   
+    - name: Create suffix param
+      id: gensuffix
+      shell: bash
+      run: |
+        [[ -n "${{ steps.tagName.outputs.prerelease }}" ]] && SUFFIX_PARAM="" || SUFFIX_PARAM="/p:vsuffix=${{ steps.tagName.outputs.prerelease }}"
+        echo "vsuffix=${SUFFIX_PARAM}" >> "$GITHUB_OUTPUT"
+
     - name: Setup vcpkg for mwcapture
       uses: lukka/run-vcpkg@v11
       with:
@@ -49,5 +56,4 @@ jobs:
     - name: Build
       working-directory: ${{ env.GITHUB_WORKSPACE }}
       run: |
-        [[ -n "${{ steps.tagName.outputs.prerelease }}" ]] && SUFFIX_PARAM="" || SUFFIX_PARAM="/p:vsuffix=${{ steps.tagName.outputs.prerelease }}"
-        msbuild /t:Rebuild /p:Configuration=${{ matrix.configuration }} /p:vmajor=${{ steps.tagName.outputs.major }} /p:vminor=${{ steps.tagName.outputs.minor }} /p:vpatch=${{ steps.tagName.outputs.patch }} ${SUFFIX_PARAM}
+        msbuild /t:Rebuild /p:Configuration=${{ matrix.configuration }} /p:vmajor=${{ steps.tagName.outputs.major }} /p:vminor=${{ steps.tagName.outputs.minor }} /p:vpatch=${{ steps.tagName.outputs.patch }} ${{ steps.gensuffix.outputs.vsuffix }}
