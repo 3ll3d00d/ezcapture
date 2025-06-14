@@ -50,11 +50,17 @@ jobs:
         tagRegex: |
           "^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"
   
-    - name: Create suffix param
-      id: gensuffix
+    - name: Create build params
+      id: build_params
       shell: bash
       run: |
-        [[ -n "${{ steps.tagName.outputs.prerelease }}" ]] && SUFFIX_PARAM="" || SUFFIX_PARAM="/p:vsuffix=${{ steps.tagName.outputs.prerelease }}"
+        [[ -z "${{ steps.tagName.outputs.major }}" ]] && MAJOR_PARAM="" || MAJOR_PARAM="/p:vmajor=${{ steps.tagName.outputs.major }}"
+        [[ -z "${{ steps.tagName.outputs.minor }}" ]] && MINOR_PARAM="" || MINOR_PARAM="/p:vminor=${{ steps.tagName.outputs.minor }}"
+        [[ -z "${{ steps.tagName.outputs.patch }}" ]] && PATCH_PARAM="" || PATCH_PARAM="/p:vpatch=${{ steps.tagName.outputs.patch }}"
+        [[ -z "${{ steps.tagName.outputs.prerelease }}" ]] && SUFFIX_PARAM="" || SUFFIX_PARAM="/p:vsuffix=${{ steps.tagName.outputs.prerelease }}"
+        echo "vmajor=${MAJOR_PARAM}" >> "$GITHUB_OUTPUT"
+        echo "vminor=${MINOR_PARAM}" >> "$GITHUB_OUTPUT"
+        echo "vpatch=${PATCH_PARAM}" >> "$GITHUB_OUTPUT"
         echo "vsuffix=${SUFFIX_PARAM}" >> "$GITHUB_OUTPUT"
   
     - name: Setup vcpkg for common
@@ -87,7 +93,7 @@ jobs:
     - name: Build
       working-directory: ${{ env.GITHUB_WORKSPACE }}
       run: |
-        msbuild /t:Rebuild /p:Configuration=${{ matrix.configuration }} /p:vmajor=${{ steps.tagName.outputs.major }} /p:vminor=${{ steps.tagName.outputs.minor }} /p:vpatch=${{ steps.tagName.outputs.patch }} ${{ steps.gensuffix.outputs.vsuffix }}
+        msbuild /t:Rebuild /p:Configuration=${{ matrix.configuration }} ${{ steps.build_params.outputs.vmajor }} ${{ steps.build_params.outputs.vminor }} ${{ steps.build_params.outputs.vpatch }} ${{ steps.build_params.outputs.vsuffix }}
 
     - name: Create distribution
       id: create_dist
