@@ -4,6 +4,9 @@ on:
   push:
     branches:
         - 'feature/*'
+        - 'main'
+  workflow_dispatch:
+    branches: ['*']
 
 permissions:
   contents: write
@@ -22,6 +25,12 @@ jobs:
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v1.0.2
 
+    - uses: olegtarasov/get-tag@v2.1.4
+      id: tagName
+      with:
+        tagRegex: |
+          "^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"
+  
     - name: Setup vcpkg for mwcapture
       uses: lukka/run-vcpkg@v11
       with:
@@ -39,4 +48,6 @@ jobs:
       
     - name: Build
       working-directory: ${{ env.GITHUB_WORKSPACE }}
-      run: msbuild /t:Rebuild /p:Configuration=${{ matrix.configuration }} 
+      run: |
+        [[ -n "${{ steps.tagName.outputs.prerelease }}" ]] && SUFFIX_PARAM="" || SUFFIX_PARAM="/p:vsuffix=${{ steps.tagName.outputs.prerelease }}"
+        msbuild /t:Rebuild /p:Configuration=${{ matrix.configuration }} /p:vmajor=${{ steps.tagName.outputs.major }} /p:vminor=${{ steps.tagName.outputs.minor }} /p:vpatch=${{ steps.tagName.outputs.patch }} ${SUFFIX_PARAM}
