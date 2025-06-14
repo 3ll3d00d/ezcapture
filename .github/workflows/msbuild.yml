@@ -48,7 +48,7 @@ jobs:
       id: build_params
       shell: bash
       run: |
-        M="(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[a-z]+\.[0-9]+)?"
+        M="([0-9]+)\.([0-9]+)\.([0-9]+)(-[a-z]+\.[0-9]+)?"
         echo "Matching ${{ github.ref_name }} vs ${M}"
         if [[ "${{ github.ref_name }}" =~ ${M} ]]
         then
@@ -63,10 +63,8 @@ jobs:
                 echo "vsuffix=" >> "$GITHUB_OUTPUT"
             fi
         else
-            echo "vmajor=" >> "$GITHUB_OUTPUT"
-            echo "vminor=" >> "$GITHUB_OUTPUT"
-            echo "vpatch=" >> "$GITHUB_OUTPUT"
-            echo "vsuffix=" >> "$GITHUB_OUTPUT"
+            echo "NO MATCH!!"
+            exit 1
         fi
   
     - name: Setup vcpkg for common
