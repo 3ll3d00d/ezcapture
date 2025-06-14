@@ -48,9 +48,9 @@ jobs:
       id: build_params
       shell: bash
       run: |
-        M="refs/tags/(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-^C-z]+\.[0-9]+)?"
-        echo "Matching ${GITHUB_REF} vs ${M}"
-        if [[ "${GITHUB_REF}" =~ ${M} ]]
+        M="(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-^C-z]+\.[0-9]+)?"
+        echo "Matching ${{ github.ref_name }} vs ${M}"
+        if [[ "${{ github.ref_name }}" =~ ${M} ]]
         then
             echo "vmajor=/p:vmajor=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
             echo "vminor=/p:vminor=${BASH_REMATCH[2]}" >> "$GITHUB_OUTPUT"
