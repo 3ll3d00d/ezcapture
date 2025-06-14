@@ -40,6 +40,8 @@
 
 #ifndef NO_QUILL
 #include <quill/Backend.h>
+#else
+#include <format>
 #endif
 
 EXTERN_C const GUID MEDIASUBTYPE_PCM_IN24;
