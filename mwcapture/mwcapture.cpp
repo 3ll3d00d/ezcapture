@@ -409,6 +409,8 @@ void MagewellCaptureFilter::OnAudioSignalLoaded(AUDIO_SIGNAL* as)
 
 void MagewellCaptureFilter::OnDeviceUpdated()
 {
+	auto oldDesc = mDeviceStatus.deviceDesc;
+
 	mDeviceStatus.deviceDesc = devicetype_to_name(mDeviceInfo.deviceType);
 	mDeviceStatus.deviceDesc += " [";
 	mDeviceStatus.deviceDesc += mDeviceInfo.serialNo;
@@ -428,7 +430,10 @@ void MagewellCaptureFilter::OnDeviceUpdated()
 	}
 
 	#ifndef NO_QUILL
-	LOG_INFO(mLogData.logger, "[{}] Recorded device description: {}", mLogData.prefix, mDeviceStatus.deviceDesc);
+	if (oldDesc != mDeviceStatus.deviceDesc)
+	{
+		LOG_INFO(mLogData.logger, "[{}] Recorded device description: {}", mLogData.prefix, mDeviceStatus.deviceDesc);
+	}
 	#endif
 
 	if (mInfoCallback != nullptr)
@@ -742,12 +747,12 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 			#ifndef NO_QUILL
 			if (pin->mVideoFormat.pixelFormat.format == pixel_format::AYUV)
 			{
-				LOG_TRACE_L2(mLogData.logger, "[{}] Converted VUYA to AYUV in {:.3f} ms", mLogData.prefix,
+				LOG_TRACE_L3(mLogData.logger, "[{}] Converted VUYA to AYUV in {:.3f} ms", mLogData.prefix,
 				             static_cast<double>(execTime) / 1000.0);
 			}
 			else
 			{
-				LOG_TRACE_L2(mLogData.logger, "[{}] Converted 010P to P010 in {:.3f} ms", mLogData.prefix,
+				LOG_TRACE_L3(mLogData.logger, "[{}] Converted 010P to P010 in {:.3f} ms", mLogData.prefix,
 				             static_cast<double>(execTime) / 1000.0);
 			}
 			#endif

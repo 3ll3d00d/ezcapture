@@ -26,6 +26,7 @@
 
 #include "capture.h"
 #include <DXVA.h>
+#include "version.h"
 
 #ifdef _DEBUG
 #define MIN_LOG_LEVEL quill::LogLevel::TraceL3
@@ -116,6 +117,7 @@ CaptureFilter::CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID 
 	auto monitorConfig = GetAllSupportedRefreshRates();
 	mRefreshRates = std::move(monitorConfig.refreshRates);
 	#ifndef NO_QUILL
+	LOG_INFO(mLogData.logger, "[{}] Initialised filter v{}", mLogData.prefix, EZ_VERSION_STR);
 	LOG_INFO(mLogData.logger, "[{}] Monitor {} supported {} ignored {}", mLogData.prefix,
 	         monitorConfig.name, monitorConfig.supportedModes, monitorConfig.ignoredModes);
 	#endif

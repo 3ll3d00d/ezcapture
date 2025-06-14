@@ -278,6 +278,10 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;NDEBUG;_LIB;NO_QUILL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+	  <PreprocessorDefinitions Condition="'$(vmajor)'!=''">EZ_VERSION_MAJOR=$(vmajor);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+	  <PreprocessorDefinitions Condition="'$(vminor)'!=''">EZ_VERSION_MINOR=$(vminor);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+	  <PreprocessorDefinitions Condition="'$(vpatch)'!=''">EZ_VERSION_PATCH=$(vpatch);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+	  <PreprocessorDefinitions Condition="'$(vsuffix)'!=''">EZ_VERSION_SUFFIX=$(vsuffix);%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>
@@ -304,6 +308,10 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;NDEBUG;_LIB;NO_QUILL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+	  <PreprocessorDefinitions Condition="'$(vmajor)'!=''">EZ_VERSION_MAJOR=$(vmajor);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+	  <PreprocessorDefinitions Condition="'$(vminor)'!=''">EZ_VERSION_MINOR=$(vminor);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+	  <PreprocessorDefinitions Condition="'$(vpatch)'!=''">EZ_VERSION_PATCH=$(vpatch);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+	  <PreprocessorDefinitions Condition="'$(vsuffix)'!=''">EZ_VERSION_SUFFIX=$(vsuffix);%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>
@@ -331,6 +339,10 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;NDEBUG;_LIB;CAPTURE_NAME_SUFFIX=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+	  <PreprocessorDefinitions Condition="'$(vmajor)'!=''">EZ_VERSION_MAJOR=$(vmajor);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+	  <PreprocessorDefinitions Condition="'$(vminor)'!=''">EZ_VERSION_MINOR=$(vminor);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+	  <PreprocessorDefinitions Condition="'$(vpatch)'!=''">EZ_VERSION_PATCH=$(vpatch);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+	  <PreprocessorDefinitions Condition="'$(vsuffix)'!=''">EZ_VERSION_SUFFIX=$(vsuffix);%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>
@@ -358,6 +370,10 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;NDEBUG;_LIB;CAPTURE_NAME_SUFFIX=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+	  <PreprocessorDefinitions Condition="'$(vmajor)'!=''">EZ_VERSION_MAJOR=$(vmajor);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+	  <PreprocessorDefinitions Condition="'$(vminor)'!=''">EZ_VERSION_MINOR=$(vminor);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+	  <PreprocessorDefinitions Condition="'$(vpatch)'!=''">EZ_VERSION_PATCH=$(vpatch);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+	  <PreprocessorDefinitions Condition="'$(vsuffix)'!=''">EZ_VERSION_SUFFIX=$(vsuffix);%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>
@@ -398,7 +414,6 @@
     <ClInclude Include="resource.h" />
     <ClInclude Include="signalinfo.h" />
     <ClInclude Include="version.h" />
-    <ClInclude Include="version_rev.h" />
     <ClInclude Include="VideoFrameWriter.h" />
     <ClInclude Include="yuy2_yv16.h" />
   </ItemGroup>
