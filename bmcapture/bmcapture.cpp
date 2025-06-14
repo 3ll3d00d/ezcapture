@@ -38,14 +38,14 @@
 #endif
 
 #if CAPTURE_NAME_SUFFIX == 1
-#define LOG_PREFIX_NAME "BlackmagicCaptureFilterTrace"
-#define WLOG_PREFIX_NAME L"BlackmagicCaptureFilterTrace"
+#define LOG_PREFIX_NAME "BlackmagicTrace"
+#define WLOG_PREFIX_NAME L"BlackmagicTrace"
 #elif CAPTURE_NAME_SUFFIX == 2
-#define LOG_PREFIX_NAME "BlackmagicCaptureFilterWarn"
-#define WLOG_PREFIX_NAME L"BlackmagicCaptureFilterWarn"
+#define LOG_PREFIX_NAME "BlackmagicWarn"
+#define WLOG_PREFIX_NAME L"BlackmagicWarn"
 #else
-#define LOG_PREFIX_NAME "BlackmagicCaptureFilter"
-#define WLOG_PREFIX_NAME L"BlackmagicCaptureFilter"
+#define LOG_PREFIX_NAME "Blackmagic"
+#define WLOG_PREFIX_NAME L"Blackmagic"
 #endif
 
 // audio is limited to 48kHz and an audio packet is only delivered with a video frame
@@ -780,440 +780,480 @@ HRESULT BlackmagicCaptureFilter::VideoInputFormatChanged(BMDVideoInputFormatChan
 	return S_OK;
 }
 
+HRESULT BlackmagicCaptureFilter::processVideoFrame(IDeckLinkVideoInputFrame* videoFrame)
+{
+	int64_t frameTime = 0;
+	int64_t frameDuration = 0;
+	bool locked = true;
+	auto result = videoFrame->GetStreamTime(&frameTime, &frameDuration, dshowTicksPerSecond);
+	if (S_OK == result)
+	{
+		if ((videoFrame->GetFlags() & bmdFrameHasNoInputSource) != 0)
+		{
+			#ifndef NO_QUILL
+			LOG_TRACE_L2(mLogData.logger, "[{}] Signal is not locked at {}", mLogData.prefix, frameTime);
+			#endif
+
+			locked = false;
+		}
+	}
+	else
+	{
+		#ifndef NO_QUILL
+		LOG_ERROR(mLogData.logger, "[{}] Discarding video frame, unable to get stream time {:#08x}",
+		          mLogData.prefix, static_cast<unsigned long>(result));
+		#endif
+
+		return E_FAIL;
+	}
+
+	auto frameIndexIncrement = 1LL;
+	if (mPreviousVideoFrameTime != invalidFrameTime)
+	{
+		const auto framesSinceLast = (frameTime - mPreviousVideoFrameTime) / frameDuration;
+		auto missedFrames = std::max(framesSinceLast - 1, 0LL);
+		if (missedFrames > 0LL)
+		{
+			#ifndef NO_QUILL
+			LOG_WARNING(mLogData.logger,
+			            "[{}] Video capture discontinuity detected, {} frames missed at frame {}, increasing frame time to compensate",
+			            mLogData.prefix, missedFrames, mCurrentVideoFrameIndex);
+			#endif
+			frameIndexIncrement += missedFrames;
+		}
+	}
+
+	mVideoFrameTime += frameIndexIncrement * frameDuration;
+	mCurrentVideoFrameIndex += frameIndexIncrement;
+	mPreviousVideoFrameTime = frameTime;
+
+	#ifndef NO_QUILL
+	LOG_TRACE_L2(mLogData.logger, "[{}] Captured video frame {} at {} (locked: {})", mLogData.prefix,
+	             mCurrentVideoFrameIndex, frameTime, locked);
+	#endif
+
+	auto wasLocked = mVideoSignal.locked;
+	mVideoSignal.locked = locked;
+	if (wasLocked != locked)
+	{
+		OnVideoSignalLoaded(&mVideoSignal);
+	}
+	if (!locked)
+	{
+		return E_FAIL;
+	}
+
+	int64_t referenceFrameTime;
+	int64_t referenceFrameDuration;
+
+	// Get the captured timestamp for the incoming frame
+	if (videoFrame->GetHardwareReferenceTimestamp(referenceTimescale, &referenceFrameTime, &referenceFrameDuration)
+		!= S_OK)
+		return E_FAIL;
+
+	// metadata
+	VIDEO_FORMAT newVideoFormat{};
+	LoadFormat(&newVideoFormat, &mVideoSignal);
+
+	auto doubleValue = 0.0;
+	auto intValue = 0LL;
+	CComQIPtr<IDeckLinkVideoFrameMetadataExtensions> metadataExtensions(videoFrame);
+
+	result = metadataExtensions->GetInt(bmdDeckLinkFrameMetadataColorspace, &intValue);
+	if (S_OK == result)
+	{
+		switch (static_cast<BMDColorspace>(intValue))
+		{
+		case bmdColorspaceRec601:
+			newVideoFormat.colourFormat = REC601;
+			newVideoFormat.colourFormatName = "REC601";
+			break;
+		case bmdColorspaceRec709:
+			newVideoFormat.colourFormat = REC709;
+			newVideoFormat.colourFormatName = "REC709";
+			break;
+		case bmdColorspaceRec2020:
+			newVideoFormat.colourFormat = BT2020;
+			newVideoFormat.colourFormatName = "BT2020";
+			break;
+		case bmdColorspaceP3D65:
+			newVideoFormat.colourFormat = P3D65;
+			newVideoFormat.colourFormatName = "P3D65";
+			break;
+		case bmdColorspaceDolbyVisionNative:
+			newVideoFormat.colourFormat = COLOUR_FORMAT_UNKNOWN;
+			newVideoFormat.colourFormatName = "?";
+			break;
+		case bmdColorspaceUnknown:
+			newVideoFormat.colourFormat = COLOUR_FORMAT_UNKNOWN;
+			newVideoFormat.colourFormatName = "?";
+			break;
+		}
+	}
+
+	// HDR meta data
+	result = metadataExtensions->GetInt(bmdDeckLinkFrameMetadataHDRElectroOpticalTransferFunc, &intValue);
+	if (S_OK == result)
+	{
+		// EOTF in range 0-7 as per CEA 861.3 aka A2016 HDR STATIC METADATA EXTENSIONS.
+		// 0=SDR, 1=HDR, 2=PQ, 3=HLG, 4-7=future use
+		switch (intValue)
+		{
+		case 0:
+			newVideoFormat.hdrMeta.transferFunction = 4;
+			break;
+		case 2:
+			newVideoFormat.hdrMeta.transferFunction = 15;
+			break;
+		case 3:
+			newVideoFormat.hdrMeta.transferFunction = 16;
+			break;
+		default:
+			newVideoFormat.hdrMeta.transferFunction = 4;
+		}
+	}
+	else if (newVideoFormat.colourFormat == BT2020)
+	{
+		newVideoFormat.hdrMeta.transferFunction = 15;
+	}
+
+	if (videoFrame->GetFlags() & bmdFrameContainsHDRMetadata)
+	{
+		#ifndef NO_QUILL
+		std::string invalids{};
+		#endif
+		// Primaries
+		result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRDisplayPrimariesBlueX, &doubleValue);
+		if (S_OK == result && isInCieRange(doubleValue))
+		{
+			newVideoFormat.hdrMeta.b_primary_x = doubleValue;
+		}
+		else
+		{
+			#ifndef NO_QUILL
+			invalids += invalids.empty() ? ", " : "";
+			invalids += to_string(bmdDeckLinkFrameMetadataHDRDisplayPrimariesBlueX);
+			#endif
+		}
+		result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRDisplayPrimariesBlueY, &doubleValue);
+		if (S_OK == result && isInCieRange(doubleValue))
+		{
+			newVideoFormat.hdrMeta.b_primary_y = doubleValue;
+		}
+		else
+		{
+			#ifndef NO_QUILL
+			invalids += invalids.empty() ? ", " : "";
+			invalids += to_string(bmdDeckLinkFrameMetadataHDRDisplayPrimariesBlueY);
+			#endif
+		}
+
+		result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRDisplayPrimariesRedX, &doubleValue);
+		if (S_OK == result && isInCieRange(doubleValue))
+		{
+			newVideoFormat.hdrMeta.r_primary_x = doubleValue;
+		}
+		else
+		{
+			#ifndef NO_QUILL
+			invalids += invalids.empty() ? ", " : "";
+			invalids += to_string(bmdDeckLinkFrameMetadataHDRDisplayPrimariesRedX);
+			#endif
+		}
+		result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRDisplayPrimariesRedY, &doubleValue);
+		if (S_OK == result && isInCieRange(doubleValue))
+		{
+			newVideoFormat.hdrMeta.r_primary_y = doubleValue;
+		}
+		else
+		{
+			#ifndef NO_QUILL
+			invalids += invalids.empty() ? ", " : "";
+			invalids += to_string(bmdDeckLinkFrameMetadataHDRDisplayPrimariesRedY);
+			#endif
+		}
+
+		result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRDisplayPrimariesGreenX, &doubleValue);
+		if (S_OK == result && isInCieRange(doubleValue))
+		{
+			newVideoFormat.hdrMeta.g_primary_x = doubleValue;
+		}
+		else
+		{
+			#ifndef NO_QUILL
+			invalids += invalids.empty() ? ", " : "";
+			invalids += to_string(bmdDeckLinkFrameMetadataHDRDisplayPrimariesGreenX);
+			#endif
+		}
+		result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRDisplayPrimariesGreenY, &doubleValue);
+		if (S_OK == result && isInCieRange(doubleValue))
+		{
+			newVideoFormat.hdrMeta.g_primary_y = doubleValue;
+		}
+		else
+		{
+			#ifndef NO_QUILL
+			invalids += invalids.empty() ? ", " : "";
+			invalids += to_string(bmdDeckLinkFrameMetadataHDRDisplayPrimariesGreenY);
+			#endif
+		}
+
+		// White point
+		result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRWhitePointX, &doubleValue);
+		if (S_OK == result && isInCieRange(doubleValue))
+		{
+			newVideoFormat.hdrMeta.whitepoint_x = doubleValue;
+		}
+		else
+		{
+			#ifndef NO_QUILL
+			invalids += invalids.empty() ? ", " : "";
+			invalids += to_string(bmdDeckLinkFrameMetadataHDRWhitePointX);
+			#endif
+		}
+		result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRWhitePointY, &doubleValue);
+		if (S_OK == result && isInCieRange(doubleValue))
+		{
+			newVideoFormat.hdrMeta.whitepoint_y = doubleValue;
+		}
+		else
+		{
+			#ifndef NO_QUILL
+			invalids += invalids.empty() ? ", " : "";
+			invalids += to_string(bmdDeckLinkFrameMetadataHDRWhitePointY);
+			#endif
+		}
+
+		// DML
+		result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRMinDisplayMasteringLuminance,
+		                                      &doubleValue);
+		if (S_OK == result && std::fabs(doubleValue) > 0.000001)
+		{
+			newVideoFormat.hdrMeta.minDML = doubleValue;
+		}
+		else
+		{
+			#ifndef NO_QUILL
+			invalids += invalids.empty() ? ", " : "";
+			invalids += to_string(bmdDeckLinkFrameMetadataHDRMinDisplayMasteringLuminance);
+			#endif
+		}
+		result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRMaxDisplayMasteringLuminance,
+		                                      &doubleValue);
+		if (S_OK == result && std::fabs(doubleValue) > 0.000001)
+		{
+			newVideoFormat.hdrMeta.maxDML = doubleValue;
+		}
+		else
+		{
+			#ifndef NO_QUILL
+			invalids += invalids.empty() ? ", " : "";
+			invalids += to_string(bmdDeckLinkFrameMetadataHDRMaxDisplayMasteringLuminance);
+			#endif
+		}
+
+		// MaxCLL MaxFALL
+		result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRMaximumContentLightLevel, &doubleValue);
+		if (S_OK == result && std::fabs(doubleValue) > 0.000001)
+		{
+			newVideoFormat.hdrMeta.maxCLL = std::lround(doubleValue);
+		}
+		else
+		{
+			#ifndef NO_QUILL
+			invalids += invalids.empty() ? ", " : "";
+			invalids += to_string(bmdDeckLinkFrameMetadataHDRMaximumContentLightLevel);
+			#endif
+		}
+		result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRMaximumFrameAverageLightLevel,
+		                                      &doubleValue);
+		if (S_OK == result && std::fabs(doubleValue) > 0.000001)
+		{
+			newVideoFormat.hdrMeta.maxFALL = std::lround(doubleValue);
+		}
+		else
+		{
+			#ifndef NO_QUILL
+			invalids += invalids.empty() ? ", " : "";
+			invalids += to_string(bmdDeckLinkFrameMetadataHDRMaximumFrameAverageLightLevel);
+			#endif
+		}
+
+		#ifndef NO_QUILL
+		if (!mInvalidHdrMetaDataItems || (mInvalidHdrMetaDataItems && invalids != *mInvalidHdrMetaDataItems))
+		{
+			if (invalids.empty())
+			{
+				LOG_TRACE_L1(mLogData.logger, "[{}] All HDR metadata is present", mLogData.prefix);
+			}
+			else
+			{
+				LOG_TRACE_L1(mLogData.logger, "[{}] Invalid HDR metadata detected in {}", mLogData.prefix,
+				             invalids);
+			}
+			mInvalidHdrMetaDataItems = std::make_unique<std::string>(std::move(invalids));
+		}
+		#endif
+	}
+	else if (!newVideoFormat.hdrMeta.exists() && mVideoFormat.hdrMeta.exists())
+	{
+		#ifndef NO_QUILL
+		LOG_TRACE_L1(mLogData.logger, "[{}] HDR metadata has been removed", mLogData.prefix);
+		#endif
+	}
+
+	{
+		CAutoLock lock(&mFrameSec);
+
+		if (newVideoFormat.frameInterval != mVideoFormat.frameInterval)
+		{
+			for (auto i = 0; i < m_iPins; i++)
+			{
+				auto pin = dynamic_cast<CapturePin*>(m_paStreams[i]);
+				pin->ResizeMetrics(newVideoFormat.fps);
+			}
+
+			if (mBlockFilterOnRefreshRateChange)
+			{
+				#ifndef NO_QUILL
+				LOG_TRACE_L3(mLogData.logger, "[{}] Refresh rate trigger in filter thread", mLogData.prefix);
+				#endif
+
+				auto currRate = newVideoFormat.CalcRefreshRate();
+				if (S_OK == ChangeResolution(mLogData, currRate))
+				{
+					auto values = GetDisplayStatus();
+					OnDisplayUpdated(std::get<0>(values), std::get<1>(values));
+				}
+			}
+		}
+
+		// The time for start of frame on the wire is the timestamp attached to the frame at completion minus the frame duration
+		auto captureTime = referenceFrameTime - referenceFrameDuration;
+
+		mVideoFormat = newVideoFormat;
+		mVideoFrame = std::make_shared<VideoFrame>(mLogData, newVideoFormat, captureTime, mVideoFrameTime,
+		                                           frameDuration, mCurrentVideoFrameIndex, videoFrame);
+	}
+
+	// signal listeners
+	if (!SetEvent(mVideoFrameEvent))
+	{
+		auto err = GetLastError();
+		#ifndef NO_QUILL
+		LOG_ERROR(mLogData.logger, "[{}] Failed to notify on video frame {:#08x}", mLogData.prefix, err);
+		#endif
+	}
+
+	return S_OK;
+}
+
+HRESULT BlackmagicCaptureFilter::processAudioPacket(IDeckLinkAudioInputPacket* audioPacket, const REFERENCE_TIME& now)
+{
+	void* audioData = nullptr;
+	auto result = audioPacket->GetBytes(&audioData);
+	if (S_OK != result)
+	{
+		#ifndef NO_QUILL
+		LOG_WARNING(mLogData.logger, "[{}] Failed to get audioFrame bytes {:#08x})", mLogData.prefix,
+		            static_cast<unsigned long>(result));
+		#endif
+
+		return E_FAIL;
+	}
+
+	int64_t frameTime;
+	result = audioPacket->GetPacketTime(&frameTime, dshowTicksPerSecond);
+	if (S_OK != result)
+	{
+		#ifndef NO_QUILL
+		LOG_WARNING(mLogData.logger, "[{}] Failed to get audioFrame bytes {:#08x})", mLogData.prefix,
+		            static_cast<unsigned long>(result));
+		#endif
+
+		return E_FAIL;
+	}
+
+	auto frameIndexIncrement = 1LL;
+	if (mPreviousAudioFrameTime != invalidFrameTime)
+	{
+		const auto framesSinceLast = (frameTime - mPreviousAudioFrameTime) / mVideoFormat.frameInterval;
+		auto missedFrames = std::max(framesSinceLast - 1, 0LL);
+		if (missedFrames > 0LL)
+		{
+			#ifndef NO_QUILL
+			LOG_WARNING(mLogData.logger,
+			            "[{}] Audio capture discontinuity detected, {} frames missed at frame {}, increasing frame time to compensate",
+			            mLogData.prefix, missedFrames, mCurrentAudioFrameIndex);
+			#endif
+			frameIndexIncrement += missedFrames;
+		}
+	}
+	mAudioFrameTime += mVideoFormat.frameInterval * frameIndexIncrement;
+	mCurrentAudioFrameIndex += frameIndexIncrement;
+	mPreviousAudioFrameTime = frameTime;
+
+	#ifndef NO_QUILL
+	LOG_TRACE_L2(mLogData.logger, "[{}] Captured audio frame {} at {} (locked: {})", mLogData.prefix,
+	             mCurrentAudioFrameIndex, frameTime, mVideoSignal.locked);
+	#endif
+
+	if (!mVideoSignal.locked)
+	{
+		return E_FAIL;
+	}
+
+	{
+		auto audioByteDepth = audioBitDepth / 8;
+		auto audioFrameLength = audioPacket->GetSampleFrameCount() * mDeviceInfo.audioChannelCount * audioByteDepth;
+
+		CAutoLock lock(&mFrameSec);
+		mAudioFrame = std::make_shared<AudioFrame>(mLogData, now, mAudioFrameTime, audioData, audioFrameLength,
+		                                           mAudioFormat, mCurrentAudioFrameIndex, audioPacket);
+	}
+
+	// signal listeners
+	if (!SetEvent(mAudioFrameEvent))
+	{
+		auto err = GetLastError();
+		#ifndef NO_QUILL
+		LOG_ERROR(mLogData.logger, "[{}] Failed to notify on audio frame {:#08x}", mLogData.prefix, err);
+		#endif
+	}
+	return S_OK;
+}
+
 HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame* videoFrame,
                                                         IDeckLinkAudioInputPacket* audioPacket)
 {
 	REFERENCE_TIME now;
 	GetReferenceTime(&now);
 
-	if (videoFrame)
+	auto hasVideo = videoFrame != nullptr;
+	auto hasAudio = audioPacket != nullptr;
+
+	#ifndef NO_QUILL
+	LOG_TRACE_L2(mLogData.logger, "[{}] Frame arrived at {} (V/A : {}/{})", mLogData.prefix, now,
+	             hasVideo, hasAudio);
+	#endif
+
+	auto retVal = S_OK;
+
+	if (hasVideo)
 	{
-		int64_t frameTime = 0;
-		int64_t frameDuration = 0;
-		bool locked = true;
-		auto result = videoFrame->GetStreamTime(&frameTime, &frameDuration, dshowTicksPerSecond);
-		if (S_OK == result)
+		retVal = processVideoFrame(videoFrame);
+	}
+
+	if (hasAudio)
+	{
+		auto hr = processAudioPacket(audioPacket, now);
+		if (retVal != S_OK)
 		{
-			if ((videoFrame->GetFlags() & bmdFrameHasNoInputSource) != 0)
-			{
-				#ifndef NO_QUILL
-				LOG_TRACE_L2(mLogData.logger, "[{}] Signal is not locked at {}", mLogData.prefix, frameTime);
-				#endif
-
-				locked = false;
-			}
-		}
-		else
-		{
-			#ifndef NO_QUILL
-			LOG_ERROR(mLogData.logger, "[{}] Discarding video frame, unable to get stream time {:#08x}",
-			          mLogData.prefix, static_cast<unsigned long>(result));
-			#endif
-
-			return E_FAIL;
-		}
-
-		mVideoFrameTime += frameDuration;
-
-		if (mPreviousVideoFrameTime == invalidFrameTime)
-		{
-			mCurrentVideoFrameIndex++;
-		}
-		else
-		{
-			const auto framesSinceLast = (frameTime - mPreviousVideoFrameTime) / frameDuration;
-			mCurrentVideoFrameIndex += framesSinceLast;
-			auto missedFrames = std::max(framesSinceLast - 1, 0LL);
-			if (missedFrames > 0LL)
-			{
-				#ifndef NO_QUILL
-				LOG_WARNING(mLogData.logger,
-				            "[{}] Video capture discontinuity detected, {} frames missed at frame {}, increasing frame time to compensate",
-				            mLogData.prefix, missedFrames, mCurrentVideoFrameIndex);
-				#endif
-				mVideoFrameTime += missedFrames * frameDuration;
-			}
-		}
-		mPreviousVideoFrameTime = frameTime;
-
-		if (!locked)
-		{
-			return E_FAIL;
-		}
-
-		int64_t referenceFrameTime;
-		int64_t referenceFrameDuration;
-
-		// Get the captured timestamp for the incoming frame
-		if (videoFrame->GetHardwareReferenceTimestamp(referenceTimescale, &referenceFrameTime, &referenceFrameDuration)
-			!= S_OK)
-			return E_FAIL;
-
-		#ifndef NO_QUILL
-		LOG_TRACE_L2(mLogData.logger, "[{}] Captured video frame {} at {}", mLogData.prefix, mCurrentVideoFrameIndex,
-		             frameTime);
-		#endif
-
-		// metadata
-		VIDEO_FORMAT newVideoFormat{};
-		LoadFormat(&newVideoFormat, &mVideoSignal);
-
-		auto doubleValue = 0.0;
-		auto intValue = 0LL;
-		CComQIPtr<IDeckLinkVideoFrameMetadataExtensions> metadataExtensions(videoFrame);
-
-		result = metadataExtensions->GetInt(bmdDeckLinkFrameMetadataColorspace, &intValue);
-		if (S_OK == result)
-		{
-			switch (static_cast<BMDColorspace>(intValue))
-			{
-			case bmdColorspaceRec601:
-				newVideoFormat.colourFormat = REC601;
-				newVideoFormat.colourFormatName = "REC601";
-				break;
-			case bmdColorspaceRec709:
-				newVideoFormat.colourFormat = REC709;
-				newVideoFormat.colourFormatName = "REC709";
-				break;
-			case bmdColorspaceRec2020:
-				newVideoFormat.colourFormat = BT2020;
-				newVideoFormat.colourFormatName = "BT2020";
-				break;
-			case bmdColorspaceP3D65:
-				newVideoFormat.colourFormat = P3D65;
-				newVideoFormat.colourFormatName = "P3D65";
-				break;
-			case bmdColorspaceDolbyVisionNative:
-				newVideoFormat.colourFormat = COLOUR_FORMAT_UNKNOWN;
-				newVideoFormat.colourFormatName = "?";
-				break;
-			case bmdColorspaceUnknown:
-				newVideoFormat.colourFormat = COLOUR_FORMAT_UNKNOWN;
-				newVideoFormat.colourFormatName = "?";
-				break;
-			}
-		}
-
-		// HDR meta data
-		HDR_META hdr = newVideoFormat.hdrMeta;
-		result = metadataExtensions->GetInt(bmdDeckLinkFrameMetadataHDRElectroOpticalTransferFunc, &intValue);
-		if (S_OK == result)
-		{
-			// EOTF in range 0-7 as per CEA 861.3 aka A2016 HDR STATIC METADATA EXTENSIONS.
-			// 0=SDR, 1=HDR, 2=PQ, 3=HLG, 4-7=future use
-			switch (intValue)
-			{
-			case 0:
-				newVideoFormat.hdrMeta.transferFunction = 4;
-				break;
-			case 2:
-				newVideoFormat.hdrMeta.transferFunction = 15;
-				break;
-			case 3:
-				newVideoFormat.hdrMeta.transferFunction = 16;
-				break;
-			default:
-				newVideoFormat.hdrMeta.transferFunction = 4;
-			}
-		}
-		else if (newVideoFormat.colourFormat == BT2020)
-		{
-			newVideoFormat.hdrMeta.transferFunction = 15;
-		}
-
-		if (videoFrame->GetFlags() & bmdFrameContainsHDRMetadata)
-		{
-			#ifndef NO_QUILL
-			std::string invalids{};
-			#endif
-			// Primaries
-			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRDisplayPrimariesBlueX, &doubleValue);
-			if (S_OK == result && isInCieRange(doubleValue))
-			{
-				newVideoFormat.hdrMeta.b_primary_x = doubleValue;
-			}
-			else
-			{
-				#ifndef NO_QUILL
-				invalids += invalids.empty() ? ", " : "";
-				invalids += to_string(bmdDeckLinkFrameMetadataHDRDisplayPrimariesBlueX);
-				#endif
-			}
-			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRDisplayPrimariesBlueY, &doubleValue);
-			if (S_OK == result && isInCieRange(doubleValue))
-			{
-				newVideoFormat.hdrMeta.b_primary_y = doubleValue;
-			}
-			else
-			{
-				#ifndef NO_QUILL
-				invalids += invalids.empty() ? ", " : "";
-				invalids += to_string(bmdDeckLinkFrameMetadataHDRDisplayPrimariesBlueY);
-				#endif
-			}
-
-			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRDisplayPrimariesRedX, &doubleValue);
-			if (S_OK == result && isInCieRange(doubleValue))
-			{
-				newVideoFormat.hdrMeta.r_primary_x = doubleValue;
-			}
-			else
-			{
-				#ifndef NO_QUILL
-				invalids += invalids.empty() ? ", " : "";
-				invalids += to_string(bmdDeckLinkFrameMetadataHDRDisplayPrimariesRedX);
-				#endif
-			}
-			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRDisplayPrimariesRedY, &doubleValue);
-			if (S_OK == result && isInCieRange(doubleValue))
-			{
-				newVideoFormat.hdrMeta.r_primary_y = doubleValue;
-			}
-			else
-			{
-				#ifndef NO_QUILL
-				invalids += invalids.empty() ? ", " : "";
-				invalids += to_string(bmdDeckLinkFrameMetadataHDRDisplayPrimariesRedY);
-				#endif
-			}
-
-			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRDisplayPrimariesGreenX, &doubleValue);
-			if (S_OK == result && isInCieRange(doubleValue))
-			{
-				newVideoFormat.hdrMeta.g_primary_x = doubleValue;
-			}
-			else
-			{
-				#ifndef NO_QUILL
-				invalids += invalids.empty() ? ", " : "";
-				invalids += to_string(bmdDeckLinkFrameMetadataHDRDisplayPrimariesGreenX);
-				#endif
-			}
-			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRDisplayPrimariesGreenY, &doubleValue);
-			if (S_OK == result && isInCieRange(doubleValue))
-			{
-				newVideoFormat.hdrMeta.g_primary_y = doubleValue;
-			}
-			else
-			{
-				#ifndef NO_QUILL
-				invalids += invalids.empty() ? ", " : "";
-				invalids += to_string(bmdDeckLinkFrameMetadataHDRDisplayPrimariesGreenY);
-				#endif
-			}
-
-			// White point
-			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRWhitePointX, &doubleValue);
-			if (S_OK == result && isInCieRange(doubleValue))
-			{
-				newVideoFormat.hdrMeta.whitepoint_x = doubleValue;
-			}
-			else
-			{
-				#ifndef NO_QUILL
-				invalids += invalids.empty() ? ", " : "";
-				invalids += to_string(bmdDeckLinkFrameMetadataHDRWhitePointX);
-				#endif
-			}
-			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRWhitePointY, &doubleValue);
-			if (S_OK == result && isInCieRange(doubleValue))
-			{
-				newVideoFormat.hdrMeta.whitepoint_y = doubleValue;
-			}
-			else
-			{
-				#ifndef NO_QUILL
-				invalids += invalids.empty() ? ", " : "";
-				invalids += to_string(bmdDeckLinkFrameMetadataHDRWhitePointY);
-				#endif
-			}
-
-			// DML
-			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRMinDisplayMasteringLuminance,
-			                                      &doubleValue);
-			if (S_OK == result && std::fabs(doubleValue) > 0.000001)
-			{
-				newVideoFormat.hdrMeta.minDML = doubleValue;
-			}
-			else
-			{
-				#ifndef NO_QUILL
-				invalids += invalids.empty() ? ", " : "";
-				invalids += to_string(bmdDeckLinkFrameMetadataHDRMinDisplayMasteringLuminance);
-				#endif
-			}
-			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRMaxDisplayMasteringLuminance,
-			                                      &doubleValue);
-			if (S_OK == result && std::fabs(doubleValue) > 0.000001)
-			{
-				newVideoFormat.hdrMeta.maxDML = doubleValue;
-			}
-			else
-			{
-				#ifndef NO_QUILL
-				invalids += invalids.empty() ? ", " : "";
-				invalids += to_string(bmdDeckLinkFrameMetadataHDRMaxDisplayMasteringLuminance);
-				#endif
-			}
-
-			// MaxCLL MaxFALL
-			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRMaximumContentLightLevel, &doubleValue);
-			if (S_OK == result && std::fabs(doubleValue) > 0.000001)
-			{
-				newVideoFormat.hdrMeta.maxCLL = std::lround(doubleValue);
-			}
-			else
-			{
-				#ifndef NO_QUILL
-				invalids += invalids.empty() ? ", " : "";
-				invalids += to_string(bmdDeckLinkFrameMetadataHDRMaximumContentLightLevel);
-				#endif
-			}
-			result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRMaximumFrameAverageLightLevel,
-			                                      &doubleValue);
-			if (S_OK == result && std::fabs(doubleValue) > 0.000001)
-			{
-				newVideoFormat.hdrMeta.maxFALL = std::lround(doubleValue);
-			}
-			else
-			{
-				#ifndef NO_QUILL
-				invalids += invalids.empty() ? ", " : "";
-				invalids += to_string(bmdDeckLinkFrameMetadataHDRMaximumFrameAverageLightLevel);
-				#endif
-			}
-
-			#ifndef NO_QUILL
-			if (!invalids.empty())
-			{
-				LOG_INFO(mLogData.logger, "[{}] HDR Metadata is present but some values are invalid [{}]",
-				         mLogData.prefix, invalids);
-			}
-			logHdrMeta(hdr, mVideoFormat.hdrMeta, mLogData);
-			#endif
-		}
-
-		#ifndef NO_QUILL
-		if (!newVideoFormat.hdrMeta.exists() && mVideoFormat.hdrMeta.exists())
-		{
-			LOG_TRACE_L1(mLogData.logger, "[{}] HDR metadata has been removed", mLogData.prefix);
-		}
-		#endif
-
-		{
-			CAutoLock lock(&mFrameSec);
-
-			if (newVideoFormat.frameInterval != mVideoFormat.frameInterval)
-			{
-				for (auto i = 0; i < m_iPins; i++)
-				{
-					auto pin = dynamic_cast<CapturePin*>(m_paStreams[i]);
-					pin->ResizeMetrics(newVideoFormat.fps);
-				}
-
-				if (mBlockFilterOnRefreshRateChange)
-				{
-					#ifndef NO_QUILL
-					LOG_TRACE_L3(mLogData.logger, "[{}] Refresh rate trigger in filter thread", mLogData.prefix);
-					#endif
-
-					auto currRate = newVideoFormat.CalcRefreshRate();
-					if (S_OK == ChangeResolution(mLogData, currRate))
-					{
-						auto values = GetDisplayStatus();
-						OnDisplayUpdated(std::get<0>(values), std::get<1>(values));
-					}
-				}
-			}
-
-			// The time for start of frame on the wire is the timestamp attached to the frame at completion minus the frame duration
-			auto captureTime = referenceFrameTime - referenceFrameDuration;
-
-			mVideoFormat = newVideoFormat;
-			mVideoFrame = std::make_shared<VideoFrame>(mLogData, newVideoFormat, captureTime, mVideoFrameTime,
-			                                           frameDuration, mCurrentVideoFrameIndex, videoFrame);
-		}
-
-		// signal listeners
-		if (!SetEvent(mVideoFrameEvent))
-		{
-			auto err = GetLastError();
-			#ifndef NO_QUILL
-			LOG_ERROR(mLogData.logger, "[{}] Failed to notify on video frame {:#08x}", mLogData.prefix, err);
-			#endif
+			retVal = hr;
 		}
 	}
 
-	if (audioPacket != nullptr)
-	{
-		void* audioData = nullptr;
-		auto result = audioPacket->GetBytes(&audioData);
-		if (S_OK != result)
-		{
-			#ifndef NO_QUILL
-			LOG_WARNING(mLogData.logger, "[{}] Failed to get audioFrame bytes {:#08x})", mLogData.prefix,
-			            static_cast<unsigned long>(result));
-			#endif
-
-			return E_FAIL;
-		}
-
-		int64_t frameTime;
-		result = audioPacket->GetPacketTime(&frameTime, dshowTicksPerSecond);
-		if (S_OK != result)
-		{
-			#ifndef NO_QUILL
-			LOG_WARNING(mLogData.logger, "[{}] Failed to get audioFrame bytes {:#08x})", mLogData.prefix,
-			            static_cast<unsigned long>(result));
-			#endif
-
-			return E_FAIL;
-		}
-
-		mAudioFrameTime += mVideoFormat.frameInterval;
-
-		if (mPreviousAudioFrameTime != invalidFrameTime)
-		{
-			const auto framesSinceLast = (frameTime - mPreviousAudioFrameTime) / mVideoFormat.frameInterval;
-			mCurrentAudioFrameIndex += framesSinceLast;
-			auto missedFrames = std::max(framesSinceLast - 1, 0LL);
-			if (missedFrames > 0LL)
-			{
-				#ifndef NO_QUILL
-				LOG_WARNING(mLogData.logger,
-				            "[{}] Audio capture discontinuity detected, {} frames missed at frame {}, increasing frame time to compensate",
-				            mLogData.prefix, missedFrames, mCurrentAudioFrameIndex);
-				#endif
-				mAudioFrameTime += missedFrames * mVideoFormat.frameInterval;
-			}
-		}
-		mPreviousAudioFrameTime = frameTime;
-
-		#ifndef NO_QUILL
-		LOG_TRACE_L2(mLogData.logger, "[{}] Captured audio frame {} at {}", mLogData.prefix, mCurrentAudioFrameIndex,
-		             frameTime);
-		#endif
-
-		{
-			auto audioByteDepth = audioBitDepth / 8;
-			auto audioFrameLength = audioPacket->GetSampleFrameCount() * mDeviceInfo.audioChannelCount * audioByteDepth;
-
-			CAutoLock lock(&mFrameSec);
-			mAudioFrame = std::make_shared<AudioFrame>(mLogData, now, mAudioFrameTime, audioData, audioFrameLength,
-			                                           mAudioFormat, mCurrentAudioFrameIndex, audioPacket);
-		}
-
-		// signal listeners
-		if (!SetEvent(mAudioFrameEvent))
-		{
-			auto err = GetLastError();
-			#ifndef NO_QUILL
-			LOG_ERROR(mLogData.logger, "[{}] Failed to notify on audio frame {:#08x}", mLogData.prefix, err);
-			#endif
-		}
-	}
-
-	return S_OK;
+	return retVal;
 }
 
 void BlackmagicCaptureFilter::LoadFormat(AUDIO_FORMAT* audioFormat, const AUDIO_SIGNAL* audioSignal)
@@ -1696,6 +1736,7 @@ HRESULT BlackmagicVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, RE
 			if (FAILED(retVal))
 			{
 				hasFrame = false;
+
 				#ifndef NO_QUILL
 				LOG_WARNING(mLogData.logger,
 				            "[{}] Video frame buffered but unable to get delivery buffer, retry after backoff",
@@ -1755,16 +1796,14 @@ HRESULT BlackmagicVideoCapturePin::FillBuffer(IMediaSample* pms)
 	REFERENCE_TIME rt;
 	GetReferenceTime(&rt);
 
-	if (mFrameCounter == 1)
+	if (mFrameCounter <= 1)
 	{
-		LOG_TRACE_L1(mLogData.videoLat,
-		             "{},f_idx,cap_lat,conv_lat,pt,st,et,ct,interval,delta,dur,len,gap",
-		             mLogData.prefix);
+		LOG_TRACE_L1(mLogData.videoLat, "idx,cap_lat,conv_lat,pt,st,et,ct,interval,delta,dur,len,gap");
 	}
 	auto frameInterval = mCurrentFrameTime - mPreviousFrameTime;
-	LOG_TRACE_L1(mLogData.videoLat, "{},{},{:.3f},{:.3f},{},{},{},{},{},{},{},{},{}",
-	             mLogData.prefix, mFrameCounter, static_cast<double>(capLat) / 1000.0,
-	             static_cast<double>(convLat) / 1000.0, mPreviousFrameTime, startTime, endTime, rt, frameInterval,
+	LOG_TRACE_L1(mLogData.videoLat, "{},{:.3f},{:.3f},{},{},{},{},{},{},{},{},{}",
+	             mFrameCounter, static_cast<double>(capLat) / 1000.0, static_cast<double>(convLat) / 1000.0,
+	             mPreviousFrameTime, startTime, endTime, rt, frameInterval,
 	             frameInterval - mCurrentFrame->GetFrameDuration(), mCurrentFrame->GetFrameDuration(),
 	             mCurrentFrame->GetLength(), gap);
 	#endif
@@ -1817,22 +1856,6 @@ void BlackmagicVideoCapturePin::DoThreadDestroy()
 	#endif
 
 	mFilter->PinThreadDestroyed();
-}
-
-void BlackmagicVideoCapturePin::LogHdrMetaIfPresent(const VIDEO_FORMAT* newVideoFormat)
-{
-	#ifndef NO_QUILL
-	auto nowExists = newVideoFormat->hdrMeta.exists();
-	auto didExist = mVideoFormat.hdrMeta.exists();
-	if (nowExists && !didExist)
-	{
-		logHdrMeta(newVideoFormat->hdrMeta, mVideoFormat.hdrMeta, mLogData);
-	}
-	if (!nowExists && didExist)
-	{
-		LOG_TRACE_L1(mLogData.logger, "[{}] HDR metadata has been removed", mLogData.prefix);
-	}
-	#endif
 }
 
 void BlackmagicVideoCapturePin::OnChangeMediaType()
@@ -1979,10 +2002,6 @@ HRESULT BlackmagicAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, RE
 			if (SUCCEEDED(retVal))
 			{
 				hasFrame = true;
-				mFrameCounter++;
-				#ifndef NO_QUILL
-				LOG_TRACE_L3(mLogData.logger, "[{}] Reading frame {}", mLogData.prefix, mFrameCounter);
-				#endif
 			}
 			else
 			{
@@ -2025,6 +2044,9 @@ HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
 
 	BYTE* pmsData;
 	pms->GetPointer(&pmsData);
+
+	auto gap = mCurrentFrame->GetFrameIndex() - mFrameCounter;
+	mFrameCounter = mCurrentFrame->GetFrameIndex();
 
 	long size = mCurrentFrame->GetLength();
 	long maxSize = pms->GetSize();
@@ -2123,7 +2145,7 @@ HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
 
 	pms->SetTime(&startTime, &endTime);
 	pms->SetSyncPoint(true);
-	pms->SetDiscontinuity(false);
+	pms->SetDiscontinuity(gap != 1);
 	pms->SetActualDataLength(actualSize);
 
 	mPreviousFrameTime = mCurrentFrameTime;
@@ -2135,17 +2157,14 @@ HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
 	RecordLatency(capLat);
 
 	#ifndef NO_QUILL
-	if (mFrameCounter == 1)
+	if (mFrameCounter <= 1)
 	{
-		LOG_TRACE_L1(mLogData.audioLat,
-		             "{},codec,idx,lat,pt,st,et,ct,delta,now,len,count",
-		             mLogData.prefix);
+		LOG_TRACE_L1(mLogData.audioLat, "codec,idx,lat,pt,st,et,ct,delta,len,count,gap");
 	}
 	LOG_TRACE_L1(mLogData.audioLat, "{},{},{},{},{},{},{},{},{},{},{}",
-	             mLogData.prefix, codecNames[mAudioFormat.codec],
-	             mFrameCounter, capLat, startTime, mPreviousFrameTime,
-	             mCurrentFrameTime, mCurrentFrameTime - mPreviousFrameTime, now,
-	             mCurrentFrame->GetLength(), sampleCount);
+	             codecNames[mAudioFormat.codec], mFrameCounter, capLat, mPreviousFrameTime, startTime,
+	             mCurrentFrameTime, now, mCurrentFrameTime - mPreviousFrameTime, mCurrentFrame->GetLength(),
+	             sampleCount, gap);
 	#endif
 
 	if (mUpdatedMediaType)

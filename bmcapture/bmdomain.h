@@ -120,6 +120,8 @@ public:
 
 	AUDIO_FORMAT GetFormat() const { return mFormat; }
 
+	uint64_t GetFrameIndex() const { return mFrameIndex; }
+
 private:
 	int64_t mCaptureTime{0};
 	int64_t mFrameTime{0};

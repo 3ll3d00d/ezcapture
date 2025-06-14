@@ -43,14 +43,14 @@
 #define S_NO_CHANNELS    ((HRESULT)2L)
 
 #if CAPTURE_NAME_SUFFIX == 1
-#define LOG_PREFIX_NAME "MagewellCaptureFilterTrace"
-#define WLOG_PREFIX_NAME L"MagewellCaptureFilterTrace"
+#define LOG_PREFIX_NAME "MagewellTrace"
+#define WLOG_PREFIX_NAME L"MagewellTrace"
 #elif CAPTURE_NAME_SUFFIX == 2
-#define LOG_PREFIX_NAME "MagewellCaptureFilterWarn"
-#define WLOG_PREFIX_NAME L"MagewellCaptureFilterWarn"
+#define LOG_PREFIX_NAME "MagewellWarn"
+#define WLOG_PREFIX_NAME L"MagewellWarn"
 #else
-#define LOG_PREFIX_NAME "MagewellCaptureFilter"
-#define WLOG_PREFIX_NAME L"MagewellCaptureFilter"
+#define LOG_PREFIX_NAME "Magewell"
+#define WLOG_PREFIX_NAME L"Magewell"
 #endif
 
 constexpr auto bitstreamDetectionWindowSecs = 0.075;
@@ -518,7 +518,7 @@ MagewellVideoCapturePin::VideoFrameGrabber::VideoFrameGrabber(MagewellVideoCaptu
 	if (deviceType == PRO)
 	{
 		#ifndef NO_QUILL
-		LOG_TRACE_L2(mLogData.logger, "[{}] Pinning {} bytes", this->mLogData.prefix, this->pms->GetSize());
+		LOG_TRACE_L3(mLogData.logger, "[{}] Pinning {} bytes", this->mLogData.prefix, this->pms->GetSize());
 		#endif
 		MWPinVideoBuffer(hChannel, pmsData, this->pms->GetSize());
 	}
@@ -529,7 +529,7 @@ MagewellVideoCapturePin::VideoFrameGrabber::~VideoFrameGrabber()
 	if (deviceType == PRO)
 	{
 		#ifndef NO_QUILL
-		LOG_TRACE_L2(mLogData.logger, "[{}] Unpinning {} bytes, captured {} bytes", mLogData.prefix, pms->GetSize(),
+		LOG_TRACE_L3(mLogData.logger, "[{}] Unpinning {} bytes, captured {} bytes", mLogData.prefix, pms->GetSize(),
 		             pms->GetActualDataLength());
 		#endif
 
@@ -773,7 +773,7 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 		}
 		pin->AppendHdrSideDataIfNecessary(pms, endTime);
 
-		auto capLat = pin->mCaptureTime - frameTime;
+		auto capLat = (pin->mCaptureTime - frameTime) / 10; // convert from 100ns to micros
 
 		pin->RecordLatency(convLat, capLat);
 		pin->SnapTemperatureIfNecessary(endTime);
@@ -782,7 +782,7 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 		if (pin->mFrameCounter == 1)
 		{
 			LOG_TRACE_L1(mLogData.videoLat,
-			             "{},f_idx,cap_lat,conv_lat,pft,st,et,ct,cft,a_int,delta,v_int,len,missed",
+			             "{},idx,cap_lat,conv_lat,pft,st,et,ct,cft,f_int,v_int,delta,len,missed",
 			             mLogData.prefix);
 		}
 		auto frameInterval = pin->mCurrentFrameTime - pin->mPreviousFrameTime;
@@ -797,10 +797,10 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 			             pin->mVideoFormat.imageSize, sz);
 		}
 		LOG_TRACE_L1(mLogData.videoLat, "{},{},{:.3f},{:.3f},{},{},{},{},{},{},{},{},{},{}",
-		             mLogData.prefix, pin->mFrameCounter, static_cast<double>(capLat) / 1000.0,
+		             mLogData.prefix, pin->mFrameCounter, static_cast<double>(capLat) / 10000.0,
 		             static_cast<double>(convLat) / 1000.0, pin->mPreviousFrameTime, startTime, endTime, rt,
-		             pin->mCurrentFrameTime, frameInterval, frameInterval - pin->mVideoFormat.frameInterval,
-		             pin->mVideoFormat.frameInterval, pin->mVideoFormat.imageSize, missedFrame);
+		             pin->mCurrentFrameTime, frameInterval, pin->mVideoFormat.frameInterval,
+		             frameInterval - pin->mVideoFormat.frameInterval, pin->mVideoFormat.imageSize, missedFrame);
 		#endif
 	}
 	else
@@ -1110,30 +1110,6 @@ void MagewellVideoCapturePin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL
 	}
 
 	videoFormat->CalculateDimensions();
-}
-
-void MagewellVideoCapturePin::LogHdrMetaIfPresent(const VIDEO_FORMAT* newVideoFormat)
-{
-	#ifndef NO_QUILL
-	auto hdrIf = mVideoSignal.hdrInfo;
-	if (hdrIf.byEOTF || hdrIf.byMetadataDescriptorID
-		|| hdrIf.display_primaries_lsb_x0 || hdrIf.display_primaries_lsb_x1 || hdrIf.display_primaries_lsb_x2
-		|| hdrIf.display_primaries_msb_x0 || hdrIf.display_primaries_msb_x1 || hdrIf.display_primaries_msb_x2
-		|| hdrIf.display_primaries_lsb_y0 || hdrIf.display_primaries_lsb_y1 || hdrIf.display_primaries_lsb_y2
-		|| hdrIf.display_primaries_msb_y0 || hdrIf.display_primaries_msb_y1 || hdrIf.display_primaries_msb_y2
-		|| hdrIf.white_point_msb_x || hdrIf.white_point_msb_y || hdrIf.white_point_lsb_x || hdrIf.white_point_lsb_y
-		|| hdrIf.max_display_mastering_lsb_luminance || hdrIf.max_display_mastering_msb_luminance
-		|| hdrIf.min_display_mastering_lsb_luminance || hdrIf.min_display_mastering_msb_luminance
-		|| hdrIf.maximum_content_light_level_lsb || hdrIf.maximum_content_light_level_msb
-		|| hdrIf.maximum_frame_average_light_level_lsb || hdrIf.maximum_frame_average_light_level_msb)
-	{
-		logHdrMeta(newVideoFormat->hdrMeta, mVideoFormat.hdrMeta, mLogData);
-	}
-	if (!newVideoFormat->hdrMeta.exists() && mVideoFormat.hdrMeta.exists())
-	{
-		LOG_TRACE_L1(mLogData.logger, "[{}] HDR metadata has been removed", mLogData.prefix);
-	}
-	#endif
 }
 
 HRESULT MagewellVideoCapturePin::LoadSignal(HCHANNEL* pChannel)
@@ -2958,13 +2934,13 @@ HRESULT MagewellAudioCapturePin::FillBuffer(IMediaSample* pms)
 	if (mFrameCounter == 1)
 	{
 		LOG_TRACE_L1(mLogData.audioLat,
-		             "{},codec,since,f_idx,lat,pft,pt,st,et,ct,delta,len,count",
+		             "{},codec,since,idx,lat,pft,st,et,ct,cft,delta,len,count",
 		             mLogData.prefix);
 	}
 	LOG_TRACE_L1(mLogData.audioLat, "{},{},{},{},{},{},{},{},{},{},{},{},{}",
 	             mLogData.prefix, codecNames[mAudioFormat.codec], mSinceCodecChange,
 	             mFrameCounter, capLat, mPreviousFrameTime, startTime, endTime, now,
-	             endTime - startTime, bytesCaptured, samplesCaptured);
+	             mCurrentFrameTime, endTime - startTime, bytesCaptured, samplesCaptured);
 	#endif
 
 	pms->SetTime(&startTime, &endTime);

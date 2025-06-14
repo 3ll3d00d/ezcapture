@@ -132,7 +132,6 @@ protected:
 	// USB only
 	static void CaptureFrame(BYTE* pbFrame, int cbFrame, UINT64 u64TimeStamp, void* pParam);
 
-	void LogHdrMetaIfPresent(const VIDEO_FORMAT* newVideoFormat) override;
 	void OnChangeMediaType() override;
 	HRESULT LoadSignal(HCHANNEL* pChannel);
 	void OnFrameWriterStrategyUpdated() override;

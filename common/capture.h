@@ -192,12 +192,9 @@ inline void logHdrMeta(const HDR_META& newMeta, const HDR_META& oldMeta, const l
 
 		doLogHdrMeta(newMeta, log, logPrimaries, logWp, logMax, logTf);
 	}
-	else
+	else if (oldMeta.exists())
 	{
-		LOG_WARNING(log.logger,
-		            "[{}] HDR InfoFrame parsing failure, values are present but no metadata exists",
-		            log.prefix);
-		doLogHdrMeta(newMeta, log, true, true, true, false);
+		LOG_INFO(log.logger,  "[{}] HDR metadata has been removed", log.prefix);
 	}
 	#endif
 }
@@ -1063,7 +1060,12 @@ protected:
 		}
 	}
 
-	virtual void LogHdrMetaIfPresent(const VIDEO_FORMAT* newVideoFormat) = 0;
+	void LogHdrMetaIfPresent(const VIDEO_FORMAT* newVideoFormat) const
+	{
+		#ifndef NO_QUILL
+		logHdrMeta(newVideoFormat->hdrMeta, mVideoFormat.hdrMeta, mLogData);
+		#endif
+	}
 
 	HRESULT OnVideoSignal(VIDEO_FORMAT newVideoFormat)
 	{

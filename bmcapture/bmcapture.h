@@ -160,6 +160,10 @@ public:
 		return mAudioFrame;
 	}
 
+	HRESULT processVideoFrame(IDeckLinkVideoInputFrame* videoFrame);
+
+	HRESULT processAudioPacket(IDeckLinkAudioInputPacket* audioPacket, const REFERENCE_TIME& now);
+
 protected:
 	static void LoadFormat(VIDEO_FORMAT* videoFormat, const VIDEO_SIGNAL* videoSignal);
 	static void LoadSignalFromDisplayMode(VIDEO_SIGNAL* newSignal, IDeckLinkDisplayMode* newDisplayMode);
@@ -199,6 +203,7 @@ private:
 	HANDLE mAudioFrameEvent;
 
 	bool mBlockFilterOnRefreshRateChange{false};
+	std::unique_ptr<std::string> mInvalidHdrMetaDataItems;
 };
 
 class AsyncRefreshRateSwitcher final : public CMsgThread
@@ -263,10 +268,7 @@ public:
 
 protected:
 	void DoThreadDestroy() override;
-
-	void LogHdrMetaIfPresent(const VIDEO_FORMAT* newVideoFormat) override;
 	void OnChangeMediaType() override;
-
 	void DoChangeRefreshRate() override;
 
 	std::shared_ptr<VideoFrame> mCurrentFrame;

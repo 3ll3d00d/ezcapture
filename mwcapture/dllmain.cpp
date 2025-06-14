@@ -27,19 +27,16 @@
 
 #if CAPTURE_NAME_SUFFIX == 1
 #define FILTER_NAME L"Magewell Pro Capture (Trace)"
-#define LOG_PREFIX_NAME = "MagewellCaptureFilterTrace"
  // {9E53337D-9E32-40B4-AD39-B8525CDECD45}
 DEFINE_GUID(CLSID_MWCAPTURE_FILTER,
     0x9e53337d, 0x9e32, 0x40b4, 0xad, 0x39, 0xb8, 0x52, 0x5c, 0xde, 0xcd, 0x45);
 #elif CAPTURE_NAME_SUFFIX == 2
 #define FILTER_NAME L"Magewell Pro Capture (Warn)"
-#define LOG_PREFIX_NAME = "MagewellCaptureFilterWarn"
  // {87A31069-9A13-40D6-9C84-5499D8A44519}
 DEFINE_GUID(CLSID_MWCAPTURE_FILTER,
     0x87a31069, 0x9a13, 0x40d6, 0x9c, 0x84, 0x54, 0x99, 0xd8, 0xa4, 0x45, 0x19);
 #else
 #define FILTER_NAME L"Magewell Pro Capture"
-#define LOG_PREFIX_NAME = "MagewellCaptureFilter"
  // {4E3B0A92-2476-4016-81F0-201F19F6FBAE}
 DEFINE_GUID(CLSID_MWCAPTURE_FILTER,
     0x4e3b0a92, 0x2476, 0x4016, 0x81, 0xf0, 0x20, 0x1f, 0x19, 0xf6, 0xfb, 0xae);
