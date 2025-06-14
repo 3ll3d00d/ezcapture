@@ -1796,9 +1796,10 @@ HRESULT BlackmagicVideoCapturePin::FillBuffer(IMediaSample* pms)
 	REFERENCE_TIME rt;
 	GetReferenceTime(&rt);
 
-	if (mFrameCounter <= 1)
+	if (!mLoggedLatencyHeader)
 	{
 		LOG_TRACE_L1(mLogData.videoLat, "idx,cap_lat,conv_lat,pt,st,et,ct,interval,delta,dur,len,gap");
+		mLoggedLatencyHeader = true;
 	}
 	auto frameInterval = mCurrentFrameTime - mPreviousFrameTime;
 	LOG_TRACE_L1(mLogData.videoLat, "{},{:.3f},{:.3f},{},{},{},{},{},{},{},{},{}",
@@ -2157,9 +2158,10 @@ HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
 	RecordLatency(capLat);
 
 	#ifndef NO_QUILL
-	if (mFrameCounter <= 1)
+	if (!mLoggedLatencyHeader)
 	{
 		LOG_TRACE_L1(mLogData.audioLat, "codec,idx,lat,pt,st,et,ct,delta,len,count,gap");
+		mLoggedLatencyHeader = true;
 	}
 	LOG_TRACE_L1(mLogData.audioLat, "{},{},{},{},{},{},{},{},{},{},{}",
 	             codecNames[mAudioFormat.codec], mFrameCounter, capLat, mPreviousFrameTime, startTime,

@@ -32,12 +32,14 @@ public:
 	bool sample(uint64_t sample)
 	{
 		if (sample <= 0) return false;
-		mSnappedMin = std::min(sample, mMin);
-		mSnappedMax = std::max(sample, mMax);
+		mMin = std::min(sample, mMin);
+		mMax = std::max(sample, mMax);
 		mSum += sample;
 		if (++mSize >= mCapacity)
 		{
-			mMean = static_cast<double>(mSum) / mCapacity;
+			mSnappedMin = mMin;
+			mSnappedMean = static_cast<double>(mSum) / mCapacity;
+			mSnappedMax = mMax;
 			mSize = 0;
 			mSum = mMax = 0;
 			mMin = std::numeric_limits<uint64_t>::max();
@@ -46,14 +48,14 @@ public:
 		return false;
 	}
 
-	double mean() const
-	{
-		return mMean;
-	}
-
 	uint64_t min() const
 	{
 		return mSnappedMin;
+	}
+
+	double mean() const
+	{
+		return mSnappedMean;
 	}
 
 	uint64_t max() const
@@ -65,9 +67,9 @@ private:
 	uint16_t mSize;
 	uint16_t mCapacity;
 	uint64_t mMin{std::numeric_limits<uint64_t>::max()};
-	uint64_t mSnappedMin{0};
 	uint64_t mMax{0};
-	uint64_t mSnappedMax{0};
 	uint64_t mSum{0};
-	double mMean{0.0};
+	uint64_t mSnappedMin{0};
+	uint64_t mSnappedMax{0};
+	double mSnappedMean{0.0};
 };

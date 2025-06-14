@@ -390,9 +390,9 @@ struct DISPLAY_STATUS
 
 struct CAPTURE_LATENCY
 {
-	uint64_t min;
-	uint64_t max;
-	double mean;
+	uint64_t min{0};
+	double mean{0.0};
+	uint64_t max{0};
 };
 
 struct HDR_STATUS

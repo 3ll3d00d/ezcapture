@@ -779,11 +779,10 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 		pin->SnapTemperatureIfNecessary(endTime);
 
 		#ifndef NO_QUILL
-		if (pin->mFrameCounter == 1)
+		if (!pin->mLoggedLatencyHeader)
 		{
-			LOG_TRACE_L1(mLogData.videoLat,
-			             "{},idx,cap_lat,conv_lat,pft,st,et,ct,cft,f_int,v_int,delta,len,missed",
-			             mLogData.prefix);
+			pin->mLoggedLatencyHeader = true;
+			LOG_TRACE_L1(mLogData.videoLat, "idx,cap_lat,conv_lat,pft,st,et,ct,cft,f_int,v_int,delta,len,missed");
 		}
 		auto frameInterval = pin->mCurrentFrameTime - pin->mPreviousFrameTime;
 		auto sz = pms->GetSize();
@@ -796,11 +795,11 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 			LOG_TRACE_L3(mLogData.logger, "[{}] Video format size mismatch (format: {} buffer: {})", mLogData.prefix,
 			             pin->mVideoFormat.imageSize, sz);
 		}
-		LOG_TRACE_L1(mLogData.videoLat, "{},{},{:.3f},{:.3f},{},{},{},{},{},{},{},{},{},{}",
-		             mLogData.prefix, pin->mFrameCounter, static_cast<double>(capLat) / 10000.0,
-		             static_cast<double>(convLat) / 1000.0, pin->mPreviousFrameTime, startTime, endTime, rt,
-		             pin->mCurrentFrameTime, frameInterval, pin->mVideoFormat.frameInterval,
-		             frameInterval - pin->mVideoFormat.frameInterval, pin->mVideoFormat.imageSize, missedFrame);
+		LOG_TRACE_L1(mLogData.videoLat, "{},{:.3f},{:.3f},{},{},{},{},{},{},{},{},{},{}",
+		             pin->mFrameCounter, static_cast<double>(capLat) / 10000.0, static_cast<double>(convLat) / 1000.0,
+		             pin->mPreviousFrameTime, startTime, endTime, rt, pin->mCurrentFrameTime, frameInterval,
+		             pin->mVideoFormat.frameInterval, frameInterval - pin->mVideoFormat.frameInterval,
+		             pin->mVideoFormat.imageSize, missedFrame);
 		#endif
 	}
 	else
@@ -2931,16 +2930,14 @@ HRESULT MagewellAudioCapturePin::FillBuffer(IMediaSample* pms)
 	RecordLatency(capLat);
 
 	#ifndef NO_QUILL
-	if (mFrameCounter == 1)
+	if (!mLoggedLatencyHeader)
 	{
-		LOG_TRACE_L1(mLogData.audioLat,
-		             "{},codec,since,idx,lat,pft,st,et,ct,cft,delta,len,count",
-		             mLogData.prefix);
+		mLoggedLatencyHeader = true;
+		LOG_TRACE_L1(mLogData.audioLat, "codec,since,idx,lat,pft,st,et,ct,cft,delta,len,count");
 	}
-	LOG_TRACE_L1(mLogData.audioLat, "{},{},{},{},{},{},{},{},{},{},{},{},{}",
-	             mLogData.prefix, codecNames[mAudioFormat.codec], mSinceCodecChange,
-	             mFrameCounter, capLat, mPreviousFrameTime, startTime, endTime, now,
-	             mCurrentFrameTime, endTime - startTime, bytesCaptured, samplesCaptured);
+	LOG_TRACE_L1(mLogData.audioLat, "{},{},{},{},{},{},{},{},{},{},{},{}",
+	             codecNames[mAudioFormat.codec], mSinceCodecChange, mFrameCounter, capLat, mPreviousFrameTime,
+	             startTime, endTime, now, mCurrentFrameTime, endTime - startTime, bytesCaptured, samplesCaptured);
 	#endif
 
 	pms->SetTime(&startTime, &endTime);

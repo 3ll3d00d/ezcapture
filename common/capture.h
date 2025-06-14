@@ -194,7 +194,7 @@ inline void logHdrMeta(const HDR_META& newMeta, const HDR_META& oldMeta, const l
 	}
 	else if (oldMeta.exists())
 	{
-		LOG_INFO(log.logger,  "[{}] HDR metadata has been removed", log.prefix);
+		LOG_INFO(log.logger, "[{}] HDR metadata has been removed", log.prefix);
 	}
 	#endif
 }
@@ -505,6 +505,7 @@ public:
 
 protected:
 	CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID clsid, const std::string& pLogPrefix);
+
 	~CaptureFilter() override
 	{
 		#ifndef NO_QUILL
@@ -531,8 +532,8 @@ private:
 	void CaptureLatency(const metric& metric, CAPTURE_LATENCY& lat, const std::string& desc)
 	{
 		lat.min = metric.min();
-		lat.max = metric.max();
 		lat.mean = metric.mean();
+		lat.max = metric.max();
 
 		#ifndef NO_QUILL
 		LOG_TRACE_L2(mLogData.logger, "[{}] {} latency stats {:.3f},{:.3f},{:.3f}", mLogData.prefix,
@@ -709,6 +710,7 @@ protected:
 	LONGLONG mPreviousFrameTime{0};
 	LONGLONG mCurrentFrameTime{0};
 	// measurements
+	bool mLoggedLatencyHeader{false};
 	metric mCaptureLatency{};
 	metric mConversionLatency{};
 };
