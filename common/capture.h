@@ -29,9 +29,11 @@
 #include <cmath>
 #include <memory>
 #include <set>
+#include <map>
 
 #include "bgr10_rgb48.h"
 #include "r210_rgb48.h"
+#include "registry.h"
 #include "uyvy_yv16.h"
 #include "v210_p210.h"
 #include "y210_p210.h"
@@ -52,6 +54,9 @@ EXTERN_C const AMOVIESETUP_PIN sMIPPins[];
 #define BACKOFF Sleep(20)
 #define SHORT_BACKOFF Sleep(1)
 #define S_RECONNECTION_UNNECESSARY ((HRESULT)1024L)
+
+constexpr auto hdrProfileRegKey = L"hdrProfile";
+constexpr auto sdrProfileRegKey = L"sdrProfile";
 
 struct monitor_config
 {
@@ -209,7 +214,7 @@ inline monitor_config GetAllSupportedRefreshRates()
 	DEVMODE devMode{.dmSize = sizeof(DEVMODE)};
 
 	std::set<DWORD> supportedRates;
-	std::set<std::string> ignoredModes;
+	std::map<std::string, std::set<DWORD>> ignoredModes;
 	std::string supportedModes{};
 	std::wstring name{};
 	if (GetMonitorInfo(activeMonitor, &monitorInfo))
@@ -227,37 +232,42 @@ inline monitor_config GetAllSupportedRefreshRates()
 					auto res = supportedRates.insert(devMode.dmDisplayFrequency);
 					if (res.second)
 					{
-						#ifndef NO_QUILL
 						if (!supportedModes.empty())
 						{
 							supportedModes += ", ";
 						}
 						supportedModes += std::format("{}", devMode.dmDisplayFrequency);
-						#endif
 					}
 				}
 				else
 				{
-					#ifndef NO_QUILL
-					auto formatted = std::format("{}x{} @ {} Hz", devMode.dmPelsWidth, devMode.dmPelsHeight,
-					                             devMode.dmDisplayFrequency);
-					ignoredModes.insert(formatted);
-					#endif
+					auto formatted = std::format("{}x{}", devMode.dmPelsWidth, devMode.dmPelsHeight);
+					ignoredModes[formatted].emplace(devMode.dmDisplayFrequency);
 				}
 			}
-			#ifndef NO_QUILL
 			supportedModes = std::format("{}x{} [{}]", width, height, supportedModes);
-			#endif
 		}
 	}
 	std::string ignoredModesDesc{};
-	for (const auto& ignoredMode : ignoredModes)
+	for (const auto& resRates : ignoredModes)
 	{
 		if (!ignoredModesDesc.empty())
 		{
 			ignoredModesDesc += ", ";
 		}
-		ignoredModesDesc += ignoredMode;
+		ignoredModesDesc += resRates.first;
+		ignoredModesDesc += "[";
+		std::string t{};
+		for (const auto& rate : resRates.second)
+		{
+			if (!t.empty())
+			{
+				t += ", ";
+			}
+			t += std::format("{}", rate);
+		}
+		ignoredModesDesc += t;
+		ignoredModesDesc += "]";
 	}
 	return {
 		.refreshRates = std::move(supportedRates),
@@ -456,6 +466,7 @@ public:
 			mInfoCallback->ReloadV1(&mVideoCaptureLatencyStatus);
 			mInfoCallback->ReloadV2(&mVideoConversionLatencyStatus);
 			mInfoCallback->ReloadA(&mAudioCaptureLatencyStatus);
+			mInfoCallback->ReloadProfiles(mHdrProfile, mSdrProfile);
 			return S_OK;
 		}
 		return E_FAIL;
@@ -465,6 +476,44 @@ public:
 	{
 		mInfoCallback = cb;
 		return S_OK;
+	}
+
+	STDMETHODIMP GetHDRProfile(LPSTR* profile) override
+	{
+		if (!profile) return E_POINTER;
+		*profile = mHdrProfile.data();
+		return S_OK;
+	}
+
+	STDMETHODIMP SetHDRProfile(LPSTR profile) override
+	{
+		std::string a(profile);
+		std::wstring t(std::begin(a), std::end(a));
+		if (S_OK == mRegistry.WriteString(hdrProfileRegKey, t.c_str()))
+		{
+			mHdrProfile = a;
+			return S_OK;
+		}
+		return E_FAIL;
+	}
+
+	STDMETHODIMP GetSDRProfile(LPSTR* profile) override
+	{
+		if (!profile) return E_POINTER;
+		*profile = mSdrProfile.data();
+		return S_OK;
+	}
+
+	STDMETHODIMP SetSDRProfile(LPSTR profile) override
+	{
+		std::string a(profile);
+		std::wstring t(std::begin(a), std::end(a));
+		if (S_OK == mRegistry.WriteString(sdrProfileRegKey, t.c_str()))
+		{
+			mHdrProfile = a;
+			return S_OK;
+		}
+		return E_FAIL;
 	}
 
 	//////////////////////////////////////////////////////////////////////////
@@ -506,7 +555,9 @@ public:
 	}
 
 protected:
-	CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID clsid, const std::string& pLogPrefix);
+	CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID clsid, const std::string& pLogPrefix,
+	              const std::wstring
+	              & regKeyBase);
 
 	~CaptureFilter() override
 	{
@@ -529,6 +580,9 @@ protected:
 	HDR_STATUS mHdrStatus{};
 	ISignalInfoCB* mInfoCallback = nullptr;
 	std::set<DWORD> mRefreshRates{};
+	registry mRegistry;
+	std::string mSdrProfile{};
+	std::string mHdrProfile{};
 
 private:
 	void CaptureLatency(const metric& metric, CAPTURE_LATENCY& lat, const std::string& desc)
@@ -557,8 +611,9 @@ public:
 	virtual void OnDeviceUpdated() = 0;
 
 protected:
-	HdmiCaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID clsid, std::string logPrefix) :
-		CaptureFilter(pName, punk, phr, clsid, logPrefix)
+	HdmiCaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID clsid, std::string logPrefix,
+	                  std::wstring regKeyBase) :
+		CaptureFilter(pName, punk, phr, clsid, logPrefix, regKeyBase)
 	{
 	}
 

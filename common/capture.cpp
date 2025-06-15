@@ -34,8 +34,10 @@
 #define MIN_LOG_LEVEL quill::LogLevel::TraceL2
 #endif
 
-CaptureFilter::CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID clsid, const std::string& pLogPrefix) :
-	CSource(pName, punk, clsid)
+CaptureFilter::CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID clsid, const std::string& pLogPrefix,
+                             const std::wstring& regKeyBase) :
+	CSource(pName, punk, clsid),
+	mRegistry(mLogData, regKeyBase)
 {
 	mLogData.prefix = pLogPrefix;
 
@@ -121,6 +123,9 @@ CaptureFilter::CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID 
 	LOG_INFO(mLogData.logger, "[{}] Monitor {} supported {} ignored {}", mLogData.prefix,
 	         monitorConfig.name, monitorConfig.supportedModes, monitorConfig.ignoredModes);
 	#endif
+
+	auto hr1 = mRegistry.InitString(hdrProfileRegKey);
+	auto hr2 = mRegistry.InitString(sdrProfileRegKey);
 }
 
 STDMETHODIMP CaptureFilter::NonDelegatingQueryInterface(REFIID riid, void** ppv)

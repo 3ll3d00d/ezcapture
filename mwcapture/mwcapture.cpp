@@ -42,6 +42,8 @@
 #define S_POSSIBLE_BITSTREAM    ((HRESULT)3L)
 #define S_NO_CHANNELS    ((HRESULT)2L)
 
+#define REG_KEY_BASE L"MWCapture"
+
 #if CAPTURE_NAME_SUFFIX == 1
 #define LOG_PREFIX_NAME "MagewellTrace"
 #define WLOG_PREFIX_NAME L"MagewellTrace"
@@ -81,7 +83,7 @@ CUnknown* MagewellCaptureFilter::CreateInstance(LPUNKNOWN punk, HRESULT* phr)
 }
 
 MagewellCaptureFilter::MagewellCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
-	HdmiCaptureFilter(WLOG_PREFIX_NAME, punk, phr, CLSID_MWCAPTURE_FILTER, LOG_PREFIX_NAME)
+	HdmiCaptureFilter(WLOG_PREFIX_NAME, punk, phr, CLSID_MWCAPTURE_FILTER, LOG_PREFIX_NAME, REG_KEY_BASE)
 {
 	// Initialise the device and validate that it presents some form of data
 	mInited = MWCaptureInitInstance();
@@ -787,7 +789,12 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 		if (!pin->mLoggedLatencyHeader)
 		{
 			pin->mLoggedLatencyHeader = true;
-			LOG_TRACE_L1(mLogData.videoLat, "idx,cap_lat,conv_lat,pft,st,et,ct,cft,f_int,v_int,delta,len,missed");
+			LOG_TRACE_L1(mLogData.videoLat,
+			             "idx,cap_lat,conv_lat,"
+			             "pft,st,et,"
+			             "ct,cft,f_int,"
+			             "v_int,delta,len,"
+			             "missed");
 		}
 		auto frameInterval = pin->mCurrentFrameTime - pin->mPreviousFrameTime;
 		auto sz = pms->GetSize();
@@ -795,16 +802,23 @@ HRESULT MagewellVideoCapturePin::VideoFrameGrabber::grab() const
 		REFERENCE_TIME rt;
 		pin->GetReferenceTime(&rt);
 
-		if (pin->mVideoFormat.imageSize != sz)
+		auto vf = pin->mVideoFormat;
+		if (vf.imageSize != sz)
 		{
 			LOG_TRACE_L3(mLogData.logger, "[{}] Video format size mismatch (format: {} buffer: {})", mLogData.prefix,
-			             pin->mVideoFormat.imageSize, sz);
+			             vf.imageSize, sz);
 		}
-		LOG_TRACE_L1(mLogData.videoLat, "{},{:.3f},{:.3f},{},{},{},{},{},{},{},{},{},{}",
+		LOG_TRACE_L1(mLogData.videoLat,
+		             "{},{:.3f},{:.3f},"
+		             "{},{},{},"
+		             "{},{},{},"
+		             "{},{},{},"
+		             "{}",
 		             pin->mFrameCounter, static_cast<double>(capLat) / 10000.0, static_cast<double>(convLat) / 1000.0,
-		             pin->mPreviousFrameTime, startTime, endTime, rt, pin->mCurrentFrameTime, frameInterval,
-		             pin->mVideoFormat.frameInterval, frameInterval - pin->mVideoFormat.frameInterval,
-		             pin->mVideoFormat.imageSize, missedFrame);
+		             pin->mPreviousFrameTime, startTime, endTime,
+		             rt, pin->mCurrentFrameTime, frameInterval,
+		             vf.frameInterval, frameInterval - vf.frameInterval, vf.imageSize,
+		             missedFrame);
 		#endif
 	}
 	else

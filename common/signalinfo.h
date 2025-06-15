@@ -24,7 +24,7 @@
 
 // {8DC689DB-68FE-4C30-AAE5-0E515CF9324C}
 DEFINE_GUID(CLSID_SignalInfoProps,
-    0x8dc689db, 0x68fe, 0x4c30, 0xaa, 0xe5, 0xe, 0x51, 0x5c, 0xf9, 0x32, 0x4c);
+            0x8dc689db, 0x68fe, 0x4c30, 0xaa, 0xe5, 0xe, 0x51, 0x5c, 0xf9, 0x32, 0x4c);
 
 // {6A505550-28B2-4668-BC2C-461E75A63BC4}
 DEFINE_GUID(IID_ISignalInfo,
@@ -32,27 +32,32 @@ DEFINE_GUID(IID_ISignalInfo,
 
 // {4D6B8852-06A6-4997-BC07-3507BB77F748}
 DEFINE_GUID(IID_ISignalInfoCB,
-    0x4d6b8852, 0x6a6, 0x4997, 0xbc, 0x7, 0x35, 0x7, 0xbb, 0x77, 0xf7, 0x48);
+            0x4d6b8852, 0x6a6, 0x4997, 0xbc, 0x7, 0x35, 0x7, 0xbb, 0x77, 0xf7, 0x48);
 
 
 interface __declspec(uuid("4D6B8852-06A6-4997-BC07-3507BB77F748")) ISignalInfoCB
 {
-    STDMETHOD(Reload)(AUDIO_INPUT_STATUS* payload) = 0;
-    STDMETHOD(Reload)(AUDIO_OUTPUT_STATUS* payload) = 0;
-    STDMETHOD(Reload)(VIDEO_INPUT_STATUS* payload) = 0;
-    STDMETHOD(Reload)(VIDEO_OUTPUT_STATUS* payload) = 0;
-    STDMETHOD(Reload)(HDR_STATUS* payload) = 0;
-    STDMETHOD(Reload)(DEVICE_STATUS* payload) = 0;
+	STDMETHOD(Reload)(AUDIO_INPUT_STATUS* payload) = 0;
+	STDMETHOD(Reload)(AUDIO_OUTPUT_STATUS* payload) = 0;
+	STDMETHOD(Reload)(VIDEO_INPUT_STATUS* payload) = 0;
+	STDMETHOD(Reload)(VIDEO_OUTPUT_STATUS* payload) = 0;
+	STDMETHOD(Reload)(HDR_STATUS* payload) = 0;
+	STDMETHOD(Reload)(DEVICE_STATUS* payload) = 0;
 	STDMETHOD(Reload)(DISPLAY_STATUS* payload) = 0;
 	STDMETHOD(ReloadV1)(CAPTURE_LATENCY* payload) = 0;
 	STDMETHOD(ReloadV2)(CAPTURE_LATENCY* payload) = 0;
 	STDMETHOD(ReloadA)(CAPTURE_LATENCY* payload) = 0;
+	STDMETHOD(ReloadProfiles)(const std::string& hdr, const std::string& sdr) = 0;
 };
 
-interface __declspec(uuid("6A505550-28B2-4668-BC2C-461E75A63BC4")) ISignalInfo : public IUnknown
+interface __declspec(uuid("6A505550-28B2-4668-BC2C-461E75A63BC4")) ISignalInfo : IUnknown
 {
 	STDMETHOD(SetCallback)(ISignalInfoCB* cb) = 0;
 	STDMETHOD(Reload)() = 0;
+	STDMETHOD(GetHDRProfile)(LPSTR* profile) = 0;
+	STDMETHOD(SetHDRProfile)(LPSTR profile) = 0;
+	STDMETHOD(GetSDRProfile)(LPSTR* profile) = 0;
+	STDMETHOD(SetSDRProfile)(LPSTR profile) = 0;
 };
 
 class CSignalInfoProp :
@@ -71,17 +76,18 @@ public:
 	HRESULT OnDisconnect() override;
 	HRESULT OnApplyChanges() override;
 	INT_PTR OnReceiveMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override;
-    // ISignalInfoCB
-    HRESULT Reload(AUDIO_INPUT_STATUS* payload) override;
-    HRESULT Reload(AUDIO_OUTPUT_STATUS* payload) override;
-    HRESULT Reload(VIDEO_INPUT_STATUS* payload) override;
-    HRESULT Reload(VIDEO_OUTPUT_STATUS* payload) override;
-    HRESULT Reload(HDR_STATUS* payload) override;
-    HRESULT Reload(DEVICE_STATUS* payload) override;
+	// ISignalInfoCB
+	HRESULT Reload(AUDIO_INPUT_STATUS* payload) override;
+	HRESULT Reload(AUDIO_OUTPUT_STATUS* payload) override;
+	HRESULT Reload(VIDEO_INPUT_STATUS* payload) override;
+	HRESULT Reload(VIDEO_OUTPUT_STATUS* payload) override;
+	HRESULT Reload(HDR_STATUS* payload) override;
+	HRESULT Reload(DEVICE_STATUS* payload) override;
 	HRESULT Reload(DISPLAY_STATUS* payload) override;
 	HRESULT ReloadV1(CAPTURE_LATENCY* payload) override;
 	HRESULT ReloadV2(CAPTURE_LATENCY* payload) override;
 	HRESULT ReloadA(CAPTURE_LATENCY* payload) override;
+	HRESULT ReloadProfiles(const std::string& hdr, const std::string& sdr) override;
 
 private:
 	void SetDirty()

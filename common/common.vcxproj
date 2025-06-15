@@ -278,10 +278,10 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;NDEBUG;_LIB;NO_QUILL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-	  <PreprocessorDefinitions Condition="'$(vmajor)'!=''">EZ_VERSION_MAJOR=$(vmajor);%(PreprocessorDefinitions)</PreprocessorDefinitions>
-	  <PreprocessorDefinitions Condition="'$(vminor)'!=''">EZ_VERSION_MINOR=$(vminor);%(PreprocessorDefinitions)</PreprocessorDefinitions>
-	  <PreprocessorDefinitions Condition="'$(vpatch)'!=''">EZ_VERSION_PATCH=$(vpatch);%(PreprocessorDefinitions)</PreprocessorDefinitions>
-	  <PreprocessorDefinitions Condition="'$(vsuffix)'!=''">EZ_VERSION_SUFFIX=$(vsuffix);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(vmajor)'!=''">EZ_VERSION_MAJOR=$(vmajor);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(vminor)'!=''">EZ_VERSION_MINOR=$(vminor);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(vpatch)'!=''">EZ_VERSION_PATCH=$(vpatch);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(vsuffix)'!=''">EZ_VERSION_SUFFIX=$(vsuffix);%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>
@@ -308,10 +308,10 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;NDEBUG;_LIB;NO_QUILL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-	  <PreprocessorDefinitions Condition="'$(vmajor)'!=''">EZ_VERSION_MAJOR=$(vmajor);%(PreprocessorDefinitions)</PreprocessorDefinitions>
-	  <PreprocessorDefinitions Condition="'$(vminor)'!=''">EZ_VERSION_MINOR=$(vminor);%(PreprocessorDefinitions)</PreprocessorDefinitions>
-	  <PreprocessorDefinitions Condition="'$(vpatch)'!=''">EZ_VERSION_PATCH=$(vpatch);%(PreprocessorDefinitions)</PreprocessorDefinitions>
-	  <PreprocessorDefinitions Condition="'$(vsuffix)'!=''">EZ_VERSION_SUFFIX=$(vsuffix);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(vmajor)'!=''">EZ_VERSION_MAJOR=$(vmajor);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(vminor)'!=''">EZ_VERSION_MINOR=$(vminor);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(vpatch)'!=''">EZ_VERSION_PATCH=$(vpatch);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(vsuffix)'!=''">EZ_VERSION_SUFFIX=$(vsuffix);%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>
@@ -339,10 +339,10 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;NDEBUG;_LIB;CAPTURE_NAME_SUFFIX=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-	  <PreprocessorDefinitions Condition="'$(vmajor)'!=''">EZ_VERSION_MAJOR=$(vmajor);%(PreprocessorDefinitions)</PreprocessorDefinitions>
-	  <PreprocessorDefinitions Condition="'$(vminor)'!=''">EZ_VERSION_MINOR=$(vminor);%(PreprocessorDefinitions)</PreprocessorDefinitions>
-	  <PreprocessorDefinitions Condition="'$(vpatch)'!=''">EZ_VERSION_PATCH=$(vpatch);%(PreprocessorDefinitions)</PreprocessorDefinitions>
-	  <PreprocessorDefinitions Condition="'$(vsuffix)'!=''">EZ_VERSION_SUFFIX=$(vsuffix);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(vmajor)'!=''">EZ_VERSION_MAJOR=$(vmajor);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(vminor)'!=''">EZ_VERSION_MINOR=$(vminor);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(vpatch)'!=''">EZ_VERSION_PATCH=$(vpatch);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(vsuffix)'!=''">EZ_VERSION_SUFFIX=$(vsuffix);%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>
@@ -370,10 +370,10 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;NDEBUG;_LIB;CAPTURE_NAME_SUFFIX=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-	  <PreprocessorDefinitions Condition="'$(vmajor)'!=''">EZ_VERSION_MAJOR=$(vmajor);%(PreprocessorDefinitions)</PreprocessorDefinitions>
-	  <PreprocessorDefinitions Condition="'$(vminor)'!=''">EZ_VERSION_MINOR=$(vminor);%(PreprocessorDefinitions)</PreprocessorDefinitions>
-	  <PreprocessorDefinitions Condition="'$(vpatch)'!=''">EZ_VERSION_PATCH=$(vpatch);%(PreprocessorDefinitions)</PreprocessorDefinitions>
-	  <PreprocessorDefinitions Condition="'$(vsuffix)'!=''">EZ_VERSION_SUFFIX=$(vsuffix);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(vmajor)'!=''">EZ_VERSION_MAJOR=$(vmajor);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(vminor)'!=''">EZ_VERSION_MINOR=$(vminor);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(vpatch)'!=''">EZ_VERSION_PATCH=$(vpatch);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(vsuffix)'!=''">EZ_VERSION_SUFFIX=$(vsuffix);%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>
@@ -396,12 +396,14 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="capture.cpp" />
+    <ClCompile Include="registry.cpp" />
     <ClCompile Include="signalinfo.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="bgr10_rgb48.h" />
     <ClInclude Include="metric.h" />
     <ClInclude Include="r210_rgb48.h" />
+    <ClInclude Include="registry.h" />
     <ClInclude Include="uyvy_yv16.h" />
     <ClInclude Include="v210_p210.h" />
     <ClInclude Include="y210_p210.h" />

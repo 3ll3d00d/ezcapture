@@ -71,21 +71,15 @@ class BMReferenceClock final :
 	public CBaseReferenceClock
 {
 public:
-	BMReferenceClock(HRESULT* phr, const CComQIPtr<IDeckLinkInput>& pInput)
-		: CBaseReferenceClock(L"BMReferenceClock", nullptr, phr, nullptr),
-		  mInput(pInput)
+	BMReferenceClock(HRESULT* phr) : CBaseReferenceClock(L"BMReferenceClock", nullptr, phr, nullptr)
 	{
 	}
 
 	REFERENCE_TIME GetPrivateTime() override
 	{
-		BMDTimeValue tv, tif, tpf;
-		mInput->GetHardwareReferenceClock(dshowTicksPerSecond, &tv, &tif, &tpf);
-		return tv;
+		return std::chrono::duration_cast<std::chrono::microseconds>(
+			std::chrono::high_resolution_clock::now().time_since_epoch()).count() * 10;
 	}
-
-private:
-	CComQIPtr<IDeckLinkInput> mInput;
 };
 
 /**
@@ -206,10 +200,10 @@ private:
 	std::unique_ptr<std::string> mInvalidHdrMetaDataItems;
 };
 
-class AsyncRefreshRateSwitcher final : public CMsgThread
+class AsyncModeSwitcher final : public CMsgThread
 {
 public:
-	AsyncRefreshRateSwitcher(const std::string& pLogPrefix, BlackmagicCaptureFilter* pFilter) : mFilter(pFilter)
+	AsyncModeSwitcher(const std::string& pLogPrefix, BlackmagicCaptureFilter* pFilter) : mFilter(pFilter)
 	{
 		mLogData.init(pLogPrefix);
 	}
@@ -217,7 +211,7 @@ public:
 	LRESULT ThreadMessageProc(UINT uMsg, DWORD dwFlags, LPVOID lpParam, CAMEvent* pEvent) override
 	{
 		#ifndef NO_QUILL
-		LOG_TRACE_L3(mLogData.logger, "[{}] AsyncRefreshRateSwitcher::ThreadMessageProc {}", mLogData.prefix, dwFlags);
+		LOG_TRACE_L3(mLogData.logger, "[{}] AsyncModeSwitcher::ThreadMessageProc {}", mLogData.prefix, dwFlags);
 		#endif
 
 		if (S_OK == ChangeResolution(mLogData, dwFlags))
@@ -233,7 +227,7 @@ public:
 		#ifndef NO_QUILL
 		CustomFrontend::preallocate();
 
-		LOG_INFO(mLogData.logger, "[{}] AsyncRefreshRateSwitcher::OnThreadInit", mLogData.prefix);
+		LOG_INFO(mLogData.logger, "[{}] AsyncModeSwitcher::OnThreadInit", mLogData.prefix);
 		#endif
 	}
 
@@ -299,7 +293,7 @@ private:
 		}
 	}
 
-	AsyncRefreshRateSwitcher mRateSwitcher;
+	AsyncModeSwitcher mRateSwitcher;
 	bool mDoRefreshRateSwitches{true};
 };
 

@@ -435,6 +435,7 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\common\resource.h" />
     <ClInclude Include="any_rgb.h" />
     <ClInclude Include="bmcapture.h" />
     <ClInclude Include="bmdomain.h" />

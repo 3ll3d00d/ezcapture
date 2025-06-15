@@ -85,7 +85,9 @@
 #define IDC_DEVICE_ID_LABEL             1081
 #define IDC_DEVICE_ID                   1082
 #define IDC_IN_FRAME_DUR                1083
+#define IDC_MC_SDR_PROFILE_LABEL        1083
 #define IDC_IN_FRAME_DUR_LABEL          1084
+#define IDC_MC_HDR_PROFILE_LABEL        1084
 #define IDC_DISPLAY_LABEL               1085
 #define IDC_DISPLAY                     1086
 #define IDC_LINKSPEED_LABEL             1087
@@ -93,13 +95,16 @@
 #define IDC_LINKWIDTH_LABEL             1089
 #define IDC_LINKWIDTH                   1090
 #define IDC_TEMP_LABEL                  1091
-#define IDC_TEMP						1092
+#define IDC_TEMP                        1092
 #define IDC_PCIE_MPS_LABEL              1093
-#define IDC_PCIE_MPS					1094
+#define IDC_MC_SDR_PROFILE              1093
+#define IDC_PCIE_MPS                    1094
+#define IDC_EDIT2                       1094
+#define IDC_MC_HDR_PROFILE              1094
 #define IDC_PCIE_MRRS_LABEL             1095
-#define IDC_PCIE_MRRS					1096
+#define IDC_PCIE_MRRS                   1096
 #define IDC_FAN_LABEL                   1097
-#define IDC_FAN						    1098
+#define IDC_FAN                         1098
 #define IDC_VIDEO_CONV_LAT_LABEL        1099
 #define IDC_VIDEO_CONV_LAT              1100
 #define IDC_VIDEO_CAP_LAT_LABEL         1101
@@ -107,6 +112,8 @@
 #define IDC_AUDIO_CAP_LAT_LABEL         1103
 #define IDC_AUDIO_CAP_LAT               1104
 #define IDC_STATS_BOX                   1105
+#define IDC_DEVICE_INFO_BOX             1106
+#define IDC_MC_PROFILES_BOX             1107
 
 // Next default values for new objects
 // 
@@ -114,7 +121,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        103
 #define _APS_NEXT_COMMAND_VALUE         40001
-#define _APS_NEXT_CONTROL_VALUE         1083
+#define _APS_NEXT_CONTROL_VALUE         1095
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

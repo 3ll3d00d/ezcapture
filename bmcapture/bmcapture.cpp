@@ -37,6 +37,8 @@
 #include "quill/StopWatch.h"
 #endif
 
+#define REG_KEY_BASE L"BMCapture"
+
 #if CAPTURE_NAME_SUFFIX == 1
 #define LOG_PREFIX_NAME "BlackmagicTrace"
 #define WLOG_PREFIX_NAME L"BlackmagicTrace"
@@ -47,6 +49,8 @@
 #define LOG_PREFIX_NAME "Blackmagic"
 #define WLOG_PREFIX_NAME L"Blackmagic"
 #endif
+
+constexpr auto blockFilterRegKey = L"BlockFilterOnRR";
 
 // audio is limited to 48kHz and an audio packet is only delivered with a video frame
 // lowest fps is 23.976 so the max no of samples should be 48000/(24000/1001) = 2002
@@ -85,7 +89,7 @@ void BlackmagicCaptureFilter::LoadFormat(VIDEO_FORMAT* videoFormat, const VIDEO_
 	videoFormat->cy = videoSignal->cy;
 	videoFormat->fps = static_cast<double>(videoSignal->frameDurationScale) / static_cast<double>(videoSignal->
 		frameDuration);
-	videoFormat->frameInterval = 10000000LL / videoFormat->fps;
+	videoFormat->frameInterval = dshowTicksPerSecond / videoFormat->fps;
 	videoFormat->saturation = SATURATION_FULL;
 	switch (videoSignal->pixelFormat)
 	{
@@ -131,10 +135,12 @@ void BlackmagicCaptureFilter::LoadFormat(VIDEO_FORMAT* videoFormat, const VIDEO_
 }
 
 BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
-	HdmiCaptureFilter(WLOG_PREFIX_NAME, punk, phr, CLSID_BMCAPTURE_FILTER, LOG_PREFIX_NAME),
+	HdmiCaptureFilter(WLOG_PREFIX_NAME, punk, phr, CLSID_BMCAPTURE_FILTER, LOG_PREFIX_NAME, REG_KEY_BASE),
 	mVideoFrameEvent(CreateEvent(nullptr, FALSE, FALSE, nullptr)),
 	mAudioFrameEvent(CreateEvent(nullptr, FALSE, FALSE, nullptr))
 {
+	auto hr = mRegistry.InitBool(blockFilterRegKey);
+
 	// load the API
 	IDeckLinkIterator* deckLinkIterator = nullptr;
 	HRESULT result = CoCreateInstance(CLSID_CDeckLinkIterator, nullptr, CLSCTX_ALL, IID_IDeckLinkIterator,
@@ -478,15 +484,16 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		if (SUCCEEDED(mDeckLinkStatus->GetInt(bmdDeckLinkStatusPCIExpressLinkWidth, &val)))
 		{
 			mDeviceInfo.linkWidth = val;
-		};
+		}
 		if (SUCCEEDED(mDeckLinkStatus->GetInt(bmdDeckLinkStatusPCIExpressLinkSpeed, &val)))
 		{
 			mDeviceInfo.linkSpeed = val;
-		};
+		}
 		if (SUCCEEDED(mDeckLinkStatus->GetInt(bmdDeckLinkStatusDeviceTemperature, &val)))
 		{
 			mDeviceInfo.temperature = val;
-		};
+		}
+
 		BlackmagicCaptureFilter::OnDeviceUpdated();
 		BlackmagicCaptureFilter::OnVideoSignalLoaded(&mVideoSignal);
 	}
@@ -497,7 +504,7 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		#endif
 	}
 
-	mClock = new BMReferenceClock(phr, mDeckLinkInput);
+	mClock = new BMReferenceClock(phr);
 
 	// video pin must have a default format in order to ensure a renderer is present in the graph
 	LoadFormat(&mVideoFormat, &mVideoSignal);
@@ -518,41 +525,24 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		mVideoFormat.hdrMeta.transferFunction, mVideoFormat.imageSize);
 	#endif
 
-	HKEY hKey{};
-	LSTATUS retVal = RegOpenKeyEx(HKEY_CURRENT_USER, L"Software\\3ll3d00d\\BMCapture", 0, KEY_READ, &hKey);
-	if (ERROR_SUCCESS == retVal)
+	if (mRegistry.ReadBool(blockFilterRegKey, hr))
 	{
-		DWORD dwSize = sizeof(DWORD);
-		DWORD dwVal = 0;
-		retVal = RegQueryValueEx(hKey, L"BlockFilterOnRR", nullptr, nullptr,
-		                         reinterpret_cast<LPBYTE>(&dwVal), &dwSize);
-		if (ERROR_SUCCESS == retVal)
-		{
-			if (dwVal)
-			{
-				#ifndef NO_QUILL
-				LOG_INFO(mLogData.logger,
-				         "[{}] BlockFilterOnRR is set, refresh rate changes will be performed in the filter thread and will block audio and video frame capture",
-				         mLogData.prefix);
-				#endif
-				mBlockFilterOnRefreshRateChange = true;
-			}
-		}
-		else
-		{
-			#ifndef NO_QUILL
-			LOG_WARNING(mLogData.logger,
-			            "[{}] Failed to read BlockFilterOnRR, refresh rate change will be done in the pin thread (res: {})",
-			            mLogData.prefix, retVal);
-			#endif
-		}
+		mBlockFilterOnRefreshRateChange = true;
+	}
+	if (mBlockFilterOnRefreshRateChange)
+	{
+		#ifndef NO_QUILL
+		LOG_INFO(mLogData.logger,
+		         "[{}] {} is set, refresh rate changes will be performed in the filter thread and will block audio and video frame capture",
+		         mLogData.prefix, blockFilterRegKey);
+		#endif
 	}
 	else
 	{
 		#ifndef NO_QUILL
-		LOG_WARNING(mLogData.logger,
-		            "[{}] Failed to open Software\\3ll3d00d\\BMCapture, refresh rate change will be done in the pin thread (res: {})",
-		            mLogData.prefix, retVal);
+		LOG_INFO(mLogData.logger,
+		         "[{}] {} is not set, refresh rate changes will be performed in the pin thread and will NOT block audio and video frame capture",
+		         mLogData.prefix, blockFilterRegKey);
 		#endif
 	}
 
@@ -615,6 +605,7 @@ void BlackmagicCaptureFilter::LoadSignalFromDisplayMode(VIDEO_SIGNAL* newSignal,
 		newSignal->displayModeName = BSTRToStdString(displayModeStr);
 		DeleteString(displayModeStr);
 	}
+	newSignal->update();
 }
 
 HRESULT BlackmagicCaptureFilter::VideoInputFormatChanged(BMDVideoInputFormatChangedEvents notificationEvents,
@@ -816,8 +807,9 @@ HRESULT BlackmagicCaptureFilter::processVideoFrame(IDeckLinkVideoInputFrame* vid
 		{
 			#ifndef NO_QUILL
 			LOG_WARNING(mLogData.logger,
-			            "[{}] Video capture discontinuity detected, {} frames missed at frame {}, increasing frame time to compensate",
-			            mLogData.prefix, missedFrames, mCurrentVideoFrameIndex);
+			            "[{}] Video capture discontinuity detected, {} frames missed at frame {} ({} - {} / {}), increasing frame time to compensate",
+			            mLogData.prefix, missedFrames, mCurrentVideoFrameIndex,
+			            frameTime, mPreviousVideoFrameTime, frameDuration);
 			#endif
 			frameIndexIncrement += missedFrames;
 		}
@@ -1183,8 +1175,9 @@ HRESULT BlackmagicCaptureFilter::processAudioPacket(IDeckLinkAudioInputPacket* a
 		{
 			#ifndef NO_QUILL
 			LOG_WARNING(mLogData.logger,
-			            "[{}] Audio capture discontinuity detected, {} frames missed at frame {}, increasing frame time to compensate",
-			            mLogData.prefix, missedFrames, mCurrentAudioFrameIndex);
+			            "[{}] Audio capture discontinuity detected, {} frames missed at frame {} ({} - {} / {}), increasing frame time to compensate",
+			            mLogData.prefix, missedFrames, mCurrentAudioFrameIndex,
+			            frameTime, mPreviousAudioFrameTime, mVideoFormat.frameInterval);
 			#endif
 			frameIndexIncrement += missedFrames;
 		}
@@ -1413,8 +1406,8 @@ void BlackmagicCaptureFilter::OnVideoSignalLoaded(VIDEO_SIGNAL* vs)
 	mVideoInputStatus.inY = vs->cy;
 	mVideoInputStatus.inAspectX = vs->aspectX;
 	mVideoInputStatus.inAspectY = vs->aspectY;
-	mVideoInputStatus.inFps = static_cast<double>(vs->frameDurationScale) / static_cast<double>(vs->frameDuration);
-	mVideoInputStatus.inFrameDuration = 10000000LL / mVideoInputStatus.inFps;
+	mVideoInputStatus.inFps = vs->fps;
+	mVideoInputStatus.inFrameDuration = vs->frameInterval;
 	mVideoInputStatus.inBitDepth = vs->bitDepth;
 	mVideoInputStatus.signalStatus = vs->locked ? "Locked" : "No Signal";
 	mVideoInputStatus.inColourFormat = vs->colourFormat;
@@ -1798,15 +1791,23 @@ HRESULT BlackmagicVideoCapturePin::FillBuffer(IMediaSample* pms)
 
 	if (!mLoggedLatencyHeader)
 	{
-		LOG_TRACE_L1(mLogData.videoLat, "idx,cap_lat,conv_lat,pt,st,et,ct,interval,delta,dur,len,gap");
+		LOG_TRACE_L1(mLogData.videoLat,
+		             "idx,cap_lat,conv_lat,"
+		             "pt,st,et,"
+		             "ct,interval,delta"
+		             "dur,len,gap");
 		mLoggedLatencyHeader = true;
 	}
 	auto frameInterval = mCurrentFrameTime - mPreviousFrameTime;
-	LOG_TRACE_L1(mLogData.videoLat, "{},{:.3f},{:.3f},{},{},{},{},{},{},{},{},{}",
+	LOG_TRACE_L1(mLogData.videoLat,
+	             "{},{:.3f},{:.3f},"
+	             "{},{},{},"
+	             "{},{},{},"
+	             "{},{},{}",
 	             mFrameCounter, static_cast<double>(capLat) / 1000.0, static_cast<double>(convLat) / 1000.0,
-	             mPreviousFrameTime, startTime, endTime, rt, frameInterval,
-	             frameInterval - mCurrentFrame->GetFrameDuration(), mCurrentFrame->GetFrameDuration(),
-	             mCurrentFrame->GetLength(), gap);
+	             mPreviousFrameTime, startTime, endTime,
+	             rt, frameInterval, frameInterval - mCurrentFrame->GetFrameDuration(),
+	             mCurrentFrame->GetFrameDuration(), mCurrentFrame->GetLength(), gap);
 	#endif
 
 	mCurrentFrame.reset();
@@ -2160,12 +2161,21 @@ HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
 	#ifndef NO_QUILL
 	if (!mLoggedLatencyHeader)
 	{
-		LOG_TRACE_L1(mLogData.audioLat, "codec,idx,lat,pt,st,et,ct,delta,len,count,gap");
+		LOG_TRACE_L1(mLogData.audioLat,
+		             "codec,idx,lat,"
+		             "pt,st,et,"
+		             "ct,delta,len,"
+		             "count,gap");
 		mLoggedLatencyHeader = true;
 	}
-	LOG_TRACE_L1(mLogData.audioLat, "{},{},{},{},{},{},{},{},{},{},{}",
-	             codecNames[mAudioFormat.codec], mFrameCounter, capLat, mPreviousFrameTime, startTime,
-	             mCurrentFrameTime, now, mCurrentFrameTime - mPreviousFrameTime, mCurrentFrame->GetLength(),
+	LOG_TRACE_L1(mLogData.audioLat,
+	             "{},{},{},"
+	             "{},{},{},"
+	             "{},{},{},"
+	             "{},{}",
+	             codecNames[mAudioFormat.codec], mFrameCounter, capLat,
+	             mPreviousFrameTime, startTime, mCurrentFrameTime,
+	             now, mCurrentFrameTime - mPreviousFrameTime, mCurrentFrame->GetLength(),
 	             sampleCount, gap);
 	#endif
 

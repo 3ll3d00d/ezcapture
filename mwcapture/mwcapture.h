@@ -47,7 +47,7 @@ public:
 		else
 		{
 			t = std::chrono::duration_cast<std::chrono::microseconds>(
-				std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+				std::chrono::high_resolution_clock::now().time_since_epoch()).count() * 10;
 		}
 		return t;
 	}
@@ -114,7 +114,8 @@ public:
 		mStreamStopTime = -1LL;
 
 		#ifndef NO_QUILL
-		LOG_WARNING(mLogData.logger, "[{}] MagewellVideoCapturePin::SetStopTime at {}", mLogData.prefix, streamStopTime);
+		LOG_WARNING(mLogData.logger, "[{}] MagewellVideoCapturePin::SetStopTime at {}", mLogData.prefix,
+		            streamStopTime);
 		#endif
 	}
 
@@ -243,7 +244,8 @@ public:
 		mStreamStopTime = -1LL;
 
 		#ifndef NO_QUILL
-		LOG_WARNING(mLogData.logger, "[{}] MagewellAudioCapturePin::SetStopTime at {}", mLogData.prefix, streamStopTime);
+		LOG_WARNING(mLogData.logger, "[{}] MagewellAudioCapturePin::SetStopTime at {}", mLogData.prefix,
+		            streamStopTime);
 		#endif
 	}
 

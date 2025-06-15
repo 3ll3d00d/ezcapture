@@ -49,6 +49,14 @@ struct VIDEO_SIGNAL
 	uint8_t aspectX{16};
 	uint8_t aspectY{9};
 	bool locked{false};
+	double fps{23.976};
+	uint32_t frameInterval{417083};
+
+	void update()
+	{
+		fps = static_cast<double>(frameDurationScale) / frameDuration;
+		frameInterval = dshowTicksPerSecond / fps;
+	}
 };
 
 struct AUDIO_SIGNAL
@@ -408,4 +416,3 @@ inline const char* to_string(BMDDeckLinkFrameMetadataID e)
 	default: return "unknown";
 	}
 }
-

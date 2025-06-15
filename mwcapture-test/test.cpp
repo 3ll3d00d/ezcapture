@@ -6,7 +6,6 @@
 #include "LibMWCapture/MWCapture.h"
 #include "../mwcapture/mwdomain.h"
 
-
 TEST(HDR, CanParseHDRInfoFrame)
 {
 	HDR_META o{};
@@ -139,7 +138,6 @@ TEST(PIX, ManyFallbacks)
 		}
 	}
 }
-
 
 int main(int argc, char** argv)
 {

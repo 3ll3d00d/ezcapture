@@ -98,7 +98,19 @@ HRESULT CSignalInfoProp::OnDisconnect()
 
 HRESULT CSignalInfoProp::OnApplyChanges()
 {
-	return CBasePropertyPage::OnApplyChanges();
+	WCHAR b1[256];
+	SendDlgItemMessage(m_Dlg, IDC_MC_HDR_PROFILE, WM_GETTEXT, 256, reinterpret_cast<LPARAM>(&b1));
+	std::wstring ws1(b1);
+	std::string s1(ws1.begin(), ws1.end());
+	auto hr1 = mSignalInfo->SetHDRProfile(s1.data());
+
+	WCHAR b2[256];
+	SendDlgItemMessage(m_Dlg, IDC_MC_SDR_PROFILE, WM_GETTEXT, 256, reinterpret_cast<LPARAM>(&b2));
+	std::wstring ws2(b2);
+	std::string s2(ws2.begin(), ws2.end());
+	auto hr2 = mSignalInfo->SetSDRProfile(s2.data());
+
+	return hr1 == S_OK && hr2 == S_OK ? S_OK : E_FAIL;
 }
 
 INT_PTR CSignalInfoProp::OnReceiveMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -341,5 +353,16 @@ HRESULT CSignalInfoProp::ReloadA(CAPTURE_LATENCY* payload)
 	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / 1000.0,
 		payload->mean / 1000.0, static_cast<double>(payload->max) / 1000.0);
 	SendDlgItemMessage(m_Dlg, IDC_AUDIO_CAP_LAT, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+	return S_OK;
+}
+
+HRESULT CSignalInfoProp::ReloadProfiles(const std::string& hdr, const std::string& sdr)
+{
+	std::wstring h(std::begin(hdr), std::end(hdr));
+	SendDlgItemMessage(m_Dlg, IDC_MC_HDR_PROFILE, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(h.c_str()));
+
+	std::wstring s(std::begin(sdr), std::end(sdr));
+	SendDlgItemMessage(m_Dlg, IDC_MC_SDR_PROFILE, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(s.c_str()));
+
 	return S_OK;
 }
