@@ -52,7 +52,7 @@ struct VIDEO_SIGNAL
 	double fps{23.976};
 	uint32_t frameInterval{417083};
 
-	void update()
+	void calc_derived_values()
 	{
 		fps = static_cast<double>(frameDurationScale) / frameDuration;
 		frameInterval = dshowTicksPerSecond / fps;

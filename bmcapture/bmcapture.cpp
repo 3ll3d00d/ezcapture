@@ -530,6 +530,19 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		{
 			mBlockFilterOnRefreshRateChange = res.GetValue() == 1;
 		}
+		else
+		{
+			if (auto res = key.TrySetDwordValue(blockFilterRegKey, 0))
+			{
+				if (!res)
+				{
+					#ifndef NO_QUILL
+					LOG_WARNING(mLogData.logger, "[{}] Failed to initialise {}\\{} due to {} (res: {})",
+					            mLogData.prefix, mRegKeyBase, blockFilterRegKey, res.ErrorMessage(), res.Code());
+					#endif
+				}
+			}
+		}
 	}
 
 	if (mBlockFilterOnRefreshRateChange)
@@ -608,7 +621,7 @@ void BlackmagicCaptureFilter::LoadSignalFromDisplayMode(VIDEO_SIGNAL* newSignal,
 		newSignal->displayModeName = BSTRToStdString(displayModeStr);
 		DeleteString(displayModeStr);
 	}
-	newSignal->update();
+	newSignal->calc_derived_values();
 }
 
 HRESULT BlackmagicCaptureFilter::VideoInputFormatChanged(BMDVideoInputFormatChangedEvents notificationEvents,
@@ -802,7 +815,7 @@ HRESULT BlackmagicCaptureFilter::processVideoFrame(IDeckLinkVideoInputFrame* vid
 	}
 
 	auto frameIndexIncrement = 1LL;
-	if (mPreviousVideoFrameTime != invalidFrameTime)
+	if (mPreviousVideoFrameTime != invalidFrameTime && locked)
 	{
 		const auto framesSinceLast = (frameTime - mPreviousVideoFrameTime) / frameDuration;
 		auto missedFrames = std::max(framesSinceLast - 1, 0LL);
@@ -1170,9 +1183,9 @@ HRESULT BlackmagicCaptureFilter::processAudioPacket(IDeckLinkAudioInputPacket* a
 	}
 
 	auto frameIndexIncrement = 1LL;
-	if (mPreviousAudioFrameTime != invalidFrameTime)
+	if (mPreviousAudioFrameTime != invalidFrameTime && mVideoSignal.locked)
 	{
-		const auto framesSinceLast = (frameTime - mPreviousAudioFrameTime) / mVideoFormat.frameInterval;
+		const auto framesSinceLast = (frameTime - mPreviousAudioFrameTime) / mVideoSignal.frameInterval;
 		auto missedFrames = std::max(framesSinceLast - 1, 0LL);
 		if (missedFrames > 0LL)
 		{
@@ -1180,12 +1193,12 @@ HRESULT BlackmagicCaptureFilter::processAudioPacket(IDeckLinkAudioInputPacket* a
 			LOG_WARNING(mLogData.logger,
 			            "[{}] Audio capture discontinuity detected, {} frames missed at frame {} ({} - {} / {}), increasing frame time to compensate",
 			            mLogData.prefix, missedFrames, mCurrentAudioFrameIndex,
-			            frameTime, mPreviousAudioFrameTime, mVideoFormat.frameInterval);
+			            frameTime, mPreviousAudioFrameTime, mVideoSignal.frameInterval);
 			#endif
 			frameIndexIncrement += missedFrames;
 		}
 	}
-	mAudioFrameTime += mVideoFormat.frameInterval * frameIndexIncrement;
+	mAudioFrameTime += mVideoSignal.frameInterval * frameIndexIncrement;
 	mCurrentAudioFrameIndex += frameIndexIncrement;
 	mPreviousAudioFrameTime = frameTime;
 
