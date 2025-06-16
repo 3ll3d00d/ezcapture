@@ -51,7 +51,7 @@ struct log_data
 
 	void init(const std::string& pPrefix)
 	{
-		prefix = std::move(pPrefix);
+		prefix = pPrefix;
 		#ifndef NO_QUILL
 		logger = CustomFrontend::get_logger(std::string{filterLoggerName});
 		audioLat = CustomFrontend::get_logger(std::string{audioLatencyLoggerName});

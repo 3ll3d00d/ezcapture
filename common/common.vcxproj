@@ -396,14 +396,12 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="capture.cpp" />
-    <ClCompile Include="registry.cpp" />
     <ClCompile Include="signalinfo.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="bgr10_rgb48.h" />
     <ClInclude Include="metric.h" />
     <ClInclude Include="r210_rgb48.h" />
-    <ClInclude Include="registry.h" />
     <ClInclude Include="uyvy_yv16.h" />
     <ClInclude Include="v210_p210.h" />
     <ClInclude Include="y210_p210.h" />

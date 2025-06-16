@@ -28,6 +28,7 @@
 #include <cmath>
 // std::reverse
 #include <algorithm>
+#include <vcpkg_installed/x64-windows/x64-windows/include/winreg/WinReg.hpp>
 
 #ifndef NO_QUILL
 #include "quill/Backend.h"
@@ -139,8 +140,6 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 	mVideoFrameEvent(CreateEvent(nullptr, FALSE, FALSE, nullptr)),
 	mAudioFrameEvent(CreateEvent(nullptr, FALSE, FALSE, nullptr))
 {
-	auto hr = mRegistry.InitBool(blockFilterRegKey);
-
 	// load the API
 	IDeckLinkIterator* deckLinkIterator = nullptr;
 	HRESULT result = CoCreateInstance(CLSID_CDeckLinkIterator, nullptr, CLSCTX_ALL, IID_IDeckLinkIterator,
@@ -525,10 +524,14 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		mVideoFormat.hdrMeta.transferFunction, mVideoFormat.imageSize);
 	#endif
 
-	if (mRegistry.ReadBool(blockFilterRegKey, hr))
+	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
 	{
-		mBlockFilterOnRefreshRateChange = true;
+		if (auto res = key.TryGetDwordValue(blockFilterRegKey))
+		{
+			mBlockFilterOnRefreshRateChange = res.GetValue() == 1;
+		}
 	}
+
 	if (mBlockFilterOnRefreshRateChange)
 	{
 		#ifndef NO_QUILL

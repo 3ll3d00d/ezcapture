@@ -21,6 +21,7 @@
 #include "commctrl.h"
 
 #include <corecrt_wstdio.h>
+#include <vector>
 
 #include "resource.h"
 
@@ -30,6 +31,30 @@
   ((val) & (0x01 << 2) ? '1' : '0'), \
   ((val) & (0x01 << 1) ? '1' : '0'), \
   ((val) & (0x01 << 0) ? '1' : '0')
+
+static std::string wstring_to_string(const std::wstring& input)
+{
+	if (input.empty())
+	{
+		auto empty = std::string{};
+		return empty;
+	}
+	int size = WideCharToMultiByte(CP_ACP, 0, input.c_str(), input.size(), nullptr, 0, nullptr, nullptr);
+	if (size <= 0)
+	{
+		auto empty = std::string{};
+		return empty;
+	}
+	std::vector<char> outChars(input.length() + 1);
+	if (WideCharToMultiByte(CP_ACP, 0, input.c_str(), input.size(), outChars.data(), size, nullptr, nullptr) <= 0)
+	{
+		outChars.clear();
+		auto empty = std::string{};
+		return empty;
+	}
+	outChars[size] = '\0';
+	return {outChars.begin(), outChars.end()};
+}
 
 CUnknown* CSignalInfoProp::CreateInstance(LPUNKNOWN punk, HRESULT* phr)
 {
@@ -100,21 +125,54 @@ HRESULT CSignalInfoProp::OnApplyChanges()
 {
 	WCHAR b1[256];
 	SendDlgItemMessage(m_Dlg, IDC_MC_HDR_PROFILE, WM_GETTEXT, 256, reinterpret_cast<LPARAM>(&b1));
-	std::wstring ws1(b1);
-	std::string s1(ws1.begin(), ws1.end());
-	auto hr1 = mSignalInfo->SetHDRProfile(s1.data());
+	auto hr1 = mSignalInfo->SetHDRProfile(std::wstring(b1));
 
 	WCHAR b2[256];
 	SendDlgItemMessage(m_Dlg, IDC_MC_SDR_PROFILE, WM_GETTEXT, 256, reinterpret_cast<LPARAM>(&b2));
-	std::wstring ws2(b2);
-	std::string s2(ws2.begin(), ws2.end());
-	auto hr2 = mSignalInfo->SetSDRProfile(s2.data());
+	auto hr2 = mSignalInfo->SetSDRProfile(std::wstring(b2));
 
 	return hr1 == S_OK && hr2 == S_OK ? S_OK : E_FAIL;
 }
 
 INT_PTR CSignalInfoProp::OnReceiveMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
+	switch (uMsg)
+	{
+	case WM_COMMAND:
+		if (LOWORD(wParam) == IDC_MC_HDR_PROFILE)
+		{
+			WCHAR b1[256];
+			SendDlgItemMessage(m_Dlg, IDC_MC_HDR_PROFILE, WM_GETTEXT, 256, reinterpret_cast<LPARAM>(&b1));
+			std::wstring updated(b1);
+
+			std::wstring existing;
+			mSignalInfo->GetHDRProfile(&existing);
+
+			if (existing != updated)
+			{
+				SetDirty();
+				return TRUE;
+			}
+			return FALSE;
+		}
+		if (LOWORD(wParam) == IDC_MC_SDR_PROFILE)
+		{
+			WCHAR b1[256];
+			SendDlgItemMessage(m_Dlg, IDC_MC_SDR_PROFILE, WM_GETTEXT, 256, reinterpret_cast<LPARAM>(&b1));
+			std::wstring updated(b1);
+
+			std::wstring existing;
+			mSignalInfo->GetSDRProfile(&existing);
+
+			if (existing != updated)
+			{
+				SetDirty();
+				return TRUE;
+			}
+			return FALSE;
+		}
+		break;
+	}
 	return CBasePropertyPage::OnReceiveMessage(hwnd, uMsg, wParam, lParam);
 }
 
@@ -342,7 +400,7 @@ HRESULT CSignalInfoProp::ReloadV2(CAPTURE_LATENCY* payload)
 {
 	WCHAR buffer[256];
 	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / 1000.0,
-		payload->mean / 1000.0, static_cast<double>(payload->max) / 1000.0);
+	             payload->mean / 1000.0, static_cast<double>(payload->max) / 1000.0);
 	SendDlgItemMessage(m_Dlg, IDC_VIDEO_CONV_LAT, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 	return S_OK;
 }
@@ -351,18 +409,17 @@ HRESULT CSignalInfoProp::ReloadA(CAPTURE_LATENCY* payload)
 {
 	WCHAR buffer[256];
 	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / 1000.0,
-		payload->mean / 1000.0, static_cast<double>(payload->max) / 1000.0);
+	             payload->mean / 1000.0, static_cast<double>(payload->max) / 1000.0);
 	SendDlgItemMessage(m_Dlg, IDC_AUDIO_CAP_LAT, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 	return S_OK;
 }
 
-HRESULT CSignalInfoProp::ReloadProfiles(const std::string& hdr, const std::string& sdr)
+HRESULT CSignalInfoProp::ReloadProfiles(const std::wstring& hdr, const std::wstring& sdr)
 {
-	std::wstring h(std::begin(hdr), std::end(hdr));
-	SendDlgItemMessage(m_Dlg, IDC_MC_HDR_PROFILE, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(h.c_str()));
+	SendDlgItemMessage(m_Dlg, IDC_MC_HDR_PROFILE, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(hdr.c_str()));
 
 	std::wstring s(std::begin(sdr), std::end(sdr));
-	SendDlgItemMessage(m_Dlg, IDC_MC_SDR_PROFILE, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(s.c_str()));
+	SendDlgItemMessage(m_Dlg, IDC_MC_SDR_PROFILE, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(sdr.c_str()));
 
 	return S_OK;
 }

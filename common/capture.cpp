@@ -27,6 +27,7 @@
 #include "capture.h"
 #include <DXVA.h>
 #include "version.h"
+#include "winreg/WinReg.hpp"
 
 #ifdef _DEBUG
 #define MIN_LOG_LEVEL quill::LogLevel::TraceL3
@@ -35,9 +36,9 @@
 #endif
 
 CaptureFilter::CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID clsid, const std::string& pLogPrefix,
-                             const std::wstring& regKeyBase) :
+                             std::wstring pRegKeyBase) :
 	CSource(pName, punk, clsid),
-	mRegistry(mLogData, regKeyBase)
+	mRegKeyBase(ROOT_REG_KEY + std::move(pRegKeyBase))
 {
 	mLogData.prefix = pLogPrefix;
 
@@ -124,8 +125,17 @@ CaptureFilter::CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID 
 	         monitorConfig.name, monitorConfig.supportedModes, monitorConfig.ignoredModes);
 	#endif
 
-	auto hr1 = mRegistry.InitString(hdrProfileRegKey);
-	auto hr2 = mRegistry.InitString(sdrProfileRegKey);
+	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase })
+	{
+		if (auto res = key.TryGetStringValue(hdrProfileRegKey))
+		{
+			mHdrProfile = res.GetValue();
+		}
+		if (auto res = key.TryGetStringValue(sdrProfileRegKey))
+		{
+			mSdrProfile = res.GetValue();
+		}
+	}
 }
 
 STDMETHODIMP CaptureFilter::NonDelegatingQueryInterface(REFIID riid, void** ppv)
@@ -271,6 +281,40 @@ STDMETHODIMP CaptureFilter::Stop()
 		s1->NotifyFilterState(State_Stopped);
 	}
 	return CBaseFilter::Stop();
+}
+
+HRESULT CaptureFilter::SetHDRProfile(std::wstring profile)
+{
+	auto toWrite = profile.empty() ? L"" : profile;
+	if (winreg::RegKey key{ HKEY_CURRENT_USER, mRegKeyBase })
+	{
+		if (auto res = key.TrySetStringValue(hdrProfileRegKey, toWrite.c_str()))
+		{
+			if (res)
+			{
+				mHdrProfile = toWrite;
+				return S_OK;
+			}
+		}
+	}
+	return E_FAIL;
+}
+
+HRESULT CaptureFilter::SetSDRProfile(std::wstring profile)
+{
+	auto toWrite = profile.empty() ? L"" : profile;
+	if (winreg::RegKey key{ HKEY_CURRENT_USER, mRegKeyBase })
+	{
+		if (auto res = key.TrySetStringValue(sdrProfileRegKey, toWrite.c_str()))
+		{
+			if (res)
+			{
+				mHdrProfile = toWrite;
+				return S_OK;
+			}
+		}
+	}
+	return E_FAIL;
 }
 
 STDMETHODIMP CaptureFilter::GetPages(CAUUID* pPages)

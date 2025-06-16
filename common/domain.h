@@ -24,6 +24,8 @@
 constexpr auto not_present = 1024;
 constexpr LONGLONG dshowTicksPerSecond = 10LL * 1000 * 1000; // 100ns
 
+#define ROOT_REG_KEY L"Software\\3ll3d00d\\"
+
 enum colour_format :std::uint8_t
 {
 	COLOUR_FORMAT_UNKNOWN = 0, ///<unknown color format

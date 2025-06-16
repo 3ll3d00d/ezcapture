@@ -21,9 +21,6 @@
     <ClCompile Include="capture.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="registry.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ISpecifyPropertyPages2.h">
@@ -75,9 +72,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="uyvy_yv16.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="registry.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

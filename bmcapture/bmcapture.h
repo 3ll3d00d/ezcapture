@@ -38,18 +38,18 @@ EXTERN_C const AMOVIESETUP_PIN sMIPPins[];
 
 const std::function DeleteString = SysFreeString;
 
-const std::function BSTRToStdString = [](BSTR dl_str) -> std::string
+const std::function BSTRToStdString = [](const BSTR dl_str) -> std::string
 {
 	int wlen = ::SysStringLen(dl_str);
 	int mblen = WideCharToMultiByte(CP_ACP, 0, dl_str, wlen, nullptr, 0, nullptr, nullptr);
 
 	std::string ret_str(mblen, '\0');
-	mblen = WideCharToMultiByte(CP_ACP, 0, dl_str, wlen, &ret_str[0], mblen, nullptr, nullptr);
+	mblen = WideCharToMultiByte(CP_ACP, 0, dl_str, wlen, ret_str.data(), mblen, nullptr, nullptr);
 
 	return ret_str;
 };
 
-const std::function StdStringToBSTR = [](std::string std_str) -> BSTR
+const std::function StdStringToBSTR = [](const std::string& std_str) -> BSTR
 {
 	int wlen = MultiByteToWideChar(CP_ACP, 0, std_str.data(), static_cast<int>(std_str.length()), nullptr, 0);
 

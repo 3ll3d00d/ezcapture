@@ -33,7 +33,6 @@
 
 #include "bgr10_rgb48.h"
 #include "r210_rgb48.h"
-#include "registry.h"
 #include "uyvy_yv16.h"
 #include "v210_p210.h"
 #include "y210_p210.h"
@@ -478,43 +477,23 @@ public:
 		return S_OK;
 	}
 
-	STDMETHODIMP GetHDRProfile(LPSTR* profile) override
+	STDMETHODIMP GetHDRProfile(std::wstring* profile) override
 	{
 		if (!profile) return E_POINTER;
-		*profile = mHdrProfile.data();
+		*profile = mHdrProfile;
 		return S_OK;
 	}
 
-	STDMETHODIMP SetHDRProfile(LPSTR profile) override
-	{
-		std::string a(profile);
-		std::wstring t(std::begin(a), std::end(a));
-		if (S_OK == mRegistry.WriteString(hdrProfileRegKey, t.c_str()))
-		{
-			mHdrProfile = a;
-			return S_OK;
-		}
-		return E_FAIL;
-	}
+	STDMETHODIMP SetHDRProfile(std::wstring profile) override;
 
-	STDMETHODIMP GetSDRProfile(LPSTR* profile) override
+	STDMETHODIMP GetSDRProfile(std::wstring* profile) override
 	{
 		if (!profile) return E_POINTER;
-		*profile = mSdrProfile.data();
+		*profile = mSdrProfile;
 		return S_OK;
 	}
 
-	STDMETHODIMP SetSDRProfile(LPSTR profile) override
-	{
-		std::string a(profile);
-		std::wstring t(std::begin(a), std::end(a));
-		if (S_OK == mRegistry.WriteString(sdrProfileRegKey, t.c_str()))
-		{
-			mHdrProfile = a;
-			return S_OK;
-		}
-		return E_FAIL;
-	}
+	STDMETHODIMP SetSDRProfile(std::wstring profile) override;
 
 	//////////////////////////////////////////////////////////////////////////
 	//  ISpecifyPropertyPages2
@@ -556,8 +535,7 @@ public:
 
 protected:
 	CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID clsid, const std::string& pLogPrefix,
-	              const std::wstring
-	              & regKeyBase);
+	              std::wstring pRegKeyBase);
 
 	~CaptureFilter() override
 	{
@@ -580,9 +558,9 @@ protected:
 	HDR_STATUS mHdrStatus{};
 	ISignalInfoCB* mInfoCallback = nullptr;
 	std::set<DWORD> mRefreshRates{};
-	registry mRegistry;
-	std::string mSdrProfile{};
-	std::string mHdrProfile{};
+	std::wstring mRegKeyBase{};
+	std::wstring mHdrProfile{};
+	std::wstring mSdrProfile{};
 
 private:
 	void CaptureLatency(const metric& metric, CAPTURE_LATENCY& lat, const std::string& desc)
