@@ -18,8 +18,11 @@
  *  http://www.gnu.org/copyleft/gpl.html
  *
  */
+#ifndef I_SPECIFY_PROPERTY_PAGES2_HEADER
+#define I_SPECIFY_PROPERTY_PAGES2_HEADER
 
-#pragma once
+#define NOMINMAX // quill does not compile without this
+#define WIN32_LEAN_AND_MEAN
 
 #include <OCIdl.h>
 
@@ -27,3 +30,4 @@ interface __declspec(uuid("03481710-D73E-4674-839F-03EDE2D60ED8")) ISpecifyPrope
 {
     STDMETHOD(CreatePage)(const GUID &guid, IPropertyPage **ppPage) = 0;
 };
+#endif

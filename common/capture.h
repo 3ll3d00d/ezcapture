@@ -12,26 +12,31 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-#pragma once
-#define NOMINMAX // quill does not compile without this
+#ifndef CAPTURE_HEADER
+#define CAPTURE_HEADER
 
-#include <string>
-#include <utility>
+#define NOMINMAX // quill does not compile without this
+#define WIN32_LEAN_AND_MEAN
 
 #include "metric.h"
 #include "logging.h"
 #include "signalinfo.h"
 #include "VideoFrameWriter.h"
+#include "modeswitcher.h"
 #include "ISpecifyPropertyPages2.h"
 #include "lavfilters_side_data.h"
 #include <dvdmedia.h>
 #include <wmcodecdsp.h>
-#include <cmath>
 #include <memory>
 #include <set>
 #include <map>
+#include <filesystem>
+#include <optional>
+#include <string>
+#include <utility>
 
 #include "bgr10_rgb48.h"
+#include "modeswitcher.h"
 #include "r210_rgb48.h"
 #include "uyvy_yv16.h"
 #include "v210_p210.h"
@@ -56,14 +61,6 @@ EXTERN_C const AMOVIESETUP_PIN sMIPPins[];
 
 constexpr auto hdrProfileRegKey = L"hdrProfile";
 constexpr auto sdrProfileRegKey = L"sdrProfile";
-
-struct monitor_config
-{
-	std::set<DWORD> refreshRates;
-	std::string ignoredModes;
-	std::string supportedModes;
-	std::wstring name;
-};
 
 constexpr auto unity = 1.0;
 
@@ -203,209 +200,6 @@ inline void logHdrMeta(const HDR_META& newMeta, const HDR_META& oldMeta, const l
 		LOG_INFO(log.logger, "[{}] HDR metadata has been removed", log.prefix);
 	}
 	#endif
-}
-
-inline monitor_config GetAllSupportedRefreshRates()
-{
-	HMONITOR activeMonitor = MonitorFromWindow(GetActiveWindow(), MONITOR_DEFAULTTONEAREST);
-
-	MONITORINFOEX monitorInfo{{.cbSize = sizeof(MONITORINFOEX)}};
-	DEVMODE devMode{.dmSize = sizeof(DEVMODE)};
-
-	std::set<DWORD> supportedRates;
-	std::map<std::string, std::set<DWORD>> ignoredModes;
-	std::string supportedModes{};
-	std::wstring name{};
-	if (GetMonitorInfo(activeMonitor, &monitorInfo))
-	{
-		name = monitorInfo.szDevice;
-		if (EnumDisplaySettings(monitorInfo.szDevice, ENUM_CURRENT_SETTINGS, &devMode))
-		{
-			auto width = devMode.dmPelsWidth;
-			auto height = devMode.dmPelsHeight;
-			auto modeNum = 0;
-			while (EnumDisplaySettings(monitorInfo.szDevice, modeNum++, &devMode))
-			{
-				if (devMode.dmPelsWidth == width && devMode.dmPelsHeight == height)
-				{
-					auto res = supportedRates.insert(devMode.dmDisplayFrequency);
-					if (res.second)
-					{
-						if (!supportedModes.empty())
-						{
-							supportedModes += ", ";
-						}
-						supportedModes += std::format("{}", devMode.dmDisplayFrequency);
-					}
-				}
-				else
-				{
-					auto formatted = std::format("{}x{}", devMode.dmPelsWidth, devMode.dmPelsHeight);
-					ignoredModes[formatted].emplace(devMode.dmDisplayFrequency);
-				}
-			}
-			supportedModes = std::format("{}x{} [{}]", width, height, supportedModes);
-		}
-	}
-	std::string ignoredModesDesc{};
-	for (const auto& resRates : ignoredModes)
-	{
-		if (!ignoredModesDesc.empty())
-		{
-			ignoredModesDesc += ", ";
-		}
-		ignoredModesDesc += resRates.first;
-		ignoredModesDesc += "[";
-		std::string t{};
-		for (const auto& rate : resRates.second)
-		{
-			if (!t.empty())
-			{
-				t += ", ";
-			}
-			t += std::format("{}", rate);
-		}
-		ignoredModesDesc += t;
-		ignoredModesDesc += "]";
-	}
-	return {
-		.refreshRates = std::move(supportedRates),
-		.ignoredModes = std::format("[{}]", ignoredModesDesc),
-		.supportedModes = std::move(supportedModes),
-		.name = std::move(name)
-	};
-}
-
-inline std::tuple<std::wstring, int> GetDisplayStatus()
-{
-	HMONITOR activeMonitor = MonitorFromWindow(GetActiveWindow(), MONITOR_DEFAULTTONEAREST);
-
-	MONITORINFOEX monitorInfo{{.cbSize = sizeof(MONITORINFOEX)}};
-	DEVMODE devMode{.dmSize = sizeof(DEVMODE)};
-
-	if (GetMonitorInfo(activeMonitor, &monitorInfo)
-		&& EnumDisplaySettings(monitorInfo.szDevice, ENUM_CURRENT_SETTINGS, &devMode))
-	{
-		auto width = devMode.dmPelsWidth;
-		auto height = devMode.dmPelsHeight;
-		auto freq = devMode.dmDisplayFrequency;
-		auto status = std::wstring{monitorInfo.szDevice};
-		status += L" " + std::to_wstring(width) + L" x " + std::to_wstring(height) + L" @ " + std::to_wstring(freq) +
-			L" Hz";
-		return {status, freq};
-	}
-	return {L"", 0};
-}
-
-inline HRESULT PrintResolution(const log_data& ld)
-{
-	HMONITOR activeMonitor = MonitorFromWindow(GetActiveWindow(), MONITOR_DEFAULTTONEAREST);
-
-	MONITORINFOEX monitorInfo{{.cbSize = sizeof(MONITORINFOEX)}};
-	DEVMODE devMode{.dmSize = sizeof(DEVMODE)};
-
-	if (GetMonitorInfo(activeMonitor, &monitorInfo)
-		&& EnumDisplaySettings(monitorInfo.szDevice, ENUM_CURRENT_SETTINGS, &devMode))
-	{
-		auto width = devMode.dmPelsWidth;
-		auto height = devMode.dmPelsHeight;
-		auto freq = devMode.dmDisplayFrequency;
-		#ifndef NO_QUILL
-		LOG_INFO(ld.logger, "[{}] Current monitor = {} {} x {} @ {} Hz", ld.prefix,
-		         std::wstring{ monitorInfo.szDevice },
-		         width, height, freq);
-		#endif
-		return S_OK;
-	}
-	return E_FAIL;
-}
-
-inline HRESULT ChangeResolution(const log_data& ld, DWORD targetRefreshRate)
-{
-	if (targetRefreshRate == 0L || targetRefreshRate > 240L)
-	{
-		#ifndef NO_QUILL
-		LOG_ERROR(ld.logger, "[{}] Invalid refresh rate change requested to {} Hz, ignoring", ld.prefix,
-		          targetRefreshRate);
-		#endif
-
-		return E_FAIL;
-	}
-
-	#ifndef NO_QUILL
-	const auto t1 = std::chrono::high_resolution_clock::now();
-	#endif
-
-	HMONITOR activeMonitor = MonitorFromWindow(GetActiveWindow(), MONITOR_DEFAULTTONEAREST);
-	MONITORINFOEX monitorInfo{{.cbSize = sizeof(MONITORINFOEX)}};
-	DEVMODE devMode{.dmSize = sizeof(DEVMODE)};
-
-	if (GetMonitorInfo(activeMonitor, &monitorInfo)
-		&& EnumDisplaySettings(monitorInfo.szDevice, ENUM_CURRENT_SETTINGS, &devMode))
-	{
-		#ifndef NO_QUILL
-		const auto t2 = std::chrono::high_resolution_clock::now();
-		#endif
-
-		auto width = devMode.dmPelsWidth;
-		auto height = devMode.dmPelsHeight;
-		auto freq = devMode.dmDisplayFrequency;
-		if (freq == targetRefreshRate)
-		{
-			#ifndef NO_QUILL
-			LOG_TRACE_L2(ld.logger, "[{}] No change requested from {} {} x {} @ {} Hz", ld.prefix,
-			             std::wstring{ monitorInfo.szDevice }, width, height, freq);
-			#endif
-			return S_OK;
-		}
-
-		#ifndef NO_QUILL
-		LOG_INFO(ld.logger, "[{}] Requesting change from {} {} x {} @ {} Hz to {} Hz", ld.prefix,
-		         std::wstring{ monitorInfo.szDevice }, width, height, freq, targetRefreshRate);
-		#endif
-
-		devMode.dmDisplayFrequency = targetRefreshRate;
-
-		auto res = ChangeDisplaySettings(&devMode, 0);
-
-		#ifndef NO_QUILL
-		const auto t3 = std::chrono::high_resolution_clock::now();
-		const auto getLat = duration_cast<std::chrono::microseconds>(t2 - t1).count();
-		const auto chgLat = duration_cast<std::chrono::microseconds>(t3 - t2).count();
-		#endif
-
-		switch (res)
-		{
-		case DISP_CHANGE_SUCCESSFUL:
-			#ifndef NO_QUILL
-			LOG_INFO(ld.logger, "[{}] Completed change from {} {} x {} @ {} Hz to {} Hz ({:.3f}ms / {:.3f}ms)",
-			         ld.prefix, std::wstring{ monitorInfo.szDevice }, width, height, freq, targetRefreshRate,
-			         static_cast<double>(getLat) / 1000, static_cast<double>(chgLat) / 1000);
-			#endif
-			return S_OK;
-		default:
-			auto reason =
-				res == DISP_CHANGE_FAILED
-					? "failed"
-					: res == DISP_CHANGE_BADMODE
-					? "bad mode"
-					: res == DISP_CHANGE_NOTUPDATED
-					? "not updated"
-					: res == DISP_CHANGE_BADFLAGS
-					? "bad flags"
-					: res == DISP_CHANGE_BADPARAM
-					? "bad param"
-					: "?";
-			#ifndef NO_QUILL
-			LOG_INFO(ld.logger,
-			         "[{}] Failed to change from {} {} x {} @ {} Hz to {} Hz due to {} / {} ({:.3f}ms / {:.3f}ms)",
-			         ld.prefix, std::wstring{ monitorInfo.szDevice }, width, height, freq, targetRefreshRate, res,
-			         reason, static_cast<double>(getLat) / 1000, static_cast<double>(chgLat) / 1000);
-			#endif
-			return E_FAIL;
-		}
-	}
-	return E_FAIL;
 }
 
 // Non template parts of the filter impl
@@ -561,6 +355,7 @@ protected:
 	std::wstring mRegKeyBase{};
 	std::wstring mHdrProfile{};
 	std::wstring mSdrProfile{};
+	std::optional<std::filesystem::path> mMCCCommandExecutor{};
 
 private:
 	void CaptureLatency(const metric& metric, CAPTURE_LATENCY& lat, const std::string& desc)
@@ -577,6 +372,8 @@ private:
 		             static_cast<double>(lat.max) / 1000.0);
 		#endif
 	}
+
+	std::optional<std::filesystem::path> GetMCCCommandExecutor() const;
 };
 
 template <typename D_INF, typename V_SIG, typename A_SIG>
@@ -1008,7 +805,7 @@ protected:
 
 	void UpdateDisplayStatus() override
 	{
-		auto values = GetDisplayStatus();
+		auto values = mode_switch::GetDisplayStatus();
 		mFilter->OnDisplayUpdated(std::get<0>(values), std::get<1>(values));
 	}
 
@@ -1226,3 +1023,5 @@ class MemAllocator final : public CMemAllocator
 public:
 	MemAllocator(__inout_opt LPUNKNOWN, __inout HRESULT*);
 };
+
+#endif

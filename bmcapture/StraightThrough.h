@@ -12,7 +12,9 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-#pragma once
+#ifndef BM_STRAIGHT_THROUGH_HEADER
+#define BM_STRAIGHT_THROUGH_HEADER
+
 #include "VideoFrameWriter.h"
 #include "bmdomain.h"
 
@@ -37,3 +39,4 @@ public:
 		return srcFrame->CopyData(dstFrame);
 	}
 };
+#endif

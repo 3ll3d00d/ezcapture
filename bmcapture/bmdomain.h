@@ -12,13 +12,17 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-#pragma once
+#ifndef BMDOMAIN_HEADER
+#define BMDOMAIN_HEADER
+
+#define NOMINMAX // quill does not compile without this
+#define WIN32_LEAN_AND_MEAN
+
 #include <string>
 
 #include "DeckLinkAPI_h.h"
 #include "domain.h"
 #include "logging.h"
-
 
 struct DEVICE_INFO
 {
@@ -416,3 +420,5 @@ inline const char* to_string(BMDDeckLinkFrameMetadataID e)
 	default: return "unknown";
 	}
 }
+
+#endif

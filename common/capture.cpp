@@ -12,8 +12,6 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-#pragma once
-
 #ifndef NO_QUILL
 #include "quill/Backend.h"
 #include "quill/Frontend.h"
@@ -25,9 +23,12 @@
 #endif // !NO_QUILL
 
 #include "capture.h"
-#include <DXVA.h>
+#include "modeswitcher.h"
 #include "version.h"
 #include "winreg/WinReg.hpp"
+#include <DXVA.h>
+#include <regex>
+
 
 #ifdef _DEBUG
 #define MIN_LOG_LEVEL quill::LogLevel::TraceL3
@@ -117,15 +118,15 @@ CaptureFilter::CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID 
 	mLogData.videoLat->set_log_level(MIN_LOG_LEVEL);
 	#endif
 
-	auto monitorConfig = GetAllSupportedRefreshRates();
+	auto monitorConfig = mode_switch::GetAllSupportedRefreshRates();
 	mRefreshRates = std::move(monitorConfig.refreshRates);
 	#ifndef NO_QUILL
 	LOG_INFO(mLogData.logger, "[{}] Initialised filter v{}", mLogData.prefix, EZ_VERSION_STR);
 	LOG_INFO(mLogData.logger, "[{}] Monitor {} supported {} ignored {}", mLogData.prefix,
-	         monitorConfig.name, monitorConfig.supportedModes, monitorConfig.ignoredModes);
+	monitorConfig.name, monitorConfig.supportedModes, monitorConfig.ignoredModes);
 	#endif
 
-	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase })
+	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
 	{
 		if (auto res = key.TryGetStringValue(hdrProfileRegKey))
 		{
@@ -136,6 +137,64 @@ CaptureFilter::CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID 
 			mSdrProfile = res.GetValue();
 		}
 	}
+	mMCCCommandExecutor = GetMCCCommandExecutor();
+}
+
+std::optional<std::filesystem::path> CaptureFilter::GetMCCCommandExecutor() const
+{
+	auto pid = GetCurrentProcessId();
+	std::string fullProcessName;
+	if (HANDLE handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid))
+	{
+		DWORD buffSize = 1024;
+		CHAR buffer[1024];
+		if (QueryFullProcessImageNameA(handle, 0, buffer, &buffSize))
+		{
+			fullProcessName = buffer;
+		}
+		else
+		{
+			#ifndef NO_QUILL
+			auto err = GetLastError();
+			LOG_WARNING(mLogData.logger, "[{}] QueryFullProcessImageNameA failed for pid {} (error: {:#08x})", mLogData.prefix, pid, err);
+			#endif
+		}
+		CloseHandle(handle);
+	}
+	else
+	{
+		#ifndef NO_QUILL
+		auto err = GetLastError();
+		LOG_WARNING(mLogData.logger, "[{}] OpenProcess failed for pid {} (error: {:#08x})", mLogData.prefix, pid, err);
+		#endif
+	}
+	if (fullProcessName.empty())
+	{
+		return fullProcessName;
+	}
+	#ifndef NO_QUILL
+	LOG_INFO(mLogData.logger, "[{}] Filter is running in pid {}: {}", mLogData.prefix, pid, fullProcessName);
+	#endif
+
+	const std::filesystem::path fullProcessPath = fullProcessName;
+	const auto processDir = fullProcessPath.parent_path();
+	const std::regex mcExe{ R"(MC\d{1,3}\.exe)" };
+	const std::filesystem::path mcExePath;
+	for (const auto& entry : std::filesystem::directory_iterator(processDir))
+	{
+		if (std::filesystem::is_directory(entry))
+		{
+			continue;
+		}
+		if (std::regex_match(entry.path().filename().string(), mcExe))
+		{
+			#ifndef NO_QUILL
+			LOG_INFO(mLogData.logger, "[{}] Located MCC executor : {}", mLogData.prefix, entry.path().string());
+			#endif
+			return entry.path();
+		}
+	}
+	return {};
 }
 
 STDMETHODIMP CaptureFilter::NonDelegatingQueryInterface(REFIID riid, void** ppv)
@@ -286,7 +345,7 @@ STDMETHODIMP CaptureFilter::Stop()
 HRESULT CaptureFilter::SetHDRProfile(std::wstring profile)
 {
 	auto toWrite = profile.empty() ? L"" : profile;
-	if (winreg::RegKey key{ HKEY_CURRENT_USER, mRegKeyBase })
+	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
 	{
 		if (auto res = key.TrySetStringValue(hdrProfileRegKey, toWrite.c_str()))
 		{
@@ -303,7 +362,7 @@ HRESULT CaptureFilter::SetHDRProfile(std::wstring profile)
 HRESULT CaptureFilter::SetSDRProfile(std::wstring profile)
 {
 	auto toWrite = profile.empty() ? L"" : profile;
-	if (winreg::RegKey key{ HKEY_CURRENT_USER, mRegKeyBase })
+	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
 	{
 		if (auto res = key.TrySetStringValue(sdrProfileRegKey, toWrite.c_str()))
 		{
@@ -569,7 +628,7 @@ HRESULT CapturePin::OnThreadStartPlay()
 	REFERENCE_TIME rt;
 	GetReferenceTime(&rt);
 
-	PrintResolution(mLogData);
+	mode_switch::PrintResolution(mLogData);
 
 	if (IAmStopped())
 	{

@@ -12,10 +12,13 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-#pragma once
+#ifndef LOGGING_HEADER
+#define LOGGING_HEADER
+
+#define NOMINMAX // quill does not compile without this
+#define WIN32_LEAN_AND_MEAN
 
 #include <string>
-#include <utility>
 
 #ifndef NO_QUILL
 #include <quill/Logger.h>
@@ -59,3 +62,4 @@ struct log_data
 		#endif
 	}
 };
+#endif

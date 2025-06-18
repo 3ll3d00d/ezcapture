@@ -12,9 +12,8 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-#pragma once
-
 #define NOMINMAX // quill does not compile without this
+#define WIN32_LEAN_AND_MEAN
 
 #include <windows.h>
 #include <process.h>

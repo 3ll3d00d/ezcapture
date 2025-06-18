@@ -12,14 +12,22 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-#pragma once
+#ifndef DOMAIN_HEADER
+#define DOMAIN_HEADER
+
+#define NOMINMAX // quill does not compile without this
+
 #include <string>
 #include <array>
 #include <ks.h>
 #include <ksmedia.h>
 #include <map>
 #include <optional>
-#include <cmath>
+#include <cmath>     // std::lround
+
+#define TO_4CC(ch0, ch1, ch2, ch3)                              \
+                ((DWORD)(BYTE)(ch0) | ((DWORD)(BYTE)(ch1) << 8) |   \
+                ((DWORD)(BYTE)(ch2) << 16) | ((DWORD)(BYTE)(ch3) << 24 ))
 
 constexpr auto not_present = 1024;
 constexpr LONGLONG dshowTicksPerSecond = 10LL * 1000 * 1000; // 100ns
@@ -98,7 +106,7 @@ struct pixel_format
 	             pixel_encoding pPixelEncoding, DWORD pByteAlignment = 2)
 	{
 		format = pf;
-		fourcc = MAKEFOURCC(a, b, c, d);
+		fourcc = TO_4CC(a, b, c, d);
 		bitDepth = pBitDepth;
 		bitsPerPixel = pBitsPerPixel;
 		name = std::string{a, b, c, d};
@@ -523,3 +531,4 @@ inline const char* to_string(frame_writer_strategy e)
 
 // TODO support a list of fall back options
 typedef std::map<pixel_format, std::pair<pixel_format, frame_writer_strategy>> pixel_format_fallbacks;
+#endif

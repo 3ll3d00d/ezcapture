@@ -12,9 +12,11 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
+#ifndef VIDEO_FRAME_WRITER_HEADER
+#define VIDEO_FRAME_WRITER_HEADER
 
-#pragma once
 #define NOMINMAX // quill does not compile without this
+#define WIN32_LEAN_AND_MEAN
 
 #include <intsafe.h>
 #include <strmif.h>
@@ -92,3 +94,4 @@ protected:
 	DWORD mOutputRowLength{0};
 	int mPixelsToPad{0};
 };
+#endif

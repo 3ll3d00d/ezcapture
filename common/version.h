@@ -12,7 +12,8 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-#pragma once
+#ifndef EZ_VERSION_HEADER
+#define EZ_VERSION_HEADER
 
 #define DO_MAKE_STR(x) #x
 #define MAKE_STR(x) DO_MAKE_STR(x)
@@ -36,3 +37,4 @@
 #define EZ_VERSION_STR MAKE_STR(EZ_VERSION)
 
 #pragma message("EZ_VERSION_STR [" EZ_VERSION_STR "]")
+#endif

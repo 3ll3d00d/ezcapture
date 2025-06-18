@@ -12,7 +12,11 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-#pragma once
+#ifndef METRIC_HEADER
+#define METRIC_HEADER
+
+#define NOMINMAX // quill does not compile without this
+#define WIN32_LEAN_AND_MEAN
 
 #include <algorithm>
 #include <cstdint>
@@ -73,3 +77,4 @@ private:
 	uint64_t mSnappedMax{0};
 	double mSnappedMean{0.0};
 };
+#endif

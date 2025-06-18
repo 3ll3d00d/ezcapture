@@ -12,10 +12,6 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-#pragma once
-
-#define NOMINMAX // quill does not compile without this
-
 #include "version.h"
 #include "signalinfo.h"
 #include "commctrl.h"

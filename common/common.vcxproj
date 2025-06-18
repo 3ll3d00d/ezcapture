@@ -396,11 +396,13 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="capture.cpp" />
+    <ClCompile Include="modeswitcher.cpp" />
     <ClCompile Include="signalinfo.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="bgr10_rgb48.h" />
     <ClInclude Include="metric.h" />
+    <ClInclude Include="modeswitcher.h" />
     <ClInclude Include="r210_rgb48.h" />
     <ClInclude Include="uyvy_yv16.h" />
     <ClInclude Include="v210_p210.h" />

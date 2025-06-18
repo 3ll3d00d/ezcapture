@@ -12,7 +12,8 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-#pragma once
+#ifndef BGR10_RGB48_HEADER
+#define BGR10_RGB48_HEADER
 
 #include "VideoFrameWriter.h"
 
@@ -170,3 +171,4 @@ private:
 	}
 	#endif
 };
+#endif

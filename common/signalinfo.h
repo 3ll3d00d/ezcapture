@@ -12,15 +12,17 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-#pragma once
+#ifndef SIGNAL_INFO_HEADER
+#define SIGNAL_INFO_HEADER
+
+#define NOMINMAX // quill does not compile without this
+#define WIN32_LEAN_AND_MEAN
 
 #include <Windows.h>
 #include <Commctrl.h>
 #include <initguid.h>
 #include <streams.h>
-
 #include "domain.h"
-
 
 // {8DC689DB-68FE-4C30-AAE5-0E515CF9324C}
 DEFINE_GUID(CLSID_SignalInfoProps,
@@ -101,3 +103,4 @@ private:
 
 	ISignalInfo* mSignalInfo = nullptr;
 };
+#endif

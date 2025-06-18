@@ -12,7 +12,9 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-#pragma once
+#ifndef MEDIA_SAMPLE_BACKED_DECKLINK_BUFFER_HEADER
+#define MEDIA_SAMPLE_BACKED_DECKLINK_BUFFER_HEADER
+
 #define NOMINMAX // quill does not compile without this
 
 #include "DeckLinkAPI_h.h"
@@ -74,3 +76,4 @@ private:
 	std::atomic_int mRefCount;
 	std::shared_ptr<IMediaSample> mSample;
 };
+#endif

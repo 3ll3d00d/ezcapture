@@ -12,13 +12,17 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-#pragma once
+#ifndef MWCAPTURE_HEADER
+#define MWCAPTURE_HEADER
+
 #define NOMINMAX // quill does not compile without this
+#define WIN32_LEAN_AND_MEAN
 
 #ifdef NO_QUILL
 #include <chrono>
 #endif
 #include "capture.h"
+#include "modeswitcher.h"
 #include "mwdomain.h"
 #include "VideoFrameWriter.h"
 #include "LibMWCapture/MWCapture.h"
@@ -149,7 +153,7 @@ protected:
 
 	void DoChangeRefreshRate() override
 	{
-		ChangeResolution(mLogData, mVideoFormat.CalcRefreshRate());
+		mode_switch::ChangeResolution(mLogData, mVideoFormat.CalcRefreshRate());
 		UpdateDisplayStatus();
 	}
 
@@ -314,3 +318,4 @@ protected:
 	bool ProposeBuffers(ALLOCATOR_PROPERTIES* pProperties) override;
 	void DoThreadDestroy() override;
 };
+#endif

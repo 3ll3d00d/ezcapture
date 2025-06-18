@@ -1,4 +1,9 @@
-#pragma once
+#ifndef LAVFILTERS_SIDE_DATA_HEADER
+#define LAVFILTERS_SIDE_DATA_HEADER
+
+#define NOMINMAX // quill does not compile without this
+#define WIN32_LEAN_AND_MEAN
+
 
 // This file is a partial copy of https://github.com/Nevcairiel/LAVFilters/blob/master/common/includes/IMediaSideData.h
 
@@ -59,3 +64,4 @@ struct MediaSideDataHDRContentLightLevel
     unsigned int MaxFALL;
 };
 #pragma pack(pop)
+#endif

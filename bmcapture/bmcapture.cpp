@@ -12,16 +12,12 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-#pragma once
-
-#define NOMINMAX // quill does not compile without this
-
-#include <windows.h>
+#include "bmcapture.h"
+#include <streams.h>
 #include <process.h>
 #include <DXVA.h>
 #include <filesystem>
 #include <utility>
-#include "bmcapture.h"
 // linking side data GUIDs fails without this
 #include <initguid.h>
 
@@ -29,6 +25,8 @@
 // std::reverse
 #include <algorithm>
 #include <vcpkg_installed/x64-windows/x64-windows/include/winreg/WinReg.hpp>
+
+#include "modeswitcher.h"
 
 #ifndef NO_QUILL
 #include "quill/Backend.h"
@@ -1082,7 +1080,7 @@ HRESULT BlackmagicCaptureFilter::processVideoFrame(IDeckLinkVideoInputFrame* vid
 		else
 		{
 			#ifndef NO_QUILL
-			invalids += invalids.empty() ? ", " : "";
+			invalids += invalids.empty() ? "" : ", ";
 			invalids += to_string(bmdDeckLinkFrameMetadataHDRMaximumFrameAverageLightLevel);
 			#endif
 		}
@@ -1123,14 +1121,10 @@ HRESULT BlackmagicCaptureFilter::processVideoFrame(IDeckLinkVideoInputFrame* vid
 
 			if (mBlockFilterOnRefreshRateChange)
 			{
-				#ifndef NO_QUILL
-				LOG_TRACE_L3(mLogData.logger, "[{}] Refresh rate trigger in filter thread", mLogData.prefix);
-				#endif
-
 				auto currRate = newVideoFormat.CalcRefreshRate();
-				if (S_OK == ChangeResolution(mLogData, currRate))
+				if (S_OK == mode_switch::ChangeResolution(mLogData, currRate))
 				{
-					auto values = GetDisplayStatus();
+					auto values = mode_switch::GetDisplayStatus();
 					OnDisplayUpdated(std::get<0>(values), std::get<1>(values));
 				}
 			}
@@ -1673,7 +1667,9 @@ BlackmagicVideoCapturePin::BlackmagicVideoCapturePin(HRESULT* phr, BlackmagicCap
 			{R10B, {RGBA, ANY_RGB}},
 			{R10L, {RGBA, ANY_RGB}},
 		}
-	), mRateSwitcher(pPreview ? "VideoPreview" : "VideoCapture", pParent),
+	),
+	// TODO move to CaptureFilter
+	mRateSwitcher(pPreview ? "VideoPreview" : "VideoCapture"),
 	mDoRefreshRateSwitches(pDoRefreshRateSwitches)
 {
 }

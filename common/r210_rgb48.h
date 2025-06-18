@@ -12,7 +12,8 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-#pragma once
+#ifndef R210_RGB48_HEADER
+#define R210_RGB48_HEADER
 
 #include "VideoFrameWriter.h"
 #include <span>
@@ -173,3 +174,4 @@ private:
 	}
 	#endif
 };
+#endif

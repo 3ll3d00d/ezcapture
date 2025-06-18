@@ -12,19 +12,20 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-#pragma once
+#ifndef BMCAPTURE_HEADER
+#define BMCAPTURE_HEADER
 
-#include <functional>
-#include <utility>
-#include <atlcomcli.h>
+#define NOMINMAX // quill does not compile without this
+#define WIN32_LEAN_AND_MEAN
 
 #include "capture.h"
 #include "bmdomain.h"
 #include "VideoFrameWriter.h"
 
 #include "any_rgb.h"
-#include "r210_rgb48.h"
 #include "StraightThrough.h"
+
+#include <functional>
 
 #ifdef NO_QUILL
 #include <memory>
@@ -200,43 +201,6 @@ private:
 	std::unique_ptr<std::string> mInvalidHdrMetaDataItems;
 };
 
-class AsyncModeSwitcher final : public CMsgThread
-{
-public:
-	AsyncModeSwitcher(const std::string& pLogPrefix, BlackmagicCaptureFilter* pFilter) : mFilter(pFilter)
-	{
-		mLogData.init(pLogPrefix);
-	}
-
-	LRESULT ThreadMessageProc(UINT uMsg, DWORD dwFlags, LPVOID lpParam, CAMEvent* pEvent) override
-	{
-		#ifndef NO_QUILL
-		LOG_TRACE_L3(mLogData.logger, "[{}] AsyncModeSwitcher::ThreadMessageProc {}", mLogData.prefix, dwFlags);
-		#endif
-
-		if (S_OK == ChangeResolution(mLogData, dwFlags))
-		{
-			auto values = GetDisplayStatus();
-			mFilter->OnDisplayUpdated(std::get<0>(values), std::get<1>(values));
-		}
-		return S_OK;
-	}
-
-	void OnThreadInit() override
-	{
-		#ifndef NO_QUILL
-		CustomFrontend::preallocate();
-
-		LOG_INFO(mLogData.logger, "[{}] AsyncModeSwitcher::OnThreadInit", mLogData.prefix);
-		#endif
-	}
-
-private:
-	log_data mLogData{};
-	BlackmagicCaptureFilter* mFilter;
-};
-
-
 /**
  * A video stream flowing from the capture device to an output pin.
  */
@@ -326,3 +290,4 @@ protected:
 
 	std::shared_ptr<AudioFrame> mCurrentFrame;
 };
+#endif
