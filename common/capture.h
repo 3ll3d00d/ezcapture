@@ -30,13 +30,11 @@
 #include <memory>
 #include <set>
 #include <map>
-#include <filesystem>
 #include <optional>
 #include <string>
 #include <utility>
 
 #include "bgr10_rgb48.h"
-#include "modeswitcher.h"
 #include "r210_rgb48.h"
 #include "uyvy_yv16.h"
 #include "v210_p210.h"
@@ -58,6 +56,7 @@ EXTERN_C const AMOVIESETUP_PIN sMIPPins[];
 #define BACKOFF Sleep(20)
 #define SHORT_BACKOFF Sleep(1)
 #define S_RECONNECTION_UNNECESSARY ((HRESULT)1024L)
+#define PROFILE_NOT_SET 16384
 
 constexpr auto hdrProfileRegKey = L"hdrProfile";
 constexpr auto sdrProfileRegKey = L"sdrProfile";
@@ -271,23 +270,28 @@ public:
 		return S_OK;
 	}
 
-	STDMETHODIMP GetHDRProfile(std::wstring* profile) override
+	STDMETHODIMP GetHDRProfile(DWORD* profile) override
 	{
 		if (!profile) return E_POINTER;
 		*profile = mHdrProfile;
 		return S_OK;
 	}
 
-	STDMETHODIMP SetHDRProfile(std::wstring profile) override;
+	STDMETHODIMP SetHDRProfile(DWORD profile) override;
 
-	STDMETHODIMP GetSDRProfile(std::wstring* profile) override
+	STDMETHODIMP GetSDRProfile(DWORD* profile) override
 	{
 		if (!profile) return E_POINTER;
 		*profile = mSdrProfile;
 		return S_OK;
 	}
 
-	STDMETHODIMP SetSDRProfile(std::wstring profile) override;
+	STDMETHODIMP SetSDRProfile(DWORD profile) override;
+
+	DWORD GetMCProfileId(bool hdr)
+	{
+		return hdr ? mHdrProfile : mSdrProfile;
+	}
 
 	//////////////////////////////////////////////////////////////////////////
 	//  ISpecifyPropertyPages2
@@ -295,7 +299,7 @@ public:
 	STDMETHODIMP GetPages(CAUUID* pPages) override;
 	STDMETHODIMP CreatePage(const GUID& guid, IPropertyPage** ppPage) override;
 
-	void OnDisplayUpdated(const std::wstring& status, int freq);
+	void OnModeUpdated(const mode_switch_result& result);
 	void OnVideoFormatLoaded(VIDEO_FORMAT* vf);
 	void OnAudioFormatLoaded(AUDIO_FORMAT* af);
 	void OnHdrUpdated(MediaSideDataHDR* hdr, MediaSideDataHDRContentLightLevel* light);
@@ -353,9 +357,8 @@ protected:
 	ISignalInfoCB* mInfoCallback = nullptr;
 	std::set<DWORD> mRefreshRates{};
 	std::wstring mRegKeyBase{};
-	std::wstring mHdrProfile{};
-	std::wstring mSdrProfile{};
-	std::optional<std::filesystem::path> mMCCCommandExecutor{};
+	DWORD mHdrProfile{PROFILE_NOT_SET};
+	DWORD mSdrProfile{PROFILE_NOT_SET};
 
 private:
 	void CaptureLatency(const metric& metric, CAPTURE_LATENCY& lat, const std::string& desc)
@@ -372,8 +375,6 @@ private:
 		             static_cast<double>(lat.max) / 1000.0);
 		#endif
 	}
-
-	std::optional<std::filesystem::path> GetMCCCommandExecutor() const;
 };
 
 template <typename D_INF, typename V_SIG, typename A_SIG>
@@ -608,7 +609,7 @@ public:
 protected:
 	VideoCapturePin(HRESULT* phr, CSource* pParent, LPCSTR pObjectName, LPCWSTR pPinName, std::string pLogPrefix,
 	                const VIDEO_FORMAT& pVideoFormat, pixel_format_fallbacks pFallbacks) :
-		CapturePin(phr, pParent, pObjectName, pPinName, std::move(pLogPrefix)),
+		CapturePin(phr, pParent, pObjectName, pPinName, pLogPrefix),
 		mVideoFormat(pVideoFormat),
 		mSignalledFormat(pVideoFormat.pixelFormat),
 		mFormatFallbacks(std::move(pFallbacks))
@@ -659,11 +660,11 @@ protected:
 	{
 		if (mHasSignal)
 		{
-			DoChangeRefreshRate();
+			DoSwitchMode();
 		}
 	}
 
-	virtual void DoChangeRefreshRate() = 0;
+	virtual void DoSwitchMode() = 0;
 
 	VIDEO_FORMAT mVideoFormat{};
 	pixel_format mSignalledFormat{NA};
@@ -711,7 +712,11 @@ public:
 	HdmiVideoCapturePin(HRESULT* phr, F* pParent, LPCSTR pObjectName, LPCWSTR pPinName, std::string pLogPrefix,
 	                    VIDEO_FORMAT pVideoFormat, pixel_format_fallbacks pFallbacks)
 		: VideoCapturePin(phr, pParent, pObjectName, pPinName, pLogPrefix, pVideoFormat, pFallbacks),
-		  mFilter(pParent)
+		  mFilter(pParent),
+		  mRateSwitcher(pLogPrefix, [this](const mode_switch_result& result)
+		  {
+			  mFilter->OnModeUpdated(result);
+		  })
 	{
 	}
 
@@ -738,6 +743,7 @@ protected:
 	F* mFilter;
 	std::unique_ptr<IVideoFrameWriter<VF>> mFrameWriter;
 	frame_writer_strategy mFrameWriterStrategy{UNKNOWN};
+	AsyncModeSwitcher mRateSwitcher;
 
 	virtual void OnFrameWriterStrategyUpdated()
 	{
@@ -803,10 +809,37 @@ protected:
 		return false;
 	}
 
+	void DoSwitchMode() override
+	{
+		auto target = mVideoFormat.CalcRefreshRate();
+
+		#ifndef NO_QUILL
+		LOG_INFO(mLogData.logger, "[{}] Triggering refresh rate change to {} Hz", mLogData.prefix, target);
+		#endif
+
+		mRateSwitcher.PutThreadMsg(REFRESH_RATE, target, nullptr);
+
+		auto profileId = mFilter->GetMCProfileId(mVideoFormat.hdrMeta.transferFunction != 4);
+		if (profileId != PROFILE_NOT_SET)
+		{
+			#ifndef NO_QUILL
+			LOG_INFO(mLogData.logger, "[{}] Triggering MC JRVR profile change to {}", mLogData.prefix, profileId);
+			#endif
+			mRateSwitcher.PutThreadMsg(MC_PROFILE, profileId, nullptr);
+		}
+	}
+
 	void UpdateDisplayStatus() override
 	{
 		auto values = mode_switch::GetDisplayStatus();
-		mFilter->OnDisplayUpdated(std::get<0>(values), std::get<1>(values));
+		const mode_switch_result res = {
+			.request = REFRESH_RATE,
+			.rateSwitch{
+				.displayStatus = std::get<0>(values),
+				.refreshRate = std::get<1>(values)
+			}
+		};
+		mFilter->OnModeUpdated(res);
 	}
 
 	void GetReferenceTime(REFERENCE_TIME* rt) const override

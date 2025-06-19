@@ -522,48 +522,11 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		mVideoFormat.hdrMeta.transferFunction, mVideoFormat.imageSize);
 	#endif
 
-	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
-	{
-		if (auto res = key.TryGetDwordValue(blockFilterRegKey))
-		{
-			mBlockFilterOnRefreshRateChange = res.GetValue() == 1;
-		}
-		else
-		{
-			if (auto res = key.TrySetDwordValue(blockFilterRegKey, 0))
-			{
-				if (!res)
-				{
-					#ifndef NO_QUILL
-					LOG_WARNING(mLogData.logger, "[{}] Failed to initialise {}\\{} due to {} (res: {})",
-					            mLogData.prefix, mRegKeyBase, blockFilterRegKey, res.ErrorMessage(), res.Code());
-					#endif
-				}
-			}
-		}
-	}
-
-	if (mBlockFilterOnRefreshRateChange)
-	{
-		#ifndef NO_QUILL
-		LOG_INFO(mLogData.logger,
-		         "[{}] {} is set, refresh rate changes will be performed in the filter thread and will block audio and video frame capture",
-		         mLogData.prefix, blockFilterRegKey);
-		#endif
-	}
-	else
-	{
-		#ifndef NO_QUILL
-		LOG_INFO(mLogData.logger,
-		         "[{}] {} is not set, refresh rate changes will be performed in the pin thread and will NOT block audio and video frame capture",
-		         mLogData.prefix, blockFilterRegKey);
-		#endif
-	}
-
-	auto vp = new BlackmagicVideoCapturePin(phr, this, false, mVideoFormat, !mBlockFilterOnRefreshRateChange);
+	auto vp = new BlackmagicVideoCapturePin(phr, this, false, mVideoFormat);
 	vp->UpdateFrameWriterStrategy();
 	vp->ResizeMetrics(mVideoFormat.fps);
-	vp = new BlackmagicVideoCapturePin(phr, this, true, mVideoFormat, !mBlockFilterOnRefreshRateChange);
+
+	vp = new BlackmagicVideoCapturePin(phr, this, true, mVideoFormat);
 	vp->UpdateFrameWriterStrategy();
 	vp->ResizeMetrics(mVideoFormat.fps);
 
@@ -1118,16 +1081,6 @@ HRESULT BlackmagicCaptureFilter::processVideoFrame(IDeckLinkVideoInputFrame* vid
 				auto pin = dynamic_cast<CapturePin*>(m_paStreams[i]);
 				pin->ResizeMetrics(newVideoFormat.fps);
 			}
-
-			if (mBlockFilterOnRefreshRateChange)
-			{
-				auto currRate = newVideoFormat.CalcRefreshRate();
-				if (S_OK == mode_switch::ChangeResolution(mLogData, currRate))
-				{
-					auto values = mode_switch::GetDisplayStatus();
-					OnDisplayUpdated(std::get<0>(values), std::get<1>(values));
-				}
-			}
 		}
 
 		// The time for start of frame on the wire is the timestamp attached to the frame at completion minus the frame duration
@@ -1647,7 +1600,7 @@ HRESULT BlackmagicCaptureFilter::PinThreadDestroyed()
 // BlackmagicVideoCapturePin
 ///////////////////////////////////////////////////////////
 BlackmagicVideoCapturePin::BlackmagicVideoCapturePin(HRESULT* phr, BlackmagicCaptureFilter* pParent, bool pPreview,
-                                                     VIDEO_FORMAT pVideoFormat, bool pDoRefreshRateSwitches):
+                                                     VIDEO_FORMAT pVideoFormat):
 	HdmiVideoCapturePin(
 		phr,
 		pParent,
@@ -1667,10 +1620,7 @@ BlackmagicVideoCapturePin::BlackmagicVideoCapturePin(HRESULT* phr, BlackmagicCap
 			{R10B, {RGBA, ANY_RGB}},
 			{R10L, {RGBA, ANY_RGB}},
 		}
-	),
-	// TODO move to CaptureFilter
-	mRateSwitcher(pPreview ? "VideoPreview" : "VideoCapture"),
-	mDoRefreshRateSwitches(pDoRefreshRateSwitches)
+	)
 {
 }
 
@@ -1843,22 +1793,7 @@ HRESULT BlackmagicVideoCapturePin::OnThreadCreate()
 
 	UpdateDisplayStatus();
 
-	if (mDoRefreshRateSwitches && mRateSwitcher.GetThreadHandle() == nullptr)
-	{
-		if (mRateSwitcher.CreateThread())
-		{
-			#ifndef NO_QUILL
-			LOG_INFO(mLogData.logger, "[{}] Initialised refresh rate switcher thread with id {}", mLogData.prefix,
-			         mRateSwitcher.GetThreadId());
-			#endif
-		}
-		else
-		{
-			#ifndef NO_QUILL
-			LOG_ERROR(mLogData.logger, "[{}] Failed to initialise refresh rate switcher thread", mLogData.prefix);
-			#endif
-		}
-	}
+	mRateSwitcher.InitIfNecessary();
 
 	return mFilter->PinThreadCreated();
 }
@@ -1888,26 +1823,6 @@ void BlackmagicVideoCapturePin::OnChangeMediaType()
 		LOG_TRACE_L1(mLogData.logger,
 		             "[{}] Likely padding requested by renderer, frame size is {} but buffer allocated is {}",
 		             mLogData.prefix, frameSize, bufferSize);
-		#endif
-	}
-}
-
-void BlackmagicVideoCapturePin::DoChangeRefreshRate()
-{
-	if (mDoRefreshRateSwitches)
-	{
-		auto target = mVideoFormat.CalcRefreshRate();
-
-		#ifndef NO_QUILL
-		LOG_INFO(mLogData.logger, "[{}] Triggering refresh rate change to {} Hz", mLogData.prefix, target);
-		#endif
-
-		mRateSwitcher.PutThreadMsg(0, target, nullptr);
-	}
-	else
-	{
-		#ifndef NO_QUILL
-		LOG_TRACE_L3(mLogData.logger, "[{}] Ignoring refresh rate change", mLogData.prefix);
 		#endif
 	}
 }

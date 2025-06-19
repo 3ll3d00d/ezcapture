@@ -80,5 +80,8 @@
     <ClInclude Include="modeswitcher.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="mccommands.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

@@ -123,78 +123,20 @@ CaptureFilter::CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID 
 	#ifndef NO_QUILL
 	LOG_INFO(mLogData.logger, "[{}] Initialised filter v{}", mLogData.prefix, EZ_VERSION_STR);
 	LOG_INFO(mLogData.logger, "[{}] Monitor {} supported {} ignored {}", mLogData.prefix,
-	monitorConfig.name, monitorConfig.supportedModes, monitorConfig.ignoredModes);
+	         monitorConfig.name, monitorConfig.supportedModes, monitorConfig.ignoredModes);
 	#endif
 
 	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
 	{
-		if (auto res = key.TryGetStringValue(hdrProfileRegKey))
+		if (auto res = key.TryGetDwordValue(hdrProfileRegKey))
 		{
 			mHdrProfile = res.GetValue();
 		}
-		if (auto res = key.TryGetStringValue(sdrProfileRegKey))
+		if (auto res = key.TryGetDwordValue(sdrProfileRegKey))
 		{
 			mSdrProfile = res.GetValue();
 		}
 	}
-	mMCCCommandExecutor = GetMCCCommandExecutor();
-}
-
-std::optional<std::filesystem::path> CaptureFilter::GetMCCCommandExecutor() const
-{
-	auto pid = GetCurrentProcessId();
-	std::string fullProcessName;
-	if (HANDLE handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid))
-	{
-		DWORD buffSize = 1024;
-		CHAR buffer[1024];
-		if (QueryFullProcessImageNameA(handle, 0, buffer, &buffSize))
-		{
-			fullProcessName = buffer;
-		}
-		else
-		{
-			#ifndef NO_QUILL
-			auto err = GetLastError();
-			LOG_WARNING(mLogData.logger, "[{}] QueryFullProcessImageNameA failed for pid {} (error: {:#08x})", mLogData.prefix, pid, err);
-			#endif
-		}
-		CloseHandle(handle);
-	}
-	else
-	{
-		#ifndef NO_QUILL
-		auto err = GetLastError();
-		LOG_WARNING(mLogData.logger, "[{}] OpenProcess failed for pid {} (error: {:#08x})", mLogData.prefix, pid, err);
-		#endif
-	}
-	if (fullProcessName.empty())
-	{
-		return fullProcessName;
-	}
-	#ifndef NO_QUILL
-	LOG_INFO(mLogData.logger, "[{}] Filter is running in pid {}: {}", mLogData.prefix, pid, fullProcessName);
-	#endif
-
-	const std::filesystem::path fullProcessPath = fullProcessName;
-	const auto processDir = fullProcessPath.parent_path();
-	const std::regex mcExe{ R"(MC\d{1,3}\.exe)" };
-	const std::filesystem::path mcExePath;
-	for (const auto& entry : std::filesystem::directory_iterator(processDir))
-	{
-		if (std::filesystem::is_directory(entry))
-		{
-			continue;
-		}
-		if (std::regex_match(entry.path().filename().string(), mcExe))
-		{
-			#ifndef NO_QUILL
-			LOG_INFO(mLogData.logger, "[{}] Located MCC executor : {}", mLogData.prefix, entry.path().string());
-			#endif
-			return entry.path();
-		}
-	}
-	return {};
 }
 
 STDMETHODIMP CaptureFilter::NonDelegatingQueryInterface(REFIID riid, void** ppv)
@@ -342,16 +284,15 @@ STDMETHODIMP CaptureFilter::Stop()
 	return CBaseFilter::Stop();
 }
 
-HRESULT CaptureFilter::SetHDRProfile(std::wstring profile)
+HRESULT CaptureFilter::SetHDRProfile(DWORD profile)
 {
-	auto toWrite = profile.empty() ? L"" : profile;
 	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
 	{
-		if (auto res = key.TrySetStringValue(hdrProfileRegKey, toWrite.c_str()))
+		if (auto res = key.TrySetDwordValue(hdrProfileRegKey, profile))
 		{
 			if (res)
 			{
-				mHdrProfile = toWrite;
+				mHdrProfile = profile;
 				return S_OK;
 			}
 		}
@@ -359,16 +300,15 @@ HRESULT CaptureFilter::SetHDRProfile(std::wstring profile)
 	return E_FAIL;
 }
 
-HRESULT CaptureFilter::SetSDRProfile(std::wstring profile)
+HRESULT CaptureFilter::SetSDRProfile(DWORD profile)
 {
-	auto toWrite = profile.empty() ? L"" : profile;
 	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
 	{
-		if (auto res = key.TrySetStringValue(sdrProfileRegKey, toWrite.c_str()))
+		if (auto res = key.TrySetDwordValue(sdrProfileRegKey, profile))
 		{
 			if (res)
 			{
-				mHdrProfile = toWrite;
+				mSdrProfile = profile;
 				return S_OK;
 			}
 		}
@@ -414,10 +354,18 @@ STDMETHODIMP CaptureFilter::CreatePage(const GUID& guid, IPropertyPage** ppPage)
 	return E_FAIL;
 }
 
-void CaptureFilter::OnDisplayUpdated(const std::wstring& status, int freq)
+void CaptureFilter::OnModeUpdated(const mode_switch_result& result)
 {
-	mDisplayStatus.status = std::move(status);
-	mDisplayStatus.freq = freq;
+	switch (result.request)
+	{
+	case REFRESH_RATE:
+		mDisplayStatus.status = result.rateSwitch.displayStatus;
+		mDisplayStatus.freq = result.rateSwitch.refreshRate;
+		break;
+	case MC_PROFILE:
+		break;
+	}
+
 	if (mInfoCallback != nullptr)
 	{
 		mInfoCallback->Reload(&mDisplayStatus);

@@ -151,12 +151,6 @@ protected:
 		}
 	}
 
-	void DoChangeRefreshRate() override
-	{
-		mode_switch::ChangeResolution(mLogData, mVideoFormat.CalcRefreshRate());
-		UpdateDisplayStatus();
-	}
-
 	// Encapsulates pinning the IMediaSample buffer into video memory (and unpinning on destruct)
 	class VideoFrameGrabber
 	{

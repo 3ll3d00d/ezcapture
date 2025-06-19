@@ -1526,6 +1526,8 @@ HRESULT MagewellVideoCapturePin::OnThreadCreate()
 
 	UpdateDisplayStatus();
 
+	mRateSwitcher.InitIfNecessary();
+
 	auto hChannel = mFilter->GetChannelHandle();
 	LoadSignal(&hChannel);
 

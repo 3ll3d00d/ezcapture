@@ -197,7 +197,6 @@ private:
 	std::shared_ptr<AudioFrame> mAudioFrame;
 	HANDLE mAudioFrameEvent;
 
-	bool mBlockFilterOnRefreshRateChange{false};
 	std::unique_ptr<std::string> mInvalidHdrMetaDataItems;
 };
 
@@ -208,8 +207,7 @@ class BlackmagicVideoCapturePin final :
 	public HdmiVideoCapturePin<BlackmagicCaptureFilter, VideoFrame>
 {
 public:
-	BlackmagicVideoCapturePin(HRESULT* phr, BlackmagicCaptureFilter* pParent, bool pPreview, VIDEO_FORMAT pVideoFormat,
-	                          bool pDoRefreshRateSwitches);
+	BlackmagicVideoCapturePin(HRESULT* phr, BlackmagicCaptureFilter* pParent, bool pPreview, VIDEO_FORMAT pVideoFormat);
 	~BlackmagicVideoCapturePin() override;
 
 	//////////////////////////////////////////////////////////////////////////
@@ -227,7 +225,6 @@ public:
 protected:
 	void DoThreadDestroy() override;
 	void OnChangeMediaType() override;
-	void DoChangeRefreshRate() override;
 
 	std::shared_ptr<VideoFrame> mCurrentFrame;
 
@@ -256,9 +253,6 @@ private:
 			HdmiVideoCapturePin::OnFrameWriterStrategyUpdated();
 		}
 	}
-
-	AsyncModeSwitcher mRateSwitcher;
-	bool mDoRefreshRateSwitches{true};
 };
 
 /**

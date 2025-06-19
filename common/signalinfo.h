@@ -49,17 +49,17 @@ interface __declspec(uuid("4D6B8852-06A6-4997-BC07-3507BB77F748")) ISignalInfoCB
 	STDMETHOD(ReloadV1)(CAPTURE_LATENCY* payload) = 0;
 	STDMETHOD(ReloadV2)(CAPTURE_LATENCY* payload) = 0;
 	STDMETHOD(ReloadA)(CAPTURE_LATENCY* payload) = 0;
-	STDMETHOD(ReloadProfiles)(const std::wstring& hdr, const std::wstring& sdr) = 0;
+	STDMETHOD(ReloadProfiles)(const DWORD& hdr, const DWORD & sdr) = 0;
 };
 
 interface __declspec(uuid("6A505550-28B2-4668-BC2C-461E75A63BC4")) ISignalInfo : IUnknown
 {
 	STDMETHOD(SetCallback)(ISignalInfoCB* cb) = 0;
 	STDMETHOD(Reload)() = 0;
-	STDMETHOD(GetHDRProfile)(std::wstring* profile) = 0;
-	STDMETHOD(SetHDRProfile)(std::wstring profile) = 0;
-	STDMETHOD(GetSDRProfile)(std::wstring* profile) = 0;
-	STDMETHOD(SetSDRProfile)(std::wstring profile) = 0;
+	STDMETHOD(GetHDRProfile)(DWORD* profile) = 0;
+	STDMETHOD(SetHDRProfile)(DWORD profile) = 0;
+	STDMETHOD(GetSDRProfile)(DWORD* profile) = 0;
+	STDMETHOD(SetSDRProfile)(DWORD profile) = 0;
 };
 
 class CSignalInfoProp :
@@ -89,7 +89,7 @@ public:
 	HRESULT ReloadV1(CAPTURE_LATENCY* payload) override;
 	HRESULT ReloadV2(CAPTURE_LATENCY* payload) override;
 	HRESULT ReloadA(CAPTURE_LATENCY* payload) override;
-	HRESULT ReloadProfiles(const std::wstring& hdr, const std::wstring& sdr) override;
+	HRESULT ReloadProfiles(const DWORD& hdr, const DWORD& sdr) override;
 
 private:
 	void SetDirty()

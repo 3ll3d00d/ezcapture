@@ -40,8 +40,8 @@ namespace mode_switch
 	{
 		HMONITOR activeMonitor = MonitorFromWindow(GetActiveWindow(), MONITOR_DEFAULTTONEAREST);
 
-		MONITORINFOEX monitorInfo{ {.cbSize = sizeof(MONITORINFOEX)} };
-		DEVMODE devMode{ .dmSize = sizeof(DEVMODE) };
+		MONITORINFOEX monitorInfo{{.cbSize = sizeof(MONITORINFOEX)}};
+		DEVMODE devMode{.dmSize = sizeof(DEVMODE)};
 
 		std::set<DWORD> supportedRates;
 		std::map<std::string, std::set<DWORD>> ignoredModes;
@@ -111,8 +111,8 @@ namespace mode_switch
 	{
 		HMONITOR activeMonitor = MonitorFromWindow(GetActiveWindow(), MONITOR_DEFAULTTONEAREST);
 
-		MONITORINFOEX monitorInfo{ {.cbSize = sizeof(MONITORINFOEX)} };
-		DEVMODE devMode{ .dmSize = sizeof(DEVMODE) };
+		MONITORINFOEX monitorInfo{{.cbSize = sizeof(MONITORINFOEX)}};
+		DEVMODE devMode{.dmSize = sizeof(DEVMODE)};
 
 		if (GetMonitorInfo(activeMonitor, &monitorInfo)
 			&& EnumDisplaySettings(monitorInfo.szDevice, ENUM_CURRENT_SETTINGS, &devMode))
@@ -120,20 +120,21 @@ namespace mode_switch
 			auto width = devMode.dmPelsWidth;
 			auto height = devMode.dmPelsHeight;
 			auto freq = devMode.dmDisplayFrequency;
-			auto status = std::wstring{ monitorInfo.szDevice };
-			status += L" " + std::to_wstring(width) + L" x " + std::to_wstring(height) + L" @ " + std::to_wstring(freq) +
+			auto status = std::wstring{monitorInfo.szDevice};
+			status += L" " + std::to_wstring(width) + L" x " + std::to_wstring(height) + L" @ " + std::to_wstring(freq)
+				+
 				L" Hz";
-			return { status, freq };
+			return {status, freq};
 		}
-		return { L"", 0 };
+		return {L"", 0};
 	}
 
 	inline HRESULT PrintResolution(const log_data& ld)
 	{
 		HMONITOR activeMonitor = MonitorFromWindow(GetActiveWindow(), MONITOR_DEFAULTTONEAREST);
 
-		MONITORINFOEX monitorInfo{ {.cbSize = sizeof(MONITORINFOEX)} };
-		DEVMODE devMode{ .dmSize = sizeof(DEVMODE) };
+		MONITORINFOEX monitorInfo{{.cbSize = sizeof(MONITORINFOEX)}};
+		DEVMODE devMode{.dmSize = sizeof(DEVMODE)};
 
 		if (GetMonitorInfo(activeMonitor, &monitorInfo)
 			&& EnumDisplaySettings(monitorInfo.szDevice, ENUM_CURRENT_SETTINGS, &devMode))
@@ -143,8 +144,8 @@ namespace mode_switch
 			auto freq = devMode.dmDisplayFrequency;
 			#ifndef NO_QUILL
 			LOG_INFO(ld.logger, "[{}] Current monitor = {} {} x {} @ {} Hz", ld.prefix,
-				std::wstring{ monitorInfo.szDevice },
-				width, height, freq);
+			         std::wstring{ monitorInfo.szDevice },
+			         width, height, freq);
 			#endif
 			return S_OK;
 		}
@@ -157,7 +158,7 @@ namespace mode_switch
 		{
 			#ifndef NO_QUILL
 			LOG_ERROR(ld.logger, "[{}] Invalid refresh rate change requested to {} Hz, ignoring", ld.prefix,
-				targetRefreshRate);
+			          targetRefreshRate);
 			#endif
 
 			return E_FAIL;
@@ -168,8 +169,8 @@ namespace mode_switch
 		#endif
 
 		HMONITOR activeMonitor = MonitorFromWindow(GetActiveWindow(), MONITOR_DEFAULTTONEAREST);
-		MONITORINFOEX monitorInfo{ {.cbSize = sizeof(MONITORINFOEX)} };
-		DEVMODE devMode{ .dmSize = sizeof(DEVMODE) };
+		MONITORINFOEX monitorInfo{{.cbSize = sizeof(MONITORINFOEX)}};
+		DEVMODE devMode{.dmSize = sizeof(DEVMODE)};
 
 		if (GetMonitorInfo(activeMonitor, &monitorInfo)
 			&& EnumDisplaySettings(monitorInfo.szDevice, ENUM_CURRENT_SETTINGS, &devMode))
@@ -185,14 +186,14 @@ namespace mode_switch
 			{
 				#ifndef NO_QUILL
 				LOG_TRACE_L2(ld.logger, "[{}] No change requested from {} {} x {} @ {} Hz", ld.prefix,
-					std::wstring{ monitorInfo.szDevice }, width, height, freq);
+				             std::wstring{ monitorInfo.szDevice }, width, height, freq);
 				#endif
 				return S_OK;
 			}
 
 			#ifndef NO_QUILL
 			LOG_INFO(ld.logger, "[{}] Requesting change from {} {} x {} @ {} Hz to {} Hz", ld.prefix,
-				std::wstring{ monitorInfo.szDevice }, width, height, freq, targetRefreshRate);
+			         std::wstring{ monitorInfo.szDevice }, width, height, freq, targetRefreshRate);
 			#endif
 
 			devMode.dmDisplayFrequency = targetRefreshRate;
@@ -210,35 +211,34 @@ namespace mode_switch
 			case DISP_CHANGE_SUCCESSFUL:
 				#ifndef NO_QUILL
 				LOG_INFO(ld.logger, "[{}] Completed change from {} {} x {} @ {} Hz to {} Hz ({:.3f}ms / {:.3f}ms)",
-					ld.prefix, std::wstring{ monitorInfo.szDevice }, width, height, freq, targetRefreshRate,
-					static_cast<double>(getLat) / 1000, static_cast<double>(chgLat) / 1000);
+				         ld.prefix, std::wstring{ monitorInfo.szDevice }, width, height, freq, targetRefreshRate,
+				         static_cast<double>(getLat) / 1000, static_cast<double>(chgLat) / 1000);
 				#endif
 				return S_OK;
 			default:
 				auto reason =
 					res == DISP_CHANGE_FAILED
-					? "failed"
-					: res == DISP_CHANGE_BADMODE
-					? "bad mode"
-					: res == DISP_CHANGE_NOTUPDATED
-					? "not updated"
-					: res == DISP_CHANGE_BADFLAGS
-					? "bad flags"
-					: res == DISP_CHANGE_BADPARAM
-					? "bad param"
-					: "?";
+						? "failed"
+						: res == DISP_CHANGE_BADMODE
+						? "bad mode"
+						: res == DISP_CHANGE_NOTUPDATED
+						? "not updated"
+						: res == DISP_CHANGE_BADFLAGS
+						? "bad flags"
+						: res == DISP_CHANGE_BADPARAM
+						? "bad param"
+						: "?";
 				#ifndef NO_QUILL
 				LOG_INFO(ld.logger,
-					"[{}] Failed to change from {} {} x {} @ {} Hz to {} Hz due to {} / {} ({:.3f}ms / {:.3f}ms)",
-					ld.prefix, std::wstring{ monitorInfo.szDevice }, width, height, freq, targetRefreshRate, res,
-					reason, static_cast<double>(getLat) / 1000, static_cast<double>(chgLat) / 1000);
+				         "[{}] Failed to change from {} {} x {} @ {} Hz to {} Hz due to {} / {} ({:.3f}ms / {:.3f}ms)",
+				         ld.prefix, std::wstring{ monitorInfo.szDevice }, width, height, freq, targetRefreshRate, res,
+				         reason, static_cast<double>(getLat) / 1000, static_cast<double>(chgLat) / 1000);
 				#endif
 				return E_FAIL;
 			}
 		}
 		return E_FAIL;
 	}
-
 }
 
 enum mode_request : uint8_t
@@ -258,6 +258,7 @@ struct mc_profile_switch
 	std::wstring profile{};
 	bool success{false};
 };
+
 struct mode_switch_result
 {
 	mode_request request;
@@ -268,11 +269,14 @@ struct mode_switch_result
 class AsyncModeSwitcher final : public CMsgThread
 {
 public:
-	AsyncModeSwitcher(const std::string& pLogPrefix, std::optional<std::function<void(mode_switch_result)>> pOnModeSwitch = {});
+	AsyncModeSwitcher(const std::string& pLogPrefix,
+	                  std::optional<std::function<void(mode_switch_result)>> pOnModeSwitch = {});
 
 	LRESULT ThreadMessageProc(UINT uMsg, DWORD dwFlags, LPVOID lpParam, CAMEvent* pEvent) override;
 
 	void OnThreadInit() override;
+
+	void InitIfNecessary();
 
 private:
 	log_data mLogData{};

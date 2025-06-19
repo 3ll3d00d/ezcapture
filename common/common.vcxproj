@@ -401,6 +401,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="bgr10_rgb48.h" />
+    <ClInclude Include="mccommands.h" />
     <ClInclude Include="metric.h" />
     <ClInclude Include="modeswitcher.h" />
     <ClInclude Include="r210_rgb48.h" />

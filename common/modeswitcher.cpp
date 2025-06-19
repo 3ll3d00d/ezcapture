@@ -14,6 +14,10 @@
  */
 #include "modeswitcher.h"
 
+#include <tchar.h>
+
+#include "mccommands.h"
+
 AsyncModeSwitcher::AsyncModeSwitcher(const std::string& pLogPrefix,
                                      std::optional<std::function<void(mode_switch_result)>> pOnModeSwitch) :
 	mOnModeSwitch(std::move(pOnModeSwitch))
@@ -23,30 +27,84 @@ AsyncModeSwitcher::AsyncModeSwitcher(const std::string& pLogPrefix,
 
 LRESULT AsyncModeSwitcher::ThreadMessageProc(UINT uMsg, DWORD dwFlags, LPVOID lpParam, CAMEvent* pEvent)
 {
-	#ifndef NO_QUILL
-	LOG_TRACE_L3(mLogData.logger, "[{}] AsyncModeSwitcher::ThreadMessageProc {}", mLogData.prefix, dwFlags);
-	#endif
-
-	if (S_OK == mode_switch::ChangeResolution(mLogData, dwFlags) && mOnModeSwitch)
+	auto hr = S_OK;
+	switch (uMsg)
 	{
-		auto values = mode_switch::GetDisplayStatus();
-		mode_switch_result result = {
-			.request = REFRESH_RATE,
-			.rateSwitch = {
-				.displayStatus = std::get<0>(values),
-				.refreshRate = std::get<1>(values)
-			}
-		};
-		mOnModeSwitch.value()(std::move(result));
+	case REFRESH_RATE:
+		#ifndef NO_QUILL
+		LOG_INFO(mLogData.logger, "[{}] Processing REFRESH_RATE switch to {} Hz", mLogData.prefix, dwFlags);
+		#endif
+		if (S_OK == mode_switch::ChangeResolution(mLogData, dwFlags) && mOnModeSwitch)
+		{
+			auto values = mode_switch::GetDisplayStatus();
+			mode_switch_result result = {
+				.request = REFRESH_RATE,
+				.rateSwitch = {
+					.displayStatus = std::get<0>(values),
+					.refreshRate = std::get<1>(values)
+				}
+			};
+			mOnModeSwitch.value()(std::move(result));
+		}
+		break;
+	case MC_PROFILE:
+		#ifndef NO_QUILL
+		LOG_INFO(mLogData.logger, "[{}] Processing MC_PROFILE switch : {}", mLogData.prefix, dwFlags);
+		#endif
+
+		if (HWND mcWnd = FindWindow(_T("MJFrame"), nullptr))
+		{
+			#ifndef NO_QUILL
+			LOG_TRACE_L3(mLogData.logger, "[{}] Sending MCC_JRVR_PROFILE_OUTPUT {}", mLogData.prefix, dwFlags);
+			#endif
+
+			PostMessage(mcWnd, WM_MC_COMMAND, MCC_JRVR_PROFILE_OUTPUT, dwFlags);
+
+			#ifndef NO_QUILL
+			LOG_TRACE_L3(mLogData.logger, "[{}] Sent MCC_JRVR_PROFILE_OUTPUT {}", mLogData.prefix, dwFlags);
+			#endif
+		}
+		else
+		{
+			#ifndef NO_QUILL
+			LOG_WARNING(mLogData.logger, "[{}] Unable to find MJFrame, command not sent", mLogData.prefix);
+			#endif
+		}
+		break;
+	default:
+		#ifndef NO_QUILL
+		LOG_WARNING(mLogData.logger, "[{}] Ignoring unknown mode switch request {} {}", mLogData.prefix, uMsg, dwFlags);
+		#endif
 	}
-	return S_OK;
+
+	return hr;
 }
 
-void AsyncModeSwitcher::OnThreadInit() 
+void AsyncModeSwitcher::OnThreadInit()
 {
 	#ifndef NO_QUILL
 	CustomFrontend::preallocate();
 
 	LOG_INFO(mLogData.logger, "[{}] AsyncModeSwitcher::OnThreadInit", mLogData.prefix);
 	#endif
+}
+
+void AsyncModeSwitcher::InitIfNecessary()
+{
+	if (GetThreadHandle() == nullptr)
+	{
+		if (CreateThread())
+		{
+			#ifndef NO_QUILL
+			LOG_INFO(mLogData.logger, "[{}] Initialised refresh rate switcher thread with id {}", mLogData.prefix,
+			         GetThreadId());
+			#endif
+		}
+		else
+		{
+			#ifndef NO_QUILL
+			LOG_ERROR(mLogData.logger, "[{}] Failed to initialise refresh rate switcher thread", mLogData.prefix);
+			#endif
+		}
+	}
 }
