@@ -20,6 +20,10 @@ There are no end user configuration options available as the filter is designed 
 
 Note that such live updates to audio and video formats rely on the downstream filters (renderers, audio output) to accept dynamic format changes. This behaviour is supported by both JRiver and mpc-hc.
 
+## Use with old CPUs
+
+If your CPU does not support AVX2, download the `-noarch` variant only.
+
 ## Initial Installation
 
 ### Magewell
