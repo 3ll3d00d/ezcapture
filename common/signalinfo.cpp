@@ -119,35 +119,20 @@ HRESULT CSignalInfoProp::OnDisconnect()
 
 HRESULT CSignalInfoProp::OnApplyChanges()
 {
-	HRESULT hr1 = E_FAIL;
-	HRESULT hr2 = E_FAIL;
 	WCHAR b1[16];
 
-	SendDlgItemMessage(m_Dlg, IDC_MC_HDR_PROFILE, WM_GETTEXT, 256, reinterpret_cast<LPARAM>(&b1));
+	SendDlgItemMessage(m_Dlg, IDC_MC_HDR_PROFILE, WM_GETTEXT, 16, reinterpret_cast<LPARAM>(&b1));
 	DWORD hdrProfileId = _wtoi(b1);
-	size_t len = wcslen(b1);
-	if (hdrProfileId == 0 && (b1[0] != L'0' || len > 1))
-	{
-		// ignore
-	}
-	else
-	{
-		hr1 = mSignalInfo->SetHDRProfile(hdrProfileId);
-	}
+	auto hr1 = mSignalInfo->SetHDRProfile(hdrProfileId);
 
-	SendDlgItemMessage(m_Dlg, IDC_MC_HDR_PROFILE, WM_GETTEXT, 256, reinterpret_cast<LPARAM>(&b1));
+	SendDlgItemMessage(m_Dlg, IDC_MC_SDR_PROFILE, WM_GETTEXT, 16, reinterpret_cast<LPARAM>(&b1));
 	DWORD sdrProfileId = _wtoi(b1);
-	len = wcslen(b1);
-	if (sdrProfileId == 0 && (b1[0] != L'0' || len > 1))
-	{
-		// ignore
-	}
-	else
-	{
-		hr2 = mSignalInfo->SetSDRProfile(sdrProfileId);
-	}
+	auto hr2 = mSignalInfo->SetSDRProfile(sdrProfileId);
 
-	return hr1 == S_OK && hr2 == S_OK ? S_OK : E_FAIL;
+	bool bFlag = static_cast<bool>(SendDlgItemMessage(m_Dlg, IDC_SWITCH_MC_PROFILES, BM_GETCHECK, 0, 0));
+	auto hr3 = mSignalInfo->SetHdrProfileSwitchEnabled(bFlag);
+
+	return hr1 == S_OK && hr2 == S_OK && hr3 == S_OK ? S_OK : E_FAIL;
 }
 
 INT_PTR CSignalInfoProp::OnReceiveMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -477,13 +462,15 @@ HRESULT CSignalInfoProp::ReloadProfiles(const bool& enabled, const DWORD& hdr, c
 
 	_snwprintf_s(buffer, _TRUNCATE, L"%d", hdr);
 	SendDlgItemMessage(m_Dlg, IDC_MC_HDR_PROFILE, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+	EnableWindow(GetDlgItem(m_Dlg, IDC_MC_HDR_PROFILE), enabled);
+	SendDlgItemMessage(m_Dlg, IDC_MC_HDR_PROFILE_SPIN, UDM_SETRANGE32, 0, 1000);
 
 	_snwprintf_s(buffer, _TRUNCATE, L"%d", sdr);
 	SendDlgItemMessage(m_Dlg, IDC_MC_SDR_PROFILE, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+	EnableWindow(GetDlgItem(m_Dlg, IDC_MC_SDR_PROFILE), enabled);
+	SendDlgItemMessage(m_Dlg, IDC_MC_SDR_PROFILE_SPIN, UDM_SETRANGE32, 0, 1000);
 
 	SendDlgItemMessage(m_Dlg, IDC_SWITCH_MC_PROFILES, BM_SETCHECK, enabled, 0);
-	EnableWindow(GetDlgItem(m_Dlg, IDC_MC_HDR_PROFILE), enabled);
-	EnableWindow(GetDlgItem(m_Dlg, IDC_MC_SDR_PROFILE), enabled);
 
 	return S_OK;
 }

@@ -55,13 +55,13 @@ LRESULT AsyncModeSwitcher::ThreadMessageProc(UINT uMsg, DWORD dwFlags, LPVOID lp
 		if (HWND mcWnd = FindWindow(_T("MJFrame"), nullptr))
 		{
 			#ifndef NO_QUILL
-			LOG_TRACE_L3(mLogData.logger, "[{}] Sending MCC_JRVR_PROFILE_OUTPUT {}", mLogData.prefix, dwFlags);
+			LOG_TRACE_L2(mLogData.logger, "[{}] Sending MCC_JRVR_PROFILE_OUTPUT {}", mLogData.prefix, dwFlags);
 			#endif
 
 			PostMessage(mcWnd, WM_MC_COMMAND, MCC_JRVR_PROFILE_OUTPUT, dwFlags);
 
 			#ifndef NO_QUILL
-			LOG_TRACE_L3(mLogData.logger, "[{}] Sent MCC_JRVR_PROFILE_OUTPUT {}", mLogData.prefix, dwFlags);
+			LOG_TRACE_L2(mLogData.logger, "[{}] Sent MCC_JRVR_PROFILE_OUTPUT {}", mLogData.prefix, dwFlags);
 			#endif
 		}
 		else
