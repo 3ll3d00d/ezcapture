@@ -1,38 +1,48 @@
 # mwcapture
 
-A Direct Show filter that can capture audio and video from a [Magewell Pro Capture HDMI 4k Plus](https://www.magewell.com/products/pro-capture-hdmi-4k-plus) card using the [MWCapture SDK](https://www.magewell.com/sdk) with support for multichannel audio and HDR.
+A Direct Show filter that can capture audio and video from the following devices
+
+* [Magewell Pro Capture HDMI 4k Plus](https://www.magewell.com/products/pro-capture-hdmi-4k-plus) 
+* [Magewell USB Capture](https://www.magewell.com/capture/usb-capture) (4k Pro and 4k Plus are known to work, 1080p cards should also work)
+* [BlackMagic Decklink](https://www.blackmagicdesign.com/products/decklink)
 
 Depends on LAVAudio being present in the graph to handle audio processing.
 
 Supports 
 
-* Linear PCM and non linear PCM audio formats
+* Linear PCM audio
+* Non linear PCM audio (magewell pro pcie only)
 * SDR and HDR video formats
 * automatic reaction to audio codec changes or video format changes
+* automatic refresh rate switching
 
 There are no end user configuration options available as the filter is designed to capture the input as is and pass it downstream.
 
-Note that such live updates to audio and video formats rely on the downstream filters (renderers, audio output) to accept dynamic format changes. Such behaviour is supported by both JRiver and mpc-hc.
+Note that such live updates to audio and video formats rely on the downstream filters (renderers, audio output) to accept dynamic format changes. This behaviour is supported by both JRiver and mpc-hc.
 
 ## Initial Installation
 
-* Download the latest release from https://github.com/3ll3d00d/mwcapture/releases & unzip to some directory
-* execute MWCaptureRT.exe
+### Magewell
+
+* Download the latest release from https://github.com/3ll3d00d/ezcapture/releases & unzip to some directory
+* Execute MWCaptureRT.exe
 * Open an admin cmd prompt in the directory
-* If using the trace-release or warn-release package, rename `mwcapture.ax` to `mwcapture-trace.ax` or `mwcapture-warn.ax`
-* Register the filter using `regsvr32`, e.g. `regsvr32 mwcapture.ax`
+* Register the filter using `regsvr32`, e.g. `regsvr32 mwcapture.ax` or `regsvr32 mwcapture-trace.ax`
+
+### Blackmagic
+
+* Download the latest release from https://github.com/3ll3d00d/ezcapture/releases & unzip to some directory
+* Download the latest Desktop Video installer from https://www.blackmagicdesign.com/nl/support/family/capture-and-playback and install it
+* Open an admin cmd prompt in the directory
+* Register the filter using `regsvr32`, e.g. `regsvr32 bmcapture.ax` or `regsvr32 bmcapture-trace.ax`
 
 ### Tested On
 
 * Windows 10 and Windows 11
-* [J River JRVR](https://wiki.jriver.com/index.php/JRVR_-_JRiver_Video_Renderer) in [MC33](https://yabb.jriver.com/interact/index.php/board,84.0.html)
+* [J River JRVR](https://wiki.jriver.com/index.php/JRVR_-_JRiver_Video_Renderer) in [MC34](https://yabb.jriver.com/interact/index.php/board,87.0.html)
 * mpc-hc with [madvr b113 or below only](http://madshi.net/madVRhdrMeasure113.zip) or mpc-vr
 
 ## Configuration
-
-It's recommended to also configure the filter provided by Magewell as it provides an easy way to see information about incoming signal as well as allowing for management of the EDID presented by the card. 
-
-See the [official installation guide](https://www.magewell.com/files/ProCapture-User-Manual.pdf) for details.
 
 ### JRiver Media Center
 
@@ -49,12 +59,10 @@ First, check the device is available in MC (Media Center)
 
 ![](docs/img/device_manager.png "Windows Device Manager")
 
-* Install mwcapture as per the installation steps above
 * Open MC
 * Go to Television > TV Options > Manage Devices, there should be at least 2 devices visible
     * the magewell device filter
-    * mwcapture filter (aka `Magewell Pro Capture`)
-    * if the release-trace or release-warn filters are installed, they will also be visible in the list  
+    * mwcapture filter (aka `Magewell Pro Capture` or `Magewell Pro Capture (Trace)`
 
 ![](docs/img/magewell_devices.png)
 
@@ -64,23 +72,33 @@ Next, make each filter available as a channel
 * click `Add Channel` for each listed device using the following values
     * Type = Camera
     * Name = free text of your choice
-    * Device = the magewell filter or the mwcapture filter
+    * Device = `Magewell Pro Capture`
 
 ![](docs/img/add_channel.png)
 
-To play using the filter, just start playback of the specified channel & configure JRVR as required
+To play using the filter, just start playback of the specified channel & configure JRVR as required.
+
+The same process applies for blackmagic cards except the filter will be named `Blackmagic Capture` or `Blackmagic Capture (Trace)`.
 
 ## Logging
 
-The release-trace, release-warn and debug-trace filters write information to a log file which can be found at`%TEMP%\magewell_capture_YYYYMMDD_HHMMSS.log`.
+The with-logging variants writes information to a log file which can be found in`%TEMP%`, the filename will be `MagewellTrace_YYYYMMSS_HHMMSS.log` or `BlackmagicTrace_YYYYMMDD_HHMMSS.log`.
 
-The -warn filter produces warnings only whereas the -trace filters can produce some very large log files (particularly the debug-trace version).
+Frame timing statistics are captured to csv files in the same directory (`MagewellTrace_audio_latency_YYYYMMSS.csv` or `BlackmagicTrace_audio_latency_YYYYMMSS.csv`).
 
 ## Investigating Issues
 
 Most issues require an understanding of what signal is presented to the filter. There are 2 common ways to achieve this.
 
-### Magewell Property Pages
+### Magewell
+
+#### Using the mwcapture property page
+
+This is accessible after playback starts via the right click menu (DirectShow Filters option)
+
+![](docs/img/filter_properties.png)
+
+#### Using the Magewell provided driver
 
 > :warning: These are only available when using the magewell filter, they are **NOT** available using mwcapture
 
@@ -139,42 +157,24 @@ Start playback using the release-trace filter and examine the log file, sample l
 #### No Signal is present
 
 ```
-21:12:50.220481729 [73016] mwcapture.cpp:1714           LOG_ERROR     filter       [Capture] LoadSignal MWGetInputSpecificStatus is invalid, will display no/unsupported signal image
-21:12:50.220482030 [73016] mwcapture.cpp:1855           LOG_TRACE_L2  filter       [Capture] Signal is not locked (0)
-21:12:51.221469518 [73016] mwcapture.cpp:1985           LOG_TRACE_L1  filter       [Capture] Timeout and no signal, get delivery buffer for no signal image
-21:12:51.221476351 [73016] mwcapture.cpp:1022           LOG_TRACE_L2  filter       [Capture] Pinning 1036800 bytes
-21:12:51.222431616 [73016] mwcapture.cpp:1169           LOG_TRACE_L1  filter       [Capture] Captured video frame 5 at 50095228
-21:12:51.222433790 [73016] mwcapture.cpp:1034           LOG_TRACE_L2  filter       [Capture] Unpinning 1036800 bytes, captured 1036800 bytes
+14:19:20.172688061 [175076] mwcapture.cpp:1454           LOG_TRACE_L1  filter       [VideoCapture] Timeout and no signal, get delivery buffer for no signal image
+14:19:20.173469856 [175076] mwcapture.cpp:1154           LOG_ERROR     filter       [VideoCapture] LoadSignal MWGetInputSpecificStatus is invalid, will display no/unsupported signal image
 ```
 
 #### Video Format Changed Successfully
 
 ```
-21:12:54.070131375 [73016] mwcapture.cpp:1930           LOG_TRACE_L1  filter       [Capture] Video signal change, retry after backoff
-21:12:54.090818848 [73016] mwcapture.cpp:1608           LOG_INFO      filter       [Capture] Video dimension change 720x480 to 3840x2160
-21:12:54.090819479 [73016] mwcapture.cpp:1643           LOG_INFO      filter       [Capture] Video pixel encoding change 0 to 3
-21:12:54.090819729 [73016] mwcapture.cpp:1651           LOG_INFO      filter       [Capture] Video colour format change RGB to YUV709
-21:12:54.090819829 [73016] mwcapture.cpp:1662           LOG_INFO      filter       [Capture] Video colorimetry change quant 1 to 2 sat 1 to 2
-21:12:54.090819890 [73016] mwcapture.cpp:1880           LOG_WARNING   filter       [Capture] VideoFormat changed! Attempting to reconnect
-21:12:54.090822354 [73016] mwcapture.cpp:1771           LOG_WARNING   filter       [Capture] Proposing new video format 3840 x 2160 (16:9) @ 50 Hz in 8 bits (NV12 YUV709 tf: 4) size 12441600 bytes
-21:12:54.091619232 [73016] mwcapture.cpp:827            LOG_TRACE_L1  filter       [Capture] MagewellCapturePin::RenegotiateMediaType ReceiveConnection accepted
-21:12:54.091619873 [73016] mwcapture.cpp:939            LOG_TRACE_L1  filter       [Capture] MagewellCapturePin::NegotiateMediaType succeeded
-```
-
-#### Video Format Change Not Accepted
-
-```
-21:13:30.627445449 [73016] mwcapture.cpp:1930           LOG_TRACE_L1  filter       [Capture] Video signal change, retry after backoff
-21:13:30.648093202 [73016] mwcapture.cpp:1608           LOG_INFO      filter       [Capture] Video dimension change 720x480 to 3840x2160
-21:13:30.648093973 [73016] mwcapture.cpp:1625           LOG_INFO      filter       [Capture] Video FPS change 50 to 23
-21:13:30.648094134 [73016] mwcapture.cpp:1643           LOG_INFO      filter       [Capture] Video pixel encoding change 0 to 1
-21:13:30.648094184 [73016] mwcapture.cpp:1651           LOG_INFO      filter       [Capture] Video colour format change RGB to YUV709
-21:13:30.648094444 [73016] mwcapture.cpp:1662           LOG_INFO      filter       [Capture] Video colorimetry change quant 1 to 2 sat 1 to 2
-21:13:30.648094504 [73016] mwcapture.cpp:1880           LOG_WARNING   filter       [Capture] VideoFormat changed! Attempting to reconnect
-21:13:30.648096989 [73016] mwcapture.cpp:1771           LOG_WARNING   filter       [Capture] Proposing new video format 3840 x 2160 (16:9) @ 23 Hz in 8 bits (NV16 YUV709 tf: 4) size 16588800 bytes
-21:13:30.648102439 [73016] mwcapture.cpp:933            LOG_WARNING   filter       [Capture] MagewellCapturePin::NegotiateMediaType Receive Connection failed (hr: -0x7ffbfdd6); QueryAccept: 0x000001
-21:13:30.648102620 [73016] mwcapture.cpp:948            LOG_TRACE_L1  filter       [Capture] MagewellCapturePin::NegotiateMediaType failed -0x7ffbfde7
-21:13:30.648103862 [73016] mwcapture.cpp:1891           LOG_ERROR     filter       [Capture] VideoFormat changed but not able to reconnect! retry after backoff [Result: -0x7ffbfde7]
+14:19:50.853168512 [175076] capture.cpp:1065             LOG_INFO      filter       [VideoCapture] Video dimension change 720x480 to 1920x1080
+14:19:50.853169675 [175076] capture.cpp:1084             LOG_INFO      filter       [VideoCapture] Video FPS change 50.000 to 59.942
+14:19:50.853170266 [175076] capture.cpp:1093             LOG_INFO      filter       [VideoCapture] Video pixel format change BGR  to AYUV
+14:19:50.853170626 [175076] capture.cpp:1102             LOG_INFO      filter       [VideoCapture] Video colour format change RGB to REC709
+14:19:50.853170847 [175076] capture.cpp:1115             LOG_INFO      filter       [VideoCapture] Video colorimetry change quant 1 to 2 sat 1 to 2
+14:19:50.853170917 [175076] capture.h:1085               LOG_WARNING   filter       [VideoCapture] VideoFormat changed! Attempting to reconnect
+14:19:50.853174454 [175076] capture.cpp:1155             LOG_WARNING   filter       [VideoCapture] Proposing new video format 1920 x 1080 (16:9) @ 59.942 Hz in 8 bits (AYUV REC709 tf: 4) size 8294400 bytes
+14:19:50.861201967 [175076] capture.h:81                 LOG_WARNING   filter       [VideoCapture] VideoCapturePin::CheckMediaType VIH2 32,2048,1080,8847360,AYUV
+14:19:50.861937438 [175076] capture.cpp:840              LOG_TRACE_L1  filter       [VideoCapture] CapturePin::RenegotiateMediaType ReceiveConnection succeeded [0x000000]
+14:19:50.861938380 [175076] capture.h:81                 LOG_WARNING   filter       [VideoCapture] VideoCapturePin::SetMediaType VIH2 32,1920,1080,8294400,AYUV
+14:19:50.861939332 [175076] capture.cpp:965              LOG_TRACE_L1  filter       [VideoCapture] CapturePin::NegotiateMediaType succeeded
 ```
 
 #### Video Format Changes to HDR
@@ -254,12 +254,4 @@ Start playback using the release-trace filter and examine the log file, sample l
 21:22:28.308363234 [75400] mwcapture.cpp:896            LOG_TRACE_L1  filter       [AudioCapture] Updated allocator to 1536 bytes 16 buffers
 21:22:28.308363645 [75400] mwcapture.cpp:939            LOG_TRACE_L1  filter       [AudioCapture] MagewellCapturePin::NegotiateMediaType succeeded
 ```
-
-## Debugging
-
-Requires 
-
-1. installation of the [Magewell SDK](https://www.magewell.com/downloads#capture-sdk-dark-anchor) 
-2. the debug-trace filter
-3. an understanding of how to debug a DirectShow filter 
 
