@@ -57,8 +57,14 @@ LRESULT AsyncModeSwitcher::ThreadMessageProc(UINT uMsg, DWORD dwFlags, LPVOID lp
 			#ifndef NO_QUILL
 			LOG_TRACE_L2(mLogData.logger, "[{}] Sending MCC_JRVR_PROFILE_OUTPUT {}", mLogData.prefix, dwFlags);
 			#endif
-
-			PostMessage(mcWnd, WM_MC_COMMAND, MCC_JRVR_PROFILE_OUTPUT, dwFlags);
+			if (dwFlags == 0)
+			{
+				PostMessage(mcWnd, WM_MC_COMMAND, MCC_JRVR_PROFILE_OUTPUT, -1LL);
+			}
+			else
+			{
+				PostMessage(mcWnd, WM_MC_COMMAND, MCC_JRVR_PROFILE_OUTPUT, dwFlags);
+			}
 
 			#ifndef NO_QUILL
 			LOG_TRACE_L2(mLogData.logger, "[{}] Sent MCC_JRVR_PROFILE_OUTPUT {}", mLogData.prefix, dwFlags);
@@ -76,6 +82,7 @@ LRESULT AsyncModeSwitcher::ThreadMessageProc(UINT uMsg, DWORD dwFlags, LPVOID lp
 		LOG_TRACE_L2(mLogData.logger, "[{}] Shutting down now", mLogData.prefix);
 		#endif
 		hr = E_ABORT;
+		break;
 	default:
 		#ifndef NO_QUILL
 		LOG_WARNING(mLogData.logger, "[{}] Ignoring unknown mode switch request {} {}", mLogData.prefix, uMsg, dwFlags);
