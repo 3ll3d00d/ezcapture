@@ -71,6 +71,11 @@ LRESULT AsyncModeSwitcher::ThreadMessageProc(UINT uMsg, DWORD dwFlags, LPVOID lp
 			#endif
 		}
 		break;
+	case SHUTDOWN_NOW:
+		#ifndef NO_QUILL
+		LOG_TRACE_L2(mLogData.logger, "[{}] Shutting down now", mLogData.prefix);
+		#endif
+		hr = E_ABORT;
 	default:
 		#ifndef NO_QUILL
 		LOG_WARNING(mLogData.logger, "[{}] Ignoring unknown mode switch request {} {}", mLogData.prefix, uMsg, dwFlags);

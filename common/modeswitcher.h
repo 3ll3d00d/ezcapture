@@ -244,6 +244,7 @@ namespace mode_switch
 
 enum mode_request : uint8_t
 {
+	SHUTDOWN_NOW,
 	REFRESH_RATE,
 	MC_PROFILE
 };
@@ -272,6 +273,11 @@ class AsyncModeSwitcher final : public CMsgThread
 public:
 	AsyncModeSwitcher(const std::string& pLogPrefix,
 	                  std::optional<std::function<void(mode_switch_result)>> pOnModeSwitch = {});
+
+	~AsyncModeSwitcher()
+	{
+		PutThreadMsg(SHUTDOWN_NOW, 0, nullptr);
+	}
 
 	LRESULT ThreadMessageProc(UINT uMsg, DWORD dwFlags, LPVOID lpParam, CAMEvent* pEvent) override;
 
