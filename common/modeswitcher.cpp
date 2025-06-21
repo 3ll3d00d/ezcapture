@@ -75,6 +75,7 @@ LRESULT AsyncModeSwitcher::ThreadMessageProc(UINT uMsg, DWORD dwFlags, LPVOID lp
 		#ifndef NO_QUILL
 		LOG_WARNING(mLogData.logger, "[{}] Ignoring unknown mode switch request {} {}", mLogData.prefix, uMsg, dwFlags);
 		#endif
+		break;
 	}
 
 	return hr;

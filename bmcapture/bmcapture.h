@@ -26,6 +26,7 @@
 #include "StraightThrough.h"
 
 #include <functional>
+#include <chrono>
 
 #ifdef NO_QUILL
 #include <memory>
