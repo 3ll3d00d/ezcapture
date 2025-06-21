@@ -33,6 +33,24 @@ If your CPU does not support AVX2, download the `-noarch` variant only.
 * Open an admin cmd prompt in the directory
 * Register the filter using `regsvr32`, e.g. `regsvr32 mwcapture.ax` or `regsvr32 mwcapture-trace.ax`
 
+#### If using USB Capture Cards
+
+Install the [USB Capture Utility](https://www.magewell.com/products/usb-capture-hdmi-4k-plus#detail_firmware)
+
+4k+ users must set the following 3 formats in the advanced tab of the capture utility
+
+* BGR24
+* UYVY
+* NV12
+
+4k pro users should set these 3
+
+* BGR24
+* UYVY
+* P010
+
+See the [p38 of the manual](https://www.magewell.com/files/documents/User_Manual/USB-Capture-Utility-V3-user-manual_en_US.pdf) for details.
+
 ### Blackmagic
 
 * Download the latest release from https://github.com/3ll3d00d/ezcapture/releases & unzip to some directory
