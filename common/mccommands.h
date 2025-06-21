@@ -113,28 +113,28 @@ enum MC_COMMANDS
     MCC_PLAY_LAST_TV_CHANNEL,                      // [ignore]
     MCC_BLURAY_POPUP_MENU,                         // [ignore]
     MCC_PLAY_SYNCED_CPLDB_INDEX,                   // [int nIndex]
-    MCC_STOP_AFTER_DELAY,                          // [int nMinutes (negative value for hard stop)]                
+    MCC_STOP_AFTER_DELAY,                          // [int nMinutes (negative value for hard stop) (-1000 to reset)]  
     MCC_STOP_AFTER_TRACKS,                         // [int nNumberTracks (negative one to reset)]
     MCC_PLAY_SELECTED,                             // [0: play replace, 1: append, 2: play next]
-    MCC_PLAY_AUTO_PLAYLIST_CLOUD,                  // BSTR : seed
-    MCC_CLEAR_REMAINING_ZONE_SPECIFIC,	           // ignore
-    MCC_SEEK_PERCENT,	                           // int nPercent
-    MCC_SHUFFLE_ALBUMS,	                           // ignore
-    MCC_JRVR_PROFILE_OUTPUT,	                   // Profile ID(-1: Default Profile, -2 : Auto Select Profile)
-    MCC_JRVR_PROFILE_SCALING,	                   // Profile ID(-1: Default Profile, -2 : Auto Select Profile)
-    MCC_JRVR_PROFILE_FILTERING,	                   // Profile ID(-1: Default Profile, -2 : Auto Select Profile)
-    MCC_JRVR_PROFILE_ADVANCED,	                   // Profile ID(-1: Default Profile, -2 : Auto Select Profile)
-    MCC_CLOSE_PROGRAM_AFTER_STOP,	               // 0: no, 1 : yes, -1 : toggle
-    MCC_ZONE_SWITCH_ENABLE,	                       // 0 : no, 1 : yes, -1 : toggle
-    MCC_JRVR_DEFAULT_PROFILE_OUTPUT,	           // int ProfileID
-    MCC_JRVR_DEFAULT_PROFILE_SCALING,	           // int ProfileID
-    MCC_JRVR_DEFAULT_PROFILE_FILTERING,	           // int ProfileID
-    MCC_JRVR_DEFAULT_PROFILE_ADVANCED,	           // int ProfileID
-    MCC_HIDE_DSP_STUDIO,	                       // ignore
-    MCC_SET_DSP_STUDIO_PLAYBACK_RATE,	           // Non - zero integers for percent of normal speed, negative values mute audio
-    MCC_RESTART_PLAYBACK_WITH_RATE,
+    MCC_PLAY_AUTO_PLAYLIST_CLOUD,                  // [BSTR bstrSeed (deleted by receiver)]
+    MCC_CLEAR_REMAINING_ZONE_SPECIFIC,             // [ignore]
+    MCC_SEEK_PERCENT,                              // [int nPercent]
+    MCC_SHUFFLE_ALBUMS,                            // [ignore]
+    MCC_JRVR_PROFILE_OUTPUT,                       // [int ProfileID]
+    MCC_JRVR_PROFILE_SCALING,                      // [int ProfileID]
+    MCC_JRVR_PROFILE_FILTERING,                    // [int ProfileID]
+    MCC_JRVR_PROFILE_ADVANCED,                     // [int ProfileID]
+    MCC_CLOSE_PROGRAM_AFTER_STOP,                  // [0: no, 1: yes, -1: toggle]
+    MCC_ZONE_SWITCH_ENABLE,                        // [0: no, 1: yes, -1: toggle]
+    MCC_JRVR_DEFAULT_PROFILE_OUTPUT,               // [int ProfileID]
+    MCC_JRVR_DEFAULT_PROFILE_SCALING,              // [int ProfileID]
+    MCC_JRVR_DEFAULT_PROFILE_FILTERING,            // [int ProfileID]
+    MCC_JRVR_DEFAULT_PROFILE_ADVANCED,             // [int ProfileID]
+    MCC_HIDE_DSP_STUDIO,                           // [ignore]
+    MCC_SET_DSP_STUDIO_PLAYBACK_RATE,              // [Non-zero integers for percent of normal speed, negative values mute audio]
+    MCC_RESTART_PLAYBACK_WITH_RATE,                // [new playback rate]
 
-	///////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////
     // File (range 20,000 to 21,000)
     ///////////////////////////////////////////////////////////////////////////////
     MCC_FILE_SECTION = 20000,
@@ -181,6 +181,8 @@ enum MC_COMMANDS
     MCC_IMPORT_ITUNES_DATABASE,                    // [ignore]
     MCC_SET_CROSS_PLATFORM_RULES,                  // [ignore]
     MCC_DOWNLOAD_FROM_LIBRARY_SERVER,              // [ignore]
+    MCC_DOWNLOAD_LIBRARY_FROM_LIBRARY_SERVER,      // [ignore]
+    MCC_MIGRATE_LIBRARY_WIZARD,                    // [ignore]
 
     ///////////////////////////////////////////////////////////////////////////////
     // Edit (range 21,000 to 22,000)
@@ -225,6 +227,9 @@ enum MC_COMMANDS
     MCC_COMBINE,                                   // [int nPlaylistID]
     MCC_ADD_DYNAMIC_ZONE,                          // [ignore]
     MCC_PLAYLIST_SEARCH,                           // [ignore]
+    MCC_DUPLICATE,                                 // [ignore]
+    MCC_PLAYING_NOW_VERTICAL_SPLIT,                // [bool bVerticalSplit (-1 toggles)]
+    MCC_COMBINE_PLAYLISTS,                         // [ignore]
 
     ///////////////////////////////////////////////////////////////////////////////
     // View (range 22,000 to 23,000)
@@ -270,9 +275,12 @@ enum MC_COMMANDS
     MCC_SPLIT_VIEW_TOGGLE,                         // [ignore]
     MCC_SHOW_PLAYERBAR,                            // [ignore]
     MCC_SET_PLAYERBAR_ALTERNATE_TEXT,              // [bool bValue (-1 toggles)]
-    MCC_LOCK_TAB,                                  // [bool bValue (-1 toggles)]
+    MCC_LOCK_TAB,                                  // [bool bValue (-1 toggles) (or in 2 and all tabs are done)]
     MCC_SHOW_SPOTLIGHT,                            // [int nType (0: current file, 1: current selection)
     MCC_CLEAR_SEARCH_CONTROL,                      // [ignore]
+    MCC_THEATER_VIEW_PATH,                         // [BSTR bstrPath (deleted by receiver)]
+    MCC_ERROR_FREE_MODE,                           // [bool bErrorFree (-1 toggles)]
+    MCC_SHOW_VIEW_HEADER_MENU,                     // [ignore]
 
     ///////////////////////////////////////////////////////////////////////////////
     // Tools (range 23,000 to 24,000)
@@ -344,6 +352,14 @@ enum MC_COMMANDS
     MCC_UNLOCK_PLAYLIST,                           // [int nPlaylistID]
     MCC_GET_SHARING_URL,                           // [ignore]
     MCC_UNSHARE,                                   // [ignore]
+    MCC_MAKEMKV_RIP,                               // [ignore]
+    MCC_BACKUP_DISC,                               // [ignore]
+    MCC_ADJUST_DATETIME,                           // [ignore]
+    MCC_VIDEO_ANALYSIS,                            // [ignore]
+    MCC_VIDEO_ANALYSIS_BLACK_BARS,                 // [ignore]
+    MCC_SEARCH_DJ,                                 // [ignore]
+    MCC_CONVERTUTF8FILENAMES,                       // [ignore]
+    MCC_COVER_ART_ACTION_WINDOW,                   // [ignore]
 
     ///////////////////////////////////////////////////////////////////////////////
     // Help (range 24,000 to 25,000)
@@ -373,7 +389,7 @@ enum MC_COMMANDS
     MCC_TEST,                                      // [ignore]
     MCC_SHOW_EULA,                                 // [ignore]
     MCC_BENCHMARK,                                 // [ignore]
-    MCC_UPGRADE_TO_MASTER_LICENSE,                   // [ignore]
+    MCC_UPGRADE_TO_MASTER_LICENSE,                 // [ignore]
 
     ///////////////////////////////////////////////////////////////////////////////
     // Tree (range 25,000 to 26,000)
@@ -395,7 +411,7 @@ enum MC_COMMANDS
     MCC_TREE_RIP,                                  // [ignore]
     MCC_CLEAR_PLAYING_NOW,                         // [0: all files; 1: leave playing file]
     MCC_COPY_LISTENING_TO,                         // [bool bPaste]
-    MCC_TREE_SET_EXPANDED,                         // [0: collapsed; 1: expanded; -1: toggle]
+    MCC_TREE_SET_EXPANDED,                         // [0: collapsed; 1: expanded; -1: save / restore]
     MCC_RESET_VIEW_SCHEMES,                        // [ignore]
     MCC_TREE_ERASE_CD_DVD,                         // [ignore]
     MCC_UPDATE_FROM_CDPLAYER_INI,                  // [ignore]
@@ -443,6 +459,8 @@ enum MC_COMMANDS
     MCC_LIST_MOVE_DOWN,                            // [ignore]
     MCC_LIST_SEND_TO_PLAYING_NOW,                  // [SENDTO_PLAYING_NOW_TYPES Type]
     MCC_LIST_SELECT_RANDOM,                        // [ignore]
+    MCC_LIST_TOGGLE_FILES,                         // [ignore]
+    MCC_STACK_AUTO_CREATE_CHAPTER_PARTICLES,       // [ignore]
 
     ///////////////////////////////////////////////////////////////////////////////
     // System (range 27,000 to 28,000)
@@ -545,6 +563,7 @@ enum MC_COMMANDS
     MCC_MOVE_TAB,                                  // [int nDelta]
     MCC_CHECK_LOADED,                              // [ignore]
     MCC_RELAUNCH_PROGRAM,                          // [ignore]
+    MCC_SHOW_PLAYINGNOW_POPUP,                     // [ignore]
 
     ///////////////////////////////////////////////////////////////////////////////
     // Image tools (range 31,000 to 32,000)
@@ -560,6 +579,8 @@ enum MC_COMMANDS
     MCC_IMAGE_PREVIEW_SHOW,                        // [ignore]
     MCC_IMAGE_PREVIEW_HIDE,                        // [ignore]
     MCC_IMAGE_LOCATE_ON_MAP,                       // [ignore]
+    MCC_IMAGE_FACE_TAG,                            // [int nFileKey]
+    MCC_IMAGE_REVERSE_GEOCODE,                     // [ignore]
 
     ///////////////////////////////////////////////////////////////////////////////
     // Query (range 32,000 to 33,000)
@@ -692,6 +713,7 @@ enum MC_COMMANDS
     MCC_NOTIFY_CONTENT_UPLOAD_UPDATE,              // [int nEnsureVisibleColumn]  if nEnsureVisibleColumn > 0, call EnsureVisible() on the list control
     MCC_NOTIFY_TV_PROPERTIES_CHANGED,              // [ignore]
     MCC_NOTIFY_STATUSBAR_TEXT_CHANGED,             // [ignore]
+    MCC_NOTIFY_TV_EPG_STATUS_UPDATE,               // [ignore]    
 
     ///////////////////////////////////////////////////////////////////////////////
     // Store  (range 35,000 to 36,000)
@@ -825,6 +847,8 @@ enum MCC_UPDATEUI_FLAGS
 #define MCC_UI_CHANGED_FLAG_SCALE                           (1 << 2)
 #define MCC_UI_CHANGED_FLAG_LANGUAGE                        (1 << 3)
 #define MCC_UI_CHANGED_FLAG_USER_CHANGE_SKIN                (1 << 4)
+
+#define MCC_FILENAME_USE_MCSTRING_IN_TEMP_FOLDER            1001
 
 // UI modes
 enum UI_MODES

@@ -56,10 +56,10 @@ EXTERN_C const AMOVIESETUP_PIN sMIPPins[];
 #define BACKOFF Sleep(20)
 #define SHORT_BACKOFF Sleep(1)
 #define S_RECONNECTION_UNNECESSARY ((HRESULT)1024L)
-#define PROFILE_NOT_SET 16384
 
 constexpr auto hdrProfileRegKey = L"hdrProfile";
 constexpr auto sdrProfileRegKey = L"sdrProfile";
+constexpr auto hdrProfileSwitchEnabledRegKey = L"hdrProfileSwitchEnabled";
 
 constexpr auto unity = 1.0;
 
@@ -258,7 +258,7 @@ public:
 			mInfoCallback->ReloadV1(&mVideoCaptureLatencyStatus);
 			mInfoCallback->ReloadV2(&mVideoConversionLatencyStatus);
 			mInfoCallback->ReloadA(&mAudioCaptureLatencyStatus);
-			mInfoCallback->ReloadProfiles(mHdrProfile, mSdrProfile);
+			mInfoCallback->ReloadProfiles(mHdrProfileSwitchEnabled, mHdrProfile, mSdrProfile);
 			return S_OK;
 		}
 		return E_FAIL;
@@ -287,6 +287,15 @@ public:
 	}
 
 	STDMETHODIMP SetSDRProfile(DWORD profile) override;
+
+	STDMETHODIMP IsHdrProfileSwitchEnabled(bool* enabled) override
+	{
+		if (!enabled) return E_POINTER;
+		*enabled = mHdrProfileSwitchEnabled;
+		return S_OK;
+	}
+
+	STDMETHODIMP SetHdrProfileSwitchEnabled(bool enabled) override;
 
 	DWORD GetMCProfileId(bool hdr)
 	{
@@ -357,8 +366,9 @@ protected:
 	ISignalInfoCB* mInfoCallback = nullptr;
 	std::set<DWORD> mRefreshRates{};
 	std::wstring mRegKeyBase{};
-	DWORD mHdrProfile{PROFILE_NOT_SET};
-	DWORD mSdrProfile{PROFILE_NOT_SET};
+	DWORD mHdrProfile{0};
+	DWORD mSdrProfile{0};
+	bool mHdrProfileSwitchEnabled{false};
 
 private:
 	void CaptureLatency(const metric& metric, CAPTURE_LATENCY& lat, const std::string& desc)
@@ -819,9 +829,11 @@ protected:
 
 		mRateSwitcher.PutThreadMsg(REFRESH_RATE, target, nullptr);
 
-		auto profileId = mFilter->GetMCProfileId(mVideoFormat.hdrMeta.transferFunction != 4);
-		if (profileId != PROFILE_NOT_SET)
+		bool enabled;
+		mFilter->IsHdrProfileSwitchEnabled(&enabled);
+		if (enabled) 
 		{
+			auto profileId = mFilter->GetMCProfileId(mVideoFormat.hdrMeta.transferFunction != 4);
 			#ifndef NO_QUILL
 			LOG_INFO(mLogData.logger, "[{}] Triggering MC JRVR profile change to {}", mLogData.prefix, profileId);
 			#endif

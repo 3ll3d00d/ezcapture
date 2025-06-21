@@ -136,6 +136,10 @@ CaptureFilter::CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID 
 		{
 			mSdrProfile = res.GetValue();
 		}
+		if (auto res = key.TryGetDwordValue(hdrProfileSwitchEnabledRegKey))
+		{
+			mHdrProfileSwitchEnabled = res.GetValue() == 1;
+		}
 	}
 }
 
@@ -309,6 +313,22 @@ HRESULT CaptureFilter::SetSDRProfile(DWORD profile)
 			if (res)
 			{
 				mSdrProfile = profile;
+				return S_OK;
+			}
+		}
+	}
+	return E_FAIL;
+}
+
+HRESULT CaptureFilter::SetHdrProfileSwitchEnabled(bool enabled)
+{
+	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
+	{
+		if (auto res = key.TrySetDwordValue(hdrProfileSwitchEnabledRegKey, enabled ? 1 : 0))
+		{
+			if (res)
+			{
+				mHdrProfileSwitchEnabled = enabled;
 				return S_OK;
 			}
 		}

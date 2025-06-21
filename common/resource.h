@@ -1,6 +1,6 @@
 //{{NO_DEPENDENCIES}}
 // Microsoft Visual C++ generated include file.
-// Used by C:\Users\matt\source\repos\3ll3d00d\mwcapture\mwcapture\mwcapture.rc
+// Used by C:\Users\matt\source\repos\3ll3d00d\mwcapture\bmcapture\bmcapture.rc
 //
 #define IDS_TITLE                       101
 #define IDD_PROPPAGE_SIGNAL_INFO        107
@@ -86,7 +86,7 @@
 #define IDC_DEVICE_ID                   1082
 #define IDC_IN_FRAME_DUR                1083
 #define IDC_IN_FRAME_DUR_LABEL          1084
-#define IDC_MC_HDR_PROFILE_LABEL        1085
+#define IDC_MC_HDR_PROFILE_SPIN         1085
 #define IDC_DISPLAY_LABEL               1086
 #define IDC_DISPLAY                     1087
 #define IDC_LINKSPEED_LABEL             1088
@@ -98,8 +98,7 @@
 #define IDC_PCIE_MPS_LABEL              1094
 #define IDC_MC_SDR_PROFILE              1095
 #define IDC_PCIE_MPS                    1096
-#define IDC_EDIT2                       1097
-#define IDC_SPIN1                       1097
+#define IDC_MC_SDR_PROFILE_SPIN         1097
 #define IDC_MC_HDR_PROFILE              1098
 #define IDC_PCIE_MRRS_LABEL             1099
 #define IDC_PCIE_MRRS                   1100
@@ -114,7 +113,8 @@
 #define IDC_STATS_BOX                   1109
 #define IDC_DEVICE_INFO_BOX             1110
 #define IDC_MC_PROFILES_BOX             1111
-#define IDC_MC_SDR_PROFILE_LABEL        1112
+#define IDC_MC_PROFILE_LABEL            1112
+#define IDC_SWITCH_MC_PROFILES          1113
 
 // Next default values for new objects
 // 
@@ -122,7 +122,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        103
 #define _APS_NEXT_COMMAND_VALUE         40001
-#define _APS_NEXT_CONTROL_VALUE         1098
+#define _APS_NEXT_CONTROL_VALUE         1100
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

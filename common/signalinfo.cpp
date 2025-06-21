@@ -155,6 +155,21 @@ INT_PTR CSignalInfoProp::OnReceiveMessage(HWND hwnd, UINT uMsg, WPARAM wParam, L
 	switch (uMsg)
 	{
 	case WM_COMMAND:
+		if (LOWORD(wParam) == IDC_SWITCH_MC_PROFILES && HIWORD(wParam) == BN_CLICKED)
+		{
+			bool bFlag = static_cast<bool>(SendDlgItemMessage(m_Dlg, LOWORD(wParam), BM_GETCHECK, 0, 0));
+			bool existing;
+			mSignalInfo->IsHdrProfileSwitchEnabled(&existing);
+
+			EnableWindow(GetDlgItem(m_Dlg, IDC_MC_HDR_PROFILE), bFlag);
+			EnableWindow(GetDlgItem(m_Dlg, IDC_MC_SDR_PROFILE), bFlag);
+			if (bFlag != existing)
+			{
+				SetDirty();
+				return TRUE;
+			}
+			return FALSE;
+		}
 		if (LOWORD(wParam) == IDC_MC_HDR_PROFILE && HIWORD(wParam) == EN_CHANGE)
 		{
 			WCHAR b1[16];
@@ -456,7 +471,7 @@ HRESULT CSignalInfoProp::ReloadA(CAPTURE_LATENCY* payload)
 	return S_OK;
 }
 
-HRESULT CSignalInfoProp::ReloadProfiles(const DWORD& hdr, const DWORD& sdr)
+HRESULT CSignalInfoProp::ReloadProfiles(const bool& enabled, const DWORD& hdr, const DWORD& sdr)
 {
 	WCHAR buffer[8];
 
@@ -465,6 +480,10 @@ HRESULT CSignalInfoProp::ReloadProfiles(const DWORD& hdr, const DWORD& sdr)
 
 	_snwprintf_s(buffer, _TRUNCATE, L"%d", sdr);
 	SendDlgItemMessage(m_Dlg, IDC_MC_SDR_PROFILE, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+
+	SendDlgItemMessage(m_Dlg, IDC_SWITCH_MC_PROFILES, BM_SETCHECK, enabled, 0);
+	EnableWindow(GetDlgItem(m_Dlg, IDC_MC_HDR_PROFILE), enabled);
+	EnableWindow(GetDlgItem(m_Dlg, IDC_MC_SDR_PROFILE), enabled);
 
 	return S_OK;
 }
