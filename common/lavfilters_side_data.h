@@ -2,7 +2,10 @@
 #define LAVFILTERS_SIDE_DATA_HEADER
 
 #define NOMINMAX // quill does not compile without this
+
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
 
 
 // This file is a partial copy of https://github.com/Nevcairiel/LAVFilters/blob/master/common/includes/IMediaSideData.h

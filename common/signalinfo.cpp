@@ -129,10 +129,13 @@ HRESULT CSignalInfoProp::OnApplyChanges()
 	DWORD sdrProfileId = _wtoi(b1);
 	auto hr2 = mSignalInfo->SetSDRProfile(sdrProfileId);
 
-	bool bFlag = static_cast<bool>(SendDlgItemMessage(m_Dlg, IDC_SWITCH_MC_PROFILES, BM_GETCHECK, 0, 0));
-	auto hr3 = mSignalInfo->SetHdrProfileSwitchEnabled(bFlag);
+	bool switchProfiles = static_cast<bool>(SendDlgItemMessage(m_Dlg, IDC_SWITCH_MC_PROFILES, BM_GETCHECK, 0, 0));
+	auto hr3 = mSignalInfo->SetHdrProfileSwitchEnabled(switchProfiles);
 
-	return hr1 == S_OK && hr2 == S_OK && hr3 == S_OK ? S_OK : E_FAIL;
+	bool switchRate = static_cast<bool>(SendDlgItemMessage(m_Dlg, IDC_SWITCH_REFRESH_RATE, BM_GETCHECK, 0, 0));
+	auto hr4 = mSignalInfo->SetRefreshRateSwitchEnabled(switchRate);
+
+	return hr1 == S_OK && hr2 == S_OK && hr3 == S_OK && hr4 == S_OK ? S_OK : E_FAIL;
 }
 
 INT_PTR CSignalInfoProp::OnReceiveMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -140,6 +143,19 @@ INT_PTR CSignalInfoProp::OnReceiveMessage(HWND hwnd, UINT uMsg, WPARAM wParam, L
 	switch (uMsg)
 	{
 	case WM_COMMAND:
+		if (LOWORD(wParam) == IDC_SWITCH_REFRESH_RATE && HIWORD(wParam) == BN_CLICKED)
+		{
+			bool bFlag = static_cast<bool>(SendDlgItemMessage(m_Dlg, LOWORD(wParam), BM_GETCHECK, 0, 0));
+			bool existing;
+			mSignalInfo->IsRefreshRateSwitchEnabled(&existing);
+
+			if (bFlag != existing)
+			{
+				SetDirty();
+				return TRUE;
+			}
+			return FALSE;
+		}
 		if (LOWORD(wParam) == IDC_SWITCH_MC_PROFILES && HIWORD(wParam) == BN_CLICKED)
 		{
 			bool bFlag = static_cast<bool>(SendDlgItemMessage(m_Dlg, LOWORD(wParam), BM_GETCHECK, 0, 0));
@@ -456,21 +472,23 @@ HRESULT CSignalInfoProp::ReloadA(CAPTURE_LATENCY* payload)
 	return S_OK;
 }
 
-HRESULT CSignalInfoProp::ReloadProfiles(const bool& enabled, const DWORD& hdr, const DWORD& sdr)
+HRESULT CSignalInfoProp::ReloadProfiles(const bool& rateEnabled, const bool& profileEnabled, const DWORD& hdr,
+                                        const DWORD& sdr)
 {
 	WCHAR buffer[8];
 
 	_snwprintf_s(buffer, _TRUNCATE, L"%d", hdr);
 	SendDlgItemMessage(m_Dlg, IDC_MC_HDR_PROFILE, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
-	EnableWindow(GetDlgItem(m_Dlg, IDC_MC_HDR_PROFILE), enabled);
+	EnableWindow(GetDlgItem(m_Dlg, IDC_MC_HDR_PROFILE), profileEnabled);
 	SendDlgItemMessage(m_Dlg, IDC_MC_HDR_PROFILE_SPIN, UDM_SETRANGE32, 0, 1000);
 
 	_snwprintf_s(buffer, _TRUNCATE, L"%d", sdr);
 	SendDlgItemMessage(m_Dlg, IDC_MC_SDR_PROFILE, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
-	EnableWindow(GetDlgItem(m_Dlg, IDC_MC_SDR_PROFILE), enabled);
+	EnableWindow(GetDlgItem(m_Dlg, IDC_MC_SDR_PROFILE), profileEnabled);
 	SendDlgItemMessage(m_Dlg, IDC_MC_SDR_PROFILE_SPIN, UDM_SETRANGE32, 0, 1000);
 
-	SendDlgItemMessage(m_Dlg, IDC_SWITCH_MC_PROFILES, BM_SETCHECK, enabled, 0);
+	SendDlgItemMessage(m_Dlg, IDC_SWITCH_MC_PROFILES, BM_SETCHECK, profileEnabled, 0);
+	SendDlgItemMessage(m_Dlg, IDC_SWITCH_REFRESH_RATE, BM_SETCHECK, profileEnabled, 0);
 
 	return S_OK;
 }

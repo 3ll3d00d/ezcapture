@@ -13,7 +13,10 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 #define NOMINMAX // quill does not compile without this
+
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
 
 #include <windows.h>
 #include <streams.h>

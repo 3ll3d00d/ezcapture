@@ -16,7 +16,10 @@
 #define CAPTURE_HEADER
 
 #define NOMINMAX // quill does not compile without this
+
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
 
 #include "metric.h"
 #include "logging.h"
@@ -60,6 +63,7 @@ EXTERN_C const AMOVIESETUP_PIN sMIPPins[];
 constexpr auto hdrProfileRegKey = L"hdrProfile";
 constexpr auto sdrProfileRegKey = L"sdrProfile";
 constexpr auto hdrProfileSwitchEnabledRegKey = L"hdrProfileSwitchEnabled";
+constexpr auto refreshRateSwitchEnabledRegKey = L"refreshRateSwitchEnabled";
 
 constexpr auto unity = 1.0;
 
@@ -258,7 +262,8 @@ public:
 			mInfoCallback->ReloadV1(&mVideoCaptureLatencyStatus);
 			mInfoCallback->ReloadV2(&mVideoConversionLatencyStatus);
 			mInfoCallback->ReloadA(&mAudioCaptureLatencyStatus);
-			mInfoCallback->ReloadProfiles(mHdrProfileSwitchEnabled, mHdrProfile, mSdrProfile);
+			mInfoCallback->ReloadProfiles(mRefreshRateSwitchEnabled, mHdrProfileSwitchEnabled, mHdrProfile,
+			                              mSdrProfile);
 			return S_OK;
 		}
 		return E_FAIL;
@@ -296,6 +301,15 @@ public:
 	}
 
 	STDMETHODIMP SetHdrProfileSwitchEnabled(bool enabled) override;
+
+	STDMETHODIMP IsRefreshRateSwitchEnabled(bool* enabled) override
+	{
+		if (!enabled) return E_POINTER;
+		*enabled = mRefreshRateSwitchEnabled;
+		return S_OK;
+	}
+
+	STDMETHODIMP SetRefreshRateSwitchEnabled(bool enabled) override;
 
 	DWORD GetMCProfileId(bool hdr)
 	{
@@ -369,6 +383,7 @@ protected:
 	DWORD mHdrProfile{0};
 	DWORD mSdrProfile{0};
 	bool mHdrProfileSwitchEnabled{false};
+	bool mRefreshRateSwitchEnabled{true};
 
 private:
 	void CaptureLatency(const metric& metric, CAPTURE_LATENCY& lat, const std::string& desc)
@@ -821,17 +836,21 @@ protected:
 
 	void DoSwitchMode() override
 	{
-		auto target = mVideoFormat.CalcRefreshRate();
-
-		#ifndef NO_QUILL
-		LOG_INFO(mLogData.logger, "[{}] Triggering refresh rate change to {} Hz", mLogData.prefix, target);
-		#endif
-
-		mRateSwitcher.PutThreadMsg(REFRESH_RATE, target, nullptr);
-
 		bool enabled;
+		mFilter->IsRefreshRateSwitchEnabled(&enabled);
+		if (enabled)
+		{
+			auto target = mVideoFormat.CalcRefreshRate();
+
+			#ifndef NO_QUILL
+			LOG_INFO(mLogData.logger, "[{}] Triggering refresh rate change to {} Hz", mLogData.prefix, target);
+			#endif
+
+			mRateSwitcher.PutThreadMsg(REFRESH_RATE, target, nullptr);
+		}
+
 		mFilter->IsHdrProfileSwitchEnabled(&enabled);
-		if (enabled) 
+		if (enabled)
 		{
 			auto profileId = mFilter->GetMCProfileId(mVideoFormat.hdrMeta.transferFunction != 4);
 			#ifndef NO_QUILL

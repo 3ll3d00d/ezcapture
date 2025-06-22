@@ -16,7 +16,10 @@
 #define MODE_SWITCH_HEADER
 
 #define NOMINMAX // quill does not compile without this
+
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
 
 #include <streams.h> // replace this
 #include "logging.h"

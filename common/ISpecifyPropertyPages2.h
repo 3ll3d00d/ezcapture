@@ -22,7 +22,10 @@
 #define I_SPECIFY_PROPERTY_PAGES2_HEADER
 
 #define NOMINMAX // quill does not compile without this
+
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
 
 #include <OCIdl.h>
 

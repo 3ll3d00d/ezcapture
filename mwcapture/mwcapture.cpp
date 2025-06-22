@@ -13,7 +13,10 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 #define NOMINMAX // quill does not compile without this
+
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
 
 #include <windows.h>
 #include <process.h>
@@ -3252,8 +3255,7 @@ HRESULT MagewellAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFE
 					{
 						frameCopied = true;
 						mPreviousFrameTime = mCurrentFrameTime;
-						GetReferenceTime(&mCurrentFrameTime);
-
+						mCurrentFrameTime = mAudioSignal.frameInfo.llTimestamp;
 						#ifndef NO_QUILL
 						LOG_TRACE_L3(mLogData.logger, "[{}] Audio frame buffered and captured at {}", mLogData.prefix,
 						             mCurrentFrameTime);
