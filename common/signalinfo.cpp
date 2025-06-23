@@ -488,7 +488,7 @@ HRESULT CSignalInfoProp::ReloadProfiles(const bool& rateEnabled, const bool& pro
 	SendDlgItemMessage(m_Dlg, IDC_MC_SDR_PROFILE_SPIN, UDM_SETRANGE32, 0, 1000);
 
 	SendDlgItemMessage(m_Dlg, IDC_SWITCH_MC_PROFILES, BM_SETCHECK, profileEnabled, 0);
-	SendDlgItemMessage(m_Dlg, IDC_SWITCH_REFRESH_RATE, BM_SETCHECK, profileEnabled, 0);
+	SendDlgItemMessage(m_Dlg, IDC_SWITCH_REFRESH_RATE, BM_SETCHECK, rateEnabled, 0);
 
 	return S_OK;
 }
