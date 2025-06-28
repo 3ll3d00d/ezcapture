@@ -116,6 +116,10 @@
 #define IDC_MC_PROFILE_LABEL            1112
 #define IDC_SWITCH_MC_PROFILES          1113
 #define IDC_SWITCH_REFRESH_RATE         1114
+#define IDC_VIDEO_ALLOC_LAT_LABEL       1115
+#define IDC_VIDEO_ALLOC_LAT             1116
+#define IDC_AUDIO_ALLOC_LAT_LABEL       1117
+#define IDC_AUDIO_ALLOC_LAT             1118
 
 // Next default values for new objects
 // 
@@ -123,7 +127,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        103
 #define _APS_NEXT_COMMAND_VALUE         40001
-#define _APS_NEXT_CONTROL_VALUE         1115
+#define _APS_NEXT_CONTROL_VALUE         1119
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

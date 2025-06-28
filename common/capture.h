@@ -261,7 +261,9 @@ public:
 			mInfoCallback->Reload(&mDisplayStatus);
 			mInfoCallback->ReloadV1(&mVideoCaptureLatencyStatus);
 			mInfoCallback->ReloadV2(&mVideoConversionLatencyStatus);
-			mInfoCallback->ReloadA(&mAudioCaptureLatencyStatus);
+			mInfoCallback->ReloadV3(&mVideoAllocatorLatencyStatus);
+			mInfoCallback->ReloadA1(&mAudioCaptureLatencyStatus);
+			mInfoCallback->ReloadA2(&mAudioAllocatorLatencyStatus);
 			mInfoCallback->ReloadProfiles(mRefreshRateSwitchEnabled, mHdrProfileSwitchEnabled, mHdrProfile,
 			                              mSdrProfile);
 			return S_OK;
@@ -327,6 +329,16 @@ public:
 	void OnAudioFormatLoaded(AUDIO_FORMAT* af);
 	void OnHdrUpdated(MediaSideDataHDR* hdr, MediaSideDataHDRContentLightLevel* light);
 
+	void RecordVideoFrameLatency(const frame_metrics& metrics)
+	{
+		// TODO impl
+	}
+
+	void RecordAudioFrameLatency(const frame_metrics& metrics)
+	{
+		// TODO impl
+	}
+
 	void OnVideoCaptureLatencyUpdated(const metric& metric)
 	{
 		CaptureLatency(metric, mVideoCaptureLatencyStatus, "Video Capture");
@@ -345,12 +357,30 @@ public:
 		}
 	}
 
-	void OnAudioCaptureLatencyUpdated(const metric& metric)
+	void OnVideoAllocatorLatencyUpdated(const metric& metric)
 	{
-		CaptureLatency(metric, mAudioCaptureLatencyStatus, "Audio");
+		CaptureLatency(metric, mVideoAllocatorLatencyStatus, "Video Allocator");
 		if (mInfoCallback != nullptr)
 		{
-			mInfoCallback->ReloadA(&mAudioCaptureLatencyStatus);
+			mInfoCallback->ReloadV3(&mVideoAllocatorLatencyStatus);
+		}
+	}
+
+	void OnAudioCaptureLatencyUpdated(const metric& metric)
+	{
+		CaptureLatency(metric, mAudioCaptureLatencyStatus, "Audio Capture");
+		if (mInfoCallback != nullptr)
+		{
+			mInfoCallback->ReloadA1(&mAudioCaptureLatencyStatus);
+		}
+	}
+
+	void OnAudioAllocatorLatencyUpdated(const metric& metric)
+	{
+		CaptureLatency(metric, mAudioAllocatorLatencyStatus, "Audio Allocator");
+		if (mInfoCallback != nullptr)
+		{
+			mInfoCallback->ReloadA2(&mAudioAllocatorLatencyStatus);
 		}
 	}
 
@@ -375,7 +405,9 @@ protected:
 	VIDEO_OUTPUT_STATUS mVideoOutputStatus{};
 	CAPTURE_LATENCY mVideoCaptureLatencyStatus{};
 	CAPTURE_LATENCY mVideoConversionLatencyStatus{};
+	CAPTURE_LATENCY mVideoAllocatorLatencyStatus{};
 	CAPTURE_LATENCY mAudioCaptureLatencyStatus{};
+	CAPTURE_LATENCY mAudioAllocatorLatencyStatus{};
 	HDR_STATUS mHdrStatus{};
 	ISignalInfoCB* mInfoCallback = nullptr;
 	std::set<DWORD> mRefreshRates{};
@@ -424,16 +456,17 @@ protected:
 class IAMTimeAware
 {
 public:
-	void SetStartTime(LONGLONG streamStartTime)
+	void SetStartTime(int64_t streamStartTime)
 	{
 		mStreamStartTime = streamStartTime;
+		mFrameTs.initialise(streamStartTime);
 
 		#ifndef NO_QUILL
 		LOG_WARNING(mLogData.logger, "[{}] CapturePin::SetStartTime at {}", mLogData.prefix, streamStartTime);
 		#endif
 	}
 
-	virtual void SetStopTime(LONGLONG streamStopTime)
+	virtual void SetStopTime(int64_t streamStopTime)
 	{
 		mStreamStopTime = streamStopTime;
 
@@ -459,8 +492,9 @@ protected:
 	}
 
 	log_data mLogData{};
-	LONGLONG mStreamStartTime{-1LL};
-	LONGLONG mStreamStopTime{-1LL};
+	int64_t mStreamStartTime{-1LL};
+	int64_t mStreamStopTime{-1LL};
+	frame_ts mFrameTs{};
 };
 
 
@@ -543,6 +577,7 @@ public:
 		auto newSize = std::lrint(expectedRefreshRatePerSecond * 3 / 2);
 		mConversionLatency.resize(newSize);
 		mCaptureLatency.resize(newSize);
+		mAllocatorLatency.resize(newSize);
 	}
 
 protected:
@@ -571,6 +606,9 @@ protected:
 	bool mLoggedLatencyHeader{false};
 	metric mCaptureLatency{};
 	metric mConversionLatency{};
+	metric mAllocatorLatency{};
+
+	frame_metrics mFrameMetrics{};
 };
 
 /**
@@ -752,15 +790,11 @@ public:
 		                       mVideoFormat.pixelFormat);
 	}
 
-	void RecordLatency(uint64_t conv, uint64_t cap)
+	void RecordLatency()
 	{
-		if (mConversionLatency.sample(conv))
+		if (mFrameTs.recordTo(mFrameMetrics))
 		{
-			mFilter->OnVideoConversionLatencyUpdated(mConversionLatency);
-		}
-		if (mCaptureLatency.sample(cap))
-		{
-			mFilter->OnVideoCaptureLatencyUpdated(mCaptureLatency);
+			mFilter->RecordVideoFrameLatency(mFrameMetrics);
 		}
 	}
 
@@ -1073,11 +1107,11 @@ protected:
 		mFilter->GetReferenceTime(rt);
 	}
 
-	void RecordLatency(uint64_t cap)
+	void RecordLatency()
 	{
-		if (mCaptureLatency.sample(cap))
+		if (mFrameTs.recordTo(mFrameMetrics))
 		{
-			mFilter->OnAudioCaptureLatencyUpdated(mCaptureLatency);
+			mFilter->RecordAudioFrameLatency(mFrameMetrics);
 		}
 	}
 };

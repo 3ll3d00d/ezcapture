@@ -463,12 +463,30 @@ HRESULT CSignalInfoProp::ReloadV2(CAPTURE_LATENCY* payload)
 	return S_OK;
 }
 
-HRESULT CSignalInfoProp::ReloadA(CAPTURE_LATENCY* payload)
+HRESULT CSignalInfoProp::ReloadV3(CAPTURE_LATENCY* payload)
+{
+	WCHAR buffer[256];
+	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / 1000.0,
+	             payload->mean / 1000.0, static_cast<double>(payload->max) / 1000.0);
+	SendDlgItemMessage(m_Dlg, IDC_VIDEO_ALLOC_LAT, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+	return S_OK;
+}
+
+HRESULT CSignalInfoProp::ReloadA1(CAPTURE_LATENCY* payload)
 {
 	WCHAR buffer[256];
 	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / 1000.0,
 	             payload->mean / 1000.0, static_cast<double>(payload->max) / 1000.0);
 	SendDlgItemMessage(m_Dlg, IDC_AUDIO_CAP_LAT, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+	return S_OK;
+}
+
+HRESULT CSignalInfoProp::ReloadA2(CAPTURE_LATENCY* payload)
+{
+	WCHAR buffer[256];
+	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / 1000.0,
+	             payload->mean / 1000.0, static_cast<double>(payload->max) / 1000.0);
+	SendDlgItemMessage(m_Dlg, IDC_AUDIO_ALLOC_LAT, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 	return S_OK;
 }
 

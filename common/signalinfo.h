@@ -51,7 +51,9 @@ interface __declspec(uuid("4D6B8852-06A6-4997-BC07-3507BB77F748")) ISignalInfoCB
 	STDMETHOD(Reload)(DISPLAY_STATUS* payload) = 0;
 	STDMETHOD(ReloadV1)(CAPTURE_LATENCY* payload) = 0;
 	STDMETHOD(ReloadV2)(CAPTURE_LATENCY* payload) = 0;
-	STDMETHOD(ReloadA)(CAPTURE_LATENCY* payload) = 0;
+	STDMETHOD(ReloadV3)(CAPTURE_LATENCY* payload) = 0;
+	STDMETHOD(ReloadA1)(CAPTURE_LATENCY* payload) = 0;
+	STDMETHOD(ReloadA2)(CAPTURE_LATENCY* payload) = 0;
 	STDMETHOD(ReloadProfiles)(const bool& rateEnabled, const bool& profileEnabled, const DWORD& hdr, const DWORD & sdr) = 0;
 };
 
@@ -95,7 +97,9 @@ public:
 	HRESULT Reload(DISPLAY_STATUS* payload) override;
 	HRESULT ReloadV1(CAPTURE_LATENCY* payload) override;
 	HRESULT ReloadV2(CAPTURE_LATENCY* payload) override;
-	HRESULT ReloadA(CAPTURE_LATENCY* payload) override;
+	HRESULT ReloadV3(CAPTURE_LATENCY* payload) override;
+	HRESULT ReloadA1(CAPTURE_LATENCY* payload) override;
+	HRESULT ReloadA2(CAPTURE_LATENCY* payload) override;
 	HRESULT ReloadProfiles(const bool& rateEnabled, const bool& profileEnabled, const DWORD& hdr, const DWORD& sdr) override;
 
 private:

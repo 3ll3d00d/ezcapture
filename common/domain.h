@@ -24,6 +24,8 @@
 #include <map>
 #include <optional>
 #include <cmath>     // std::lround
+#include <chrono>
+#include "metric.h"
 
 #define TO_4CC(ch0, ch1, ch2, ch3)                              \
                 ((DWORD)(BYTE)(ch0) | ((DWORD)(BYTE)(ch1) << 8) |   \
@@ -531,4 +533,89 @@ inline const char* to_string(frame_writer_strategy e)
 
 // TODO support a list of fall back options
 typedef std::map<pixel_format, std::pair<pixel_format, frame_writer_strategy>> pixel_format_fallbacks;
+
+struct frame_metrics
+{
+	metric wait;
+	metric allocated;
+	metric buffer;
+	metric read;
+	metric convert;
+
+	void resize(uint16_t sz)
+	{
+		wait.resize(sz);
+		allocated.resize(sz);
+		buffer.resize(sz);
+		read.resize(sz);
+		convert.resize(sz);
+	}
+};
+
+enum ts_type : uint8_t
+{
+	WAITING, // user code starts waiting for a frame
+	WAIT_COMPLETE, // user code signalled that frame is available
+	BUFFER_ALLOCATED, // buffer provided by the allocator
+	BUFFERING, // frame starts to arrive in card memory 
+	BUFFERED, // frame completely buffered in card memory
+	READING, // user code starts to read the frame
+	READ, // user code has access to the entire frame in memory
+	CONVERTED, // user code has processed frame into output format
+	COMPLETE // system time for comparison
+};
+
+class frame_ts
+{
+public:
+	void initialise(int64_t pInitTime)
+	{
+		mInitTime = pInitTime;
+		reset();
+	}
+
+	void snap(int64_t val, ts_type type)
+	{
+		mTs[type] = offset(val);
+	}
+
+	void end()
+	{
+		using std::chrono::high_resolution_clock;
+		using std::chrono::microseconds;
+		using std::chrono::duration_cast;
+		snap(duration_cast<microseconds>(high_resolution_clock::now().time_since_epoch()).count() * 10, COMPLETE);
+	}
+
+	int64_t get(ts_type type) const
+	{
+		return mTs[type];
+	}
+
+	void reset()
+	{
+		mTs.fill(0);
+	}
+
+	boolean recordTo(frame_metrics& metrics) const
+	{
+		/*
+		 * Magewell PRO Video: WAITING, WAIT_COMPLETE, BUFFER_ALLOCATED, BUFFERING, BUFFERED, READING, READ, CONVERTED
+		 * Magewell PRO Audio: WAITING, WAIT_COMPLETE, BUFFERING, READING, READ, BUFFER_ALLOCATED, CONVERTED
+		 * Magewell USB: WAIT_COMPLETE, BUFFERING, READING, READ, CONVERTED
+		 * Decklink: 
+		 */
+		return false;
+	}
+
+private:
+	int64_t mInitTime{0}; // time used to offset all subsequent timestamps
+	std::array<int64_t, 9> mTs{};
+
+	int64_t offset(int64_t val) const
+	{
+		return val - mInitTime;
+	}
+};
+
 #endif

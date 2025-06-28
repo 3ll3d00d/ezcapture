@@ -1688,6 +1688,7 @@ HRESULT BlackmagicVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, RE
 			}
 
 			retVal = VideoCapturePin::GetDeliveryBuffer(ppSample, pStartTime, pEndTime, dwFlags);
+
 			if (FAILED(retVal))
 			{
 				hasFrame = false;
@@ -1745,7 +1746,7 @@ HRESULT BlackmagicVideoCapturePin::FillBuffer(IMediaSample* pms)
 	auto convLat = duration_cast<std::chrono::microseconds>(t2 - t1).count();
 	auto capLat = now - mCurrentFrame->GetCaptureTime();
 
-	RecordLatency(convLat, capLat);
+	RecordLatency();
 
 	#ifndef NO_QUILL
 	REFERENCE_TIME rt;
@@ -1928,6 +1929,7 @@ HRESULT BlackmagicAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, RE
 			}
 
 			retVal = AudioCapturePin::GetDeliveryBuffer(ppSample, pStartTime, pEndTime, dwFlags);
+
 			if (SUCCEEDED(retVal))
 			{
 				hasFrame = true;
@@ -2083,7 +2085,7 @@ HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
 	REFERENCE_TIME now;
 	mFilter->GetReferenceTime(&now);
 	auto capLat = now - mCurrentFrame->GetCaptureTime();
-	RecordLatency(capLat);
+	RecordLatency();
 
 	#ifndef NO_QUILL
 	if (!mLoggedLatencyHeader)

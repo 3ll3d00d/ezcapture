@@ -126,7 +126,7 @@ public:
 		#endif
 	}
 
-	void SnapCaptureTime()
+	void CaptureComplete()
 	{
 		GetReferenceTime(&mCaptureTime);
 		mFrameCounter++;
@@ -264,6 +264,7 @@ protected:
 	};
 
 	// Common - temp 
+	int64_t mCaptureTime{0};
 	HNOTIFY mNotify;
 	ULONGLONG mStatusBits = 0;
 	HANDLE mNotifyEvent;

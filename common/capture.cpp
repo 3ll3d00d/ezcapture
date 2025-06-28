@@ -49,16 +49,17 @@ CaptureFilter::CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID 
 	bopt.enable_yield_when_idle = true;
 	bopt.sleep_duration = std::chrono::nanoseconds(0);
 	quill::Backend::start(bopt);
-
+	auto now = std::chrono::system_clock::now();
+	auto epochSeconds = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
 	auto filterFileSink = CustomFrontend::create_or_get_sink<quill::RotatingFileSink>(
-		(std::filesystem::temp_directory_path() / (pLogPrefix + ".log")).string(),
+		(std::filesystem::temp_directory_path() / std::format("%s_%d.log", pLogPrefix, epochSeconds)).string(),
 		[]()
 		{
 			quill::RotatingFileSinkConfig cfg;
 			cfg.set_max_backup_files(12);
 			cfg.set_rotation_frequency_and_interval('H', 1);
 			cfg.set_rotation_naming_scheme(quill::RotatingFileSinkConfig::RotationNamingScheme::DateAndTime);
-			cfg.set_filename_append_option(quill::FilenameAppendOption::StartDateTime);
+			cfg.set_filename_append_option(quill::FilenameAppendOption::None);
 			return cfg;
 		}(),
 		quill::FileEventNotifier{});
@@ -72,7 +73,7 @@ CaptureFilter::CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID 
 			                                     quill::Timezone::GmtTime
 		                                     });
 	auto audioLatencySink = CustomFrontend::create_or_get_sink<quill::RotatingFileSink>(
-		(std::filesystem::temp_directory_path() / (pLogPrefix + "_audio_latency.csv")).string(),
+		(std::filesystem::temp_directory_path() / std::format("%s_audio_%d.csv", pLogPrefix, epochSeconds)).string(),
 		[]()
 		{
 			quill::RotatingFileSinkConfig cfg;
@@ -87,12 +88,12 @@ CaptureFilter::CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID 
 		CustomFrontend::create_or_get_logger(std::string{audioLatencyLoggerName},
 		                                     std::move(audioLatencySink),
 		                                     quill::PatternFormatterOptions{
-			                                     "%(time),%(thread_id),%(logger:<12),%(message)",
+			                                     "%(time),%(message)",
 			                                     "%H:%M:%S.%Qns",
 			                                     quill::Timezone::GmtTime
 		                                     });
 	auto videoLatencySink = CustomFrontend::create_or_get_sink<quill::RotatingFileSink>(
-		(std::filesystem::temp_directory_path() / (pLogPrefix + "_video_latency.csv")).string(),
+		(std::filesystem::temp_directory_path() / std::format("%s_video_%d.csv", pLogPrefix, epochSeconds)).string(),
 		[]()
 		{
 			quill::RotatingFileSinkConfig cfg;
@@ -107,7 +108,7 @@ CaptureFilter::CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID 
 		CustomFrontend::create_or_get_logger(std::string{videoLatencyLoggerName},
 		                                     std::move(videoLatencySink),
 		                                     quill::PatternFormatterOptions{
-			                                     "%(time),%(thread_id),%(logger:<12),%(message)",
+			                                     "%(time),%(message)",
 			                                     "%H:%M:%S.%Qns",
 			                                     quill::Timezone::GmtTime
 		                                     });
@@ -146,7 +147,7 @@ CaptureFilter::CaptureFilter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID 
 		}
 		#ifndef NO_QUILL
 		LOG_INFO(mLogData.logger,
-		         "[{}] Loaded properties from registry [hdrProfile:{}, sdrProfile: {}, profileSwitch: {}, rateSwitch{}]",
+		         "[{}] Loaded properties from registry [hdrProfile:{}, sdrProfile: {}, profileSwitch: {}, rateSwitch: {}]",
 		         mLogData.prefix, mHdrProfile, mSdrProfile, mHdrProfileSwitchEnabled, mRefreshRateSwitchEnabled);
 		#endif
 	}
@@ -251,7 +252,7 @@ HRESULT CaptureFilter::JoinFilterGraph(IFilterGraph* pGraph, LPCWSTR pName)
 
 STDMETHODIMP CaptureFilter::Run(REFERENCE_TIME tStart)
 {
-	REFERENCE_TIME rt;
+	int64_t rt;
 	GetReferenceTime(&rt);
 
 	#ifndef NO_QUILL
@@ -678,6 +679,7 @@ HRESULT CapturePin::DoBufferProcessingLoop(void)
 	{
 		while (!CheckRequest(&com))
 		{
+			mFrameTs.reset();
 			IMediaSample* pSample;
 
 			HRESULT hrBuf = GetDeliveryBuffer(&pSample, nullptr, nullptr, 0);
