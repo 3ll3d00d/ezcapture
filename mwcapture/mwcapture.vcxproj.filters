@@ -15,10 +15,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="mwcapture.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="mwdomain.h">
+    <ClInclude Include="mw_domain.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\common\resource.h">
@@ -27,12 +24,27 @@
     <ClInclude Include="StraightThrough.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="mw_capture_filter.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="mw_video_capture_pin.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="mw_audio_capture_pin.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="mwcapture.cpp">
+    <ClCompile Include="dllmain.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="dllmain.cpp">
+    <ClCompile Include="mw_capture_filter.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="mw_video_capture_pin.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="mw_audio_capture_pin.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

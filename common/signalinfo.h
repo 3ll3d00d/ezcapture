@@ -21,10 +21,9 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 
-#include <Windows.h>
+#include <streams.h>
 #include <Commctrl.h>
 #include <initguid.h>
-#include <streams.h>
 #include "domain.h"
 
 // {8DC689DB-68FE-4C30-AAE5-0E515CF9324C}

@@ -23,7 +23,7 @@
 #include <initguid.h>
 #include <dvdmedia.h>
 #include <dllsetup.h>
-#include "bmcapture.h"
+#include "bm_capture_filter.h"
 
 #define CreateComObject(clsid, iid, var) CoCreateInstance( clsid, NULL, CLSCTX_INPROC_SERVER, iid, (void **)&(var));
 
@@ -106,7 +106,7 @@ CFactoryTemplate g_Templates[] = {
     {
         FILTER_NAME,
         &CLSID_BMCAPTURE_FILTER,
-        BlackmagicCaptureFilter::CreateInstance,
+        blackmagic_capture_filter::CreateInstance,
         nullptr,
         &sMIPSetup
     },

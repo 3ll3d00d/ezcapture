@@ -473,13 +473,17 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="..\common\resource.h" />
-    <ClInclude Include="mwcapture.h" />
-    <ClInclude Include="mwdomain.h" />
+    <ClInclude Include="mw_domain.h" />
+    <ClInclude Include="mw_audio_capture_pin.h" />
+    <ClInclude Include="mw_capture_filter.h" />
+    <ClInclude Include="mw_video_capture_pin.h" />
     <ClInclude Include="StraightThrough.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp" />
-    <ClCompile Include="mwcapture.cpp" />
+    <ClCompile Include="mw_audio_capture_pin.cpp" />
+    <ClCompile Include="mw_capture_filter.cpp" />
+    <ClCompile Include="mw_video_capture_pin.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="mwcapture.def" />

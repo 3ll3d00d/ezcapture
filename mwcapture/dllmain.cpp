@@ -18,7 +18,7 @@
 #include <initguid.h>
 #include <dvdmedia.h>
 #include <dllsetup.h>
-#include "mwcapture.h"
+#include "mw_capture_filter.h"
 
 #define CreateComObject(clsid, iid, var) CoCreateInstance( clsid, NULL, CLSCTX_INPROC_SERVER, iid, (void **)&var);
 
@@ -101,7 +101,7 @@ CFactoryTemplate g_Templates[] = {
     {
         FILTER_NAME,
         &CLSID_MWCAPTURE_FILTER,
-        MagewellCaptureFilter::CreateInstance,
+        magewell_capture_filter::CreateInstance,
         nullptr,
         &sMIPSetup
     },

@@ -22,6 +22,7 @@
 #include <atomic>
 #include <strmif.h>
 #include <memory>
+#include <streams.h>
 
 class MediaSampleBackedDecklinkBuffer : public IDeckLinkVideoBuffer
 {

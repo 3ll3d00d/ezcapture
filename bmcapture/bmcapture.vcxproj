@@ -416,7 +416,10 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="any_rgb.cpp" />
-    <ClCompile Include="bmcapture.cpp" />
+    <ClCompile Include="bm_audio_capture_filter.cpp" />
+    <ClCompile Include="bm_capture_filter.cpp" />
+    <ClCompile Include="bm_capture_filter.h" />
+    <ClCompile Include="bm_video_capture_pin.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="MediaSampleBackedDecklinkBuffer.cpp" />
   </ItemGroup>
@@ -437,10 +440,12 @@
   <ItemGroup>
     <ClInclude Include="..\common\resource.h" />
     <ClInclude Include="any_rgb.h" />
-    <ClInclude Include="bmcapture.h" />
-    <ClInclude Include="bmdomain.h" />
+    <ClInclude Include="bm_audio_capture_pin.h" />
+    <ClInclude Include="bm_domain.h" />
+    <ClInclude Include="bm_video_capture_pin.h" />
     <ClInclude Include="MediaSampleBackedDecklinkBuffer.h" />
     <ClInclude Include="StraightThrough.h" />
+    <ClInclude Include="video_frame.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="bmcapture.rc" />

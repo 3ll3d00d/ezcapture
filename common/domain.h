@@ -19,20 +19,22 @@
 
 #include <string>
 #include <array>
-#include <ks.h>
-#include <ksmedia.h>
 #include <map>
 #include <optional>
 #include <cmath>     // std::lround
 #include <chrono>
 #include "metric.h"
 
+#define BACKOFF Sleep(20)
+#define SHORT_BACKOFF Sleep(1)
+
 #define TO_4CC(ch0, ch1, ch2, ch3)                              \
                 ((DWORD)(BYTE)(ch0) | ((DWORD)(BYTE)(ch1) << 8) |   \
                 ((DWORD)(BYTE)(ch2) << 16) | ((DWORD)(BYTE)(ch3) << 24 ))
 
-constexpr auto not_present = 1024;
-constexpr LONGLONG dshowTicksPerSecond = 10LL * 1000 * 1000; // 100ns
+inline constexpr auto not_present = 1024;
+inline constexpr LONGLONG dshowTicksPerSecond = 10LL * 1000 * 1000; // 100ns
+inline constexpr auto unity = 1.0;
 
 #define ROOT_REG_KEY L"Software\\3ll3d00d\\"
 
@@ -491,7 +493,7 @@ struct AUDIO_FORMAT
 	std::array<int, 8> channelOffsets{
 		0, 0, not_present, not_present, not_present, not_present, not_present, not_present
 	};
-	WORD channelMask{KSAUDIO_SPEAKER_STEREO};
+	WORD channelMask{0};
 	std::string channelLayout;
 	int lfeChannelIndex{not_present};
 	double lfeLevelAdjustment{1.0};

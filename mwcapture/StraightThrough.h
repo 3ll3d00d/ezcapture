@@ -16,9 +16,9 @@
 #define MW_STRAIGHT_THROUGH_HEADER
 
 #include "VideoFrameWriter.h"
-#include "mwdomain.h"
+#include "mw_domain.h"
 
-class StraightThrough : public IVideoFrameWriter<VideoSampleBuffer>
+class StraightThrough : public IVideoFrameWriter<video_sample_buffer>
 {
 public:
 	StraightThrough(const log_data& pLogData, int pX, int pY, const pixel_format* pPixelFormat)
@@ -28,7 +28,7 @@ public:
 
 	~StraightThrough() override = default;
 
-	HRESULT WriteTo(VideoSampleBuffer* srcFrame, IMediaSample* dstFrame) override
+	HRESULT WriteTo(video_sample_buffer* srcFrame, IMediaSample* dstFrame) override
 	{
 		if (S_FALSE == CheckFrameSizes(srcFrame->GetFrameIndex(), mOutputImageSize, dstFrame))
 		{

@@ -14,9 +14,6 @@
  */
 #include "MediaSampleBackedDecklinkBuffer.h"
 
-#include "capture.h"
-#include "combase.h"
-
 HRESULT MediaSampleBackedDecklinkBuffer::QueryInterface(const IID& riid, void** ppvObject)
 {
 	if (riid == _uuidof(IDeckLinkVideoBuffer))

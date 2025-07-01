@@ -43,12 +43,12 @@ inline const char* devicetype_to_name(DeviceType e)
 	}
 }
 
-constexpr auto chromaticity_scale_factor = 0.00002;
-constexpr auto high_luminance_scale_factor = 1.0;
-constexpr auto low_luminance_scale_factor = 0.0001;
+inline constexpr auto chromaticity_scale_factor = 0.00002;
+inline constexpr auto high_luminance_scale_factor = 1.0;
+inline constexpr auto low_luminance_scale_factor = 0.0001;
 
-constexpr int bitDepthCount = 3;
-constexpr int subsamplingCount = 4;
+inline constexpr int bitDepthCount = 3;
+inline constexpr int subsamplingCount = 4;
 
 typedef std::array<std::array<pixel_format, 4>, 3> pixel_format_by_bit_depth_subsampling;
 typedef std::map<pixel_format, std::vector<pixel_format>> pixel_format_alternatives;
@@ -309,7 +309,7 @@ struct captured_frame
 	uint64_t ts;
 };
 
-struct VideoSampleBuffer
+struct video_sample_buffer
 {
 	uint64_t index;
 	uint8_t* data;

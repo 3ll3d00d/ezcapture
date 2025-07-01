@@ -17,7 +17,7 @@
 #include "MediaSampleBackedDecklinkBuffer.h"
 #include "quill/StopWatch.h"
 
-HRESULT any_rgb::WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame)
+HRESULT any_rgb::WriteTo(video_frame* srcFrame, IMediaSample* dstFrame)
 {
 	if (S_FALSE == CheckFrameSizes(srcFrame->GetFrameIndex(), mOutputImageSize, dstFrame))
 	{

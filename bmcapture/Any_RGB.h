@@ -17,9 +17,9 @@
 
 #include "VideoFrameWriter.h"
 #include <atlcomcli.h>
-#include "bmdomain.h"
+#include "video_frame.h"
 
-class any_rgb : public IVideoFrameWriter<VideoFrame>
+class any_rgb : public IVideoFrameWriter<video_frame>
 {
 public:
 	any_rgb(const log_data& pLogData, uint32_t pX, uint32_t pY) :
@@ -44,7 +44,7 @@ public:
 
 	~any_rgb() override = default;
 
-	HRESULT WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame) override;
+	HRESULT WriteTo(video_frame* srcFrame, IMediaSample* dstFrame) override;
 
 private:
 	CComPtr<IDeckLinkVideoConversion> mConverter;

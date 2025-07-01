@@ -395,21 +395,28 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="capture.cpp" />
+    <ClCompile Include="audio_capture_pin.cpp" />
+    <ClCompile Include="capture_filter.cpp" />
+    <ClCompile Include="capture_pin.cpp" />
     <ClCompile Include="modeswitcher.cpp" />
     <ClCompile Include="signalinfo.cpp" />
+    <ClCompile Include="video_capture_pin.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="bgr10_rgb48.h" />
+    <ClInclude Include="capture_filter.h" />
+    <ClInclude Include="capture_pin.h" />
+    <ClInclude Include="audio_capture_pin.h" />
     <ClInclude Include="mccommands.h" />
     <ClInclude Include="metric.h" />
     <ClInclude Include="modeswitcher.h" />
     <ClInclude Include="r210_rgb48.h" />
+    <ClInclude Include="runtime_aware.h" />
     <ClInclude Include="uyvy_yv16.h" />
     <ClInclude Include="v210_p210.h" />
+    <ClInclude Include="video_capture_pin.h" />
     <ClInclude Include="y210_p210.h" />
     <ClInclude Include="yuv2_yv16.h" />
-    <ClInclude Include="capture.h" />
     <ClInclude Include="domain.h" />
     <ClInclude Include="ISpecifyPropertyPages2.h" />
     <ClInclude Include="lavfilters_side_data.h" />

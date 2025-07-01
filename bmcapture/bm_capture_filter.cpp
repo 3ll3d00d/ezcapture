@@ -12,29 +12,9 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-#include "bmcapture.h"
-#include <streams.h>
-#include <process.h>
-#include <DXVA.h>
-#include <filesystem>
-#include <utility>
-// linking side data GUIDs fails without this
-#include <initguid.h>
-
-#include <cmath>
-// std::reverse
-#include <algorithm>
-#include <vcpkg_installed/x64-windows/x64-windows/include/winreg/WinReg.hpp>
-
-#include "modeswitcher.h"
-
-#ifndef NO_QUILL
-#include "quill/Backend.h"
-#include "quill/sinks/FileSink.h"
-#include <string_view>
-#include <utility>
-#include "quill/StopWatch.h"
-#endif
+#include "bm_capture_filter.h"
+#include "bm_audio_capture_pin.h"
+#include "bm_video_capture_pin.h"
 
 #define REG_KEY_BASE L"BMCapture"
 
@@ -51,27 +31,13 @@
 
 constexpr auto blockFilterRegKey = L"BlockFilterOnRR";
 
-// audio is limited to 48kHz and an audio packet is only delivered with a video frame
-// lowest fps is 23.976 so the max no of samples should be 48000/(24000/1001) = 2002
-// but there can be backlogs so allow for a few frames for safety
-constexpr uint16_t maxSamplesPerFrame = 8192;
 constexpr uint16_t minDisplayWidth = 4096;
 using mics = std::chrono::microseconds;
 constexpr BMDTimeScale referenceTimescale = mics(std::chrono::seconds(1)).count();
 
-static int64_t get_steady_clock_uptime_mics()
+CUnknown* blackmagic_capture_filter::CreateInstance(LPUNKNOWN punk, HRESULT* phr)
 {
-	auto now = std::chrono::steady_clock::now();
-	auto referenceTime = std::chrono::time_point_cast<mics>(now);
-	return referenceTime.time_since_epoch().count();
-}
-
-//////////////////////////////////////////////////////////////////////////
-// BlackmagicCaptureFilter
-//////////////////////////////////////////////////////////////////////////
-CUnknown* BlackmagicCaptureFilter::CreateInstance(LPUNKNOWN punk, HRESULT* phr)
-{
-	auto pNewObject = new BlackmagicCaptureFilter(punk, phr);
+	auto pNewObject = new blackmagic_capture_filter(punk, phr);
 
 	if (pNewObject == nullptr)
 	{
@@ -82,7 +48,7 @@ CUnknown* BlackmagicCaptureFilter::CreateInstance(LPUNKNOWN punk, HRESULT* phr)
 	return pNewObject;
 }
 
-void BlackmagicCaptureFilter::LoadFormat(VIDEO_FORMAT* videoFormat, const VIDEO_SIGNAL* videoSignal)
+void blackmagic_capture_filter::LoadFormat(VIDEO_FORMAT* videoFormat, const VIDEO_SIGNAL* videoSignal)
 {
 	videoFormat->cx = videoSignal->cx;
 	videoFormat->cy = videoSignal->cy;
@@ -133,15 +99,15 @@ void BlackmagicCaptureFilter::LoadFormat(VIDEO_FORMAT* videoFormat, const VIDEO_
 	videoFormat->CalculateDimensions();
 }
 
-BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
-	HdmiCaptureFilter(WLOG_PREFIX_NAME, punk, phr, CLSID_BMCAPTURE_FILTER, LOG_PREFIX_NAME, REG_KEY_BASE),
+blackmagic_capture_filter::blackmagic_capture_filter(LPUNKNOWN punk, HRESULT* phr) :
+	hdmi_capture_filter(WLOG_PREFIX_NAME, punk, phr, CLSID_BMCAPTURE_FILTER, LOG_PREFIX_NAME, REG_KEY_BASE),
 	mVideoFrameEvent(CreateEvent(nullptr, FALSE, FALSE, nullptr)),
 	mAudioFrameEvent(CreateEvent(nullptr, FALSE, FALSE, nullptr))
 {
 	// load the API
 	IDeckLinkIterator* deckLinkIterator = nullptr;
 	HRESULT result = CoCreateInstance(CLSID_CDeckLinkIterator, nullptr, CLSCTX_ALL, IID_IDeckLinkIterator,
-	                                  reinterpret_cast<void**>(&deckLinkIterator));
+		reinterpret_cast<void**>(&deckLinkIterator));
 
 	// Initialise the device and validate that it presents some form of data
 	#ifndef NO_QUILL
@@ -189,12 +155,12 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		}
 
 		result = deckLink->QueryInterface(IID_IDeckLinkProfileAttributes,
-		                                  reinterpret_cast<void**>(&deckLinkAttributes));
+			reinterpret_cast<void**>(&deckLinkAttributes));
 		if (result != S_OK)
 		{
 			#ifndef NO_QUILL
 			LOG_ERROR(mLogData.logger, "[{}] Ignoring device {} {}, unable to query for profile attributes",
-			          mLogData.prefix, idx, deviceName);
+				mLogData.prefix, idx, deviceName);
 			#endif
 
 			deckLink->Release();
@@ -209,7 +175,7 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		{
 			#ifndef NO_QUILL
 			LOG_ERROR(mLogData.logger, "[{}] Ignoring device {} {}, no active connectors for current profile", idx,
-			          mLogData.prefix, deviceName);
+				mLogData.prefix, deviceName);
 			#endif
 
 			deckLink->Release();
@@ -222,8 +188,8 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		{
 			#ifndef NO_QUILL
 			LOG_ERROR(mLogData.logger,
-			          "[{}] Ignoring device {} {}, could not get BMDDeckLinkVideoIOSupport attribute ({:#08x})",
-			          mLogData.prefix, idx, deviceName, static_cast<unsigned long>(result));
+				"[{}] Ignoring device {} {}, could not get BMDDeckLinkVideoIOSupport attribute ({:#08x})",
+				mLogData.prefix, idx, deviceName, static_cast<unsigned long>(result));
 			#endif
 
 			deckLink->Release();
@@ -233,17 +199,17 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		if (videoIOSupport & bmdDeviceSupportsCapture)
 		{
 			int64_t audioChannelCount;
-			BOOL inputFormatDetection{false};
-			BOOL hdrMetadata{false};
-			BOOL colourspaceMetadata{false};
-			BOOL dynamicRangeMetadata{false};
+			BOOL inputFormatDetection{ false };
+			BOOL hdrMetadata{ false };
+			BOOL colourspaceMetadata{ false };
+			BOOL dynamicRangeMetadata{ false };
 
 			result = deckLinkAttributes->GetInt(BMDDeckLinkMaximumHDMIAudioChannels, &audioChannelCount);
 			if (result != S_OK)
 			{
 				#ifndef NO_QUILL
 				LOG_WARNING(mLogData.logger, "[{}] Device {} {} does not support audio capture",
-				            mLogData.prefix, idx, deviceName);
+					mLogData.prefix, idx, deviceName);
 				#endif
 
 				audioChannelCount = 0;
@@ -254,7 +220,7 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 			{
 				#ifndef NO_QUILL
 				LOG_WARNING(mLogData.logger, "[{}] Ignoring device {} {} does not support input format detection",
-				            mLogData.prefix, idx, deviceName);
+					mLogData.prefix, idx, deviceName);
 				#endif
 
 				inputFormatDetection = false;
@@ -265,7 +231,7 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 			{
 				#ifndef NO_QUILL
 				LOG_WARNING(mLogData.logger, "[{}] Device {} {} does not support HDR metadata",
-				            mLogData.prefix, idx, deviceName);
+					mLogData.prefix, idx, deviceName);
 				#endif
 
 				hdrMetadata = false;
@@ -276,7 +242,7 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 			{
 				#ifndef NO_QUILL
 				LOG_WARNING(mLogData.logger, "[{}] Device {} {} does not support colourspace metadata",
-				            mLogData.prefix, idx, deviceName);
+					mLogData.prefix, idx, deviceName);
 				#endif
 
 				colourspaceMetadata = false;
@@ -287,7 +253,7 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 			{
 				#ifndef NO_QUILL
 				LOG_WARNING(mLogData.logger, "[{}] Device {} {} does not support dynamic range metadata",
-				            mLogData.prefix, idx, deviceName);
+					mLogData.prefix, idx, deviceName);
 				#endif
 
 				dynamicRangeMetadata = false;
@@ -298,9 +264,9 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 			LOG_INFO(mLogData.logger, "[{}] Input Format Detection? {}", mLogData.prefix, inputFormatDetection);
 			LOG_INFO(mLogData.logger, "[{}] Can Detect HDR Metadata? {}", mLogData.prefix, hdrMetadata);
 			LOG_INFO(mLogData.logger, "[{}] Can Detect Colour space Metadata? {}", mLogData.prefix,
-			         colourspaceMetadata);
+				colourspaceMetadata);
 			LOG_INFO(mLogData.logger, "[{}] Can Detect Dynamic Range Metadata? {}", mLogData.prefix,
-			         dynamicRangeMetadata);
+				dynamicRangeMetadata);
 			LOG_INFO(mLogData.logger, "[{}] Audio Channels? {}", mLogData.prefix, audioChannelCount);
 			#endif
 
@@ -335,7 +301,7 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 			{
 				#ifndef NO_QUILL
 				LOG_ERROR(mLogData.logger, "[{}] Unable to SetCallback [{:#08x}], ignoring device", mLogData.prefix,
-				          static_cast<unsigned long>(result));
+					static_cast<unsigned long>(result));
 				#endif
 
 				mDeckLinkNotification = nullptr;
@@ -355,7 +321,7 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 			{
 				#ifndef NO_QUILL
 				LOG_ERROR(mLogData.logger, "[{}] Unable to GetDisplayModeIterator [{:#08x}], ignoring device",
-				          mLogData.prefix, static_cast<unsigned long>(result));
+					mLogData.prefix, static_cast<unsigned long>(result));
 				#endif
 
 				mDeckLinkNotification = nullptr;
@@ -387,16 +353,16 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 						{
 							#ifndef NO_QUILL
 							LOG_INFO(mLogData.logger,
-							         "[{}] Ignoring superior DisplayMode [{:#08x}] with width {} fps {:.3f}",
-							         mLogData.prefix, static_cast<int>(dm), dmWidth, dmFps);
+								"[{}] Ignoring superior DisplayMode [{:#08x}] with width {} fps {:.3f}",
+								mLogData.prefix, static_cast<int>(dm), dmWidth, dmFps);
 							#endif
 						}
 						else
 						{
 							#ifndef NO_QUILL
 							LOG_INFO(mLogData.logger,
-							         "[{}] Found superior DisplayMode [{:#08x}] with width {} fps {:.3f}",
-							         mLogData.prefix, static_cast<int>(dm), dmWidth, dmFps);
+								"[{}] Found superior DisplayMode [{:#08x}] with width {} fps {:.3f}",
+								mLogData.prefix, static_cast<int>(dm), dmWidth, dmFps);
 							#endif
 
 							LoadSignalFromDisplayMode(&mVideoSignal, displayMode);
@@ -408,8 +374,8 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 					{
 						#ifndef NO_QUILL
 						LOG_INFO(mLogData.logger,
-						         "[{}] Ignoring inferior DisplayMode [{:#08x}] with width {} fps {:.3f}",
-						         mLogData.prefix, static_cast<int>(dm), dmWidth, dmFps);
+							"[{}] Ignoring inferior DisplayMode [{:#08x}] with width {} fps {:.3f}",
+							mLogData.prefix, static_cast<int>(dm), dmWidth, dmFps);
 						#endif
 					}
 				}
@@ -423,7 +389,7 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 			{
 				#ifndef NO_QUILL
 				LOG_ERROR(mLogData.logger, "[{}] Unable to find a DisplayMode, ignoring device",
-				          mLogData.prefix, result);
+					mLogData.prefix, result);
 				#endif
 
 				mDeckLinkNotification = nullptr;
@@ -455,7 +421,7 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 				{
 					#ifndef NO_QUILL
 					LOG_ERROR(mLogData.logger, "[{}] Unable to WriteToEDID [{:#08x}]", mLogData.prefix,
-					          static_cast<unsigned long>(result));
+						static_cast<unsigned long>(result));
 					#endif
 				}
 			}
@@ -463,7 +429,7 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 			{
 				#ifndef NO_QUILL
 				LOG_ERROR(mLogData.logger, "[{}] Unable to set dynamic range flags [{:#08x}]", mLogData.prefix,
-				          static_cast<unsigned long>(result));
+					static_cast<unsigned long>(result));
 				#endif
 			}
 		}
@@ -491,8 +457,8 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 			mDeviceInfo.temperature = val;
 		}
 
-		BlackmagicCaptureFilter::OnDeviceUpdated();
-		BlackmagicCaptureFilter::OnVideoSignalLoaded(&mVideoSignal);
+		blackmagic_capture_filter::OnDeviceUpdated();
+		blackmagic_capture_filter::OnVideoSignalLoaded(&mVideoSignal);
 	}
 	else
 	{
@@ -522,11 +488,11 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		mVideoFormat.hdrMeta.transferFunction, mVideoFormat.imageSize);
 	#endif
 
-	auto vp = new BlackmagicVideoCapturePin(phr, this, false, mVideoFormat);
+	auto vp = new blackmagic_video_capture_pin(phr, this, false, mVideoFormat);
 	vp->UpdateFrameWriterStrategy();
 	vp->ResizeMetrics(mVideoFormat.fps);
 
-	vp = new BlackmagicVideoCapturePin(phr, this, true, mVideoFormat);
+	vp = new blackmagic_video_capture_pin(phr, this, true, mVideoFormat);
 	vp->UpdateFrameWriterStrategy();
 	vp->ResizeMetrics(mVideoFormat.fps);
 
@@ -538,10 +504,10 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 		OnAudioSignalLoaded(&mAudioSignal);
 		OnAudioFormatLoaded(&mAudioFormat);
 
-		auto ap = new BlackmagicAudioCapturePin(phr, this, false);
+		auto ap = new blackmagic_audio_capture_pin(phr, this, false);
 		ap->ResizeMetrics(mVideoFormat.fps);
 
-		ap = new BlackmagicAudioCapturePin(phr, this, true);
+		ap = new blackmagic_audio_capture_pin(phr, this, true);
 		ap->ResizeMetrics(mVideoFormat.fps);
 	}
 
@@ -551,7 +517,7 @@ BlackmagicCaptureFilter::BlackmagicCaptureFilter(LPUNKNOWN punk, HRESULT* phr) :
 	}
 }
 
-BlackmagicCaptureFilter::~BlackmagicCaptureFilter()
+blackmagic_capture_filter::~blackmagic_capture_filter()
 {
 	#ifndef NO_QUILL
 	LOG_INFO(mLogData.logger, "[{}] Tearing down filter", mLogData.prefix);
@@ -563,7 +529,7 @@ BlackmagicCaptureFilter::~BlackmagicCaptureFilter()
 	CloseHandle(mVideoFrameEvent);
 }
 
-void BlackmagicCaptureFilter::LoadSignalFromDisplayMode(VIDEO_SIGNAL* newSignal, IDeckLinkDisplayMode* newDisplayMode)
+void blackmagic_capture_filter::LoadSignalFromDisplayMode(VIDEO_SIGNAL* newSignal, IDeckLinkDisplayMode* newDisplayMode)
 {
 	newSignal->displayMode = newDisplayMode->GetDisplayMode();
 
@@ -585,16 +551,16 @@ void BlackmagicCaptureFilter::LoadSignalFromDisplayMode(VIDEO_SIGNAL* newSignal,
 	newSignal->calc_derived_values();
 }
 
-HRESULT BlackmagicCaptureFilter::VideoInputFormatChanged(BMDVideoInputFormatChangedEvents notificationEvents,
-                                                         IDeckLinkDisplayMode* newDisplayMode,
-                                                         BMDDetectedVideoInputFormatFlags detectedSignalFlags)
+HRESULT blackmagic_capture_filter::VideoInputFormatChanged(BMDVideoInputFormatChangedEvents notificationEvents,
+	IDeckLinkDisplayMode* newDisplayMode,
+	BMDDetectedVideoInputFormatFlags detectedSignalFlags)
 {
 	VIDEO_SIGNAL newSignal = mVideoSignal;
 	if (notificationEvents & bmdVideoInputColorspaceChanged)
 	{
 		#ifndef NO_QUILL
 		LOG_TRACE_L1(mLogData.logger, "[{}] VideoInputFormatChanged::bmdVideoInputColorspaceChanged {}",
-		             mLogData.prefix, detectedSignalFlags);
+			mLogData.prefix, detectedSignalFlags);
 		#endif
 
 		if (detectedSignalFlags & bmdDetectedVideoInputYCbCr422)
@@ -674,27 +640,27 @@ HRESULT BlackmagicCaptureFilter::VideoInputFormatChanged(BMDVideoInputFormatChan
 				{
 					#ifndef NO_QUILL
 					LOG_WARNING(mLogData.logger, "[{}] Failed to pause streams on input format change ({:#08x})",
-					            mLogData.prefix, static_cast<unsigned long>(result));
+						mLogData.prefix, static_cast<unsigned long>(result));
 					#endif
 				}
 
 				result = mDeckLinkInput->EnableVideoInput(newSignal.displayMode, newSignal.pixelFormat,
-				                                          bmdVideoInputEnableFormatDetection);
+					bmdVideoInputEnableFormatDetection);
 				if (S_OK == result)
 				{
 					#ifndef NO_QUILL
 					LOG_WARNING(mLogData.logger,
-					            "[{}] Enabled video input on input format change (displayMode: {:#08x} {} pixelFormat: {:#08x} {})",
-					            mLogData.prefix, static_cast<int>(newDisplayMode->GetDisplayMode()),
-					            to_string(newDisplayMode->GetDisplayMode()), static_cast<int>(newSignal.pixelFormat),
-					            to_string(newSignal.pixelFormat));
+						"[{}] Enabled video input on input format change (displayMode: {:#08x} {} pixelFormat: {:#08x} {})",
+						mLogData.prefix, static_cast<int>(newDisplayMode->GetDisplayMode()),
+						to_string(newDisplayMode->GetDisplayMode()), static_cast<int>(newSignal.pixelFormat),
+						to_string(newSignal.pixelFormat));
 					#endif
 				}
 				else
 				{
 					#ifndef NO_QUILL
 					LOG_WARNING(mLogData.logger, "[{}] Failed to enable video input on input format change ({:#08x})",
-					            mLogData.prefix, static_cast<unsigned long>(result));
+						mLogData.prefix, static_cast<unsigned long>(result));
 					#endif
 				}
 
@@ -703,7 +669,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFormatChanged(BMDVideoInputFormatChan
 				if (S_OK != result)
 				{
 					LOG_WARNING(mLogData.logger, "[{}] Failed to flush streams on input format change ({:#08x})",
-					            mLogData.prefix, static_cast<unsigned long>(result));
+						mLogData.prefix, static_cast<unsigned long>(result));
 				}
 				else
 				{
@@ -719,7 +685,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFormatChanged(BMDVideoInputFormatChan
 				{
 					#ifndef NO_QUILL
 					LOG_WARNING(mLogData.logger, "[{}] Failed to start streams on input format change ({:#08x})",
-					            mLogData.prefix, static_cast<unsigned long>(result));
+						mLogData.prefix, static_cast<unsigned long>(result));
 					#endif
 				}
 				else
@@ -733,8 +699,8 @@ HRESULT BlackmagicCaptureFilter::VideoInputFormatChanged(BMDVideoInputFormatChan
 
 					#ifndef NO_QUILL
 					LOG_INFO(mLogData.logger,
-					         "[{}] Restarted video capture on input format change at {}, frame time increased by {} to compensate",
-					         mLogData.prefix, t2, delta);
+						"[{}] Restarted video capture on input format change at {}, frame time increased by {} to compensate",
+						mLogData.prefix, t2, delta);
 					#endif
 				}
 			}
@@ -748,7 +714,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFormatChanged(BMDVideoInputFormatChan
 	return S_OK;
 }
 
-HRESULT BlackmagicCaptureFilter::processVideoFrame(IDeckLinkVideoInputFrame* videoFrame)
+HRESULT blackmagic_capture_filter::processVideoFrame(IDeckLinkVideoInputFrame* videoFrame)
 {
 	int64_t frameTime = 0;
 	int64_t frameDuration = 0;
@@ -769,7 +735,7 @@ HRESULT BlackmagicCaptureFilter::processVideoFrame(IDeckLinkVideoInputFrame* vid
 	{
 		#ifndef NO_QUILL
 		LOG_ERROR(mLogData.logger, "[{}] Discarding video frame, unable to get stream time {:#08x}",
-		          mLogData.prefix, static_cast<unsigned long>(result));
+			mLogData.prefix, static_cast<unsigned long>(result));
 		#endif
 
 		return E_FAIL;
@@ -784,9 +750,9 @@ HRESULT BlackmagicCaptureFilter::processVideoFrame(IDeckLinkVideoInputFrame* vid
 		{
 			#ifndef NO_QUILL
 			LOG_WARNING(mLogData.logger,
-			            "[{}] Video capture discontinuity detected, {} frames missed at frame {} ({} - {} / {}), increasing frame time to compensate",
-			            mLogData.prefix, missedFrames, mCurrentVideoFrameIndex,
-			            frameTime, mPreviousVideoFrameTime, frameDuration);
+				"[{}] Video capture discontinuity detected, {} frames missed at frame {} ({} - {} / {}), increasing frame time to compensate",
+				mLogData.prefix, missedFrames, mCurrentVideoFrameIndex,
+				frameTime, mPreviousVideoFrameTime, frameDuration);
 			#endif
 			frameIndexIncrement += missedFrames;
 		}
@@ -798,7 +764,7 @@ HRESULT BlackmagicCaptureFilter::processVideoFrame(IDeckLinkVideoInputFrame* vid
 
 	#ifndef NO_QUILL
 	LOG_TRACE_L2(mLogData.logger, "[{}] Captured video frame {} at {} (locked: {})", mLogData.prefix,
-	             mCurrentVideoFrameIndex, frameTime, locked);
+		mCurrentVideoFrameIndex, frameTime, locked);
 	#endif
 
 	auto wasLocked = mVideoSignal.locked;
@@ -995,7 +961,7 @@ HRESULT BlackmagicCaptureFilter::processVideoFrame(IDeckLinkVideoInputFrame* vid
 
 		// DML
 		result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRMinDisplayMasteringLuminance,
-		                                      &doubleValue);
+			&doubleValue);
 		if (S_OK == result && std::fabs(doubleValue) > 0.000001)
 		{
 			newVideoFormat.hdrMeta.minDML = doubleValue;
@@ -1008,7 +974,7 @@ HRESULT BlackmagicCaptureFilter::processVideoFrame(IDeckLinkVideoInputFrame* vid
 			#endif
 		}
 		result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRMaxDisplayMasteringLuminance,
-		                                      &doubleValue);
+			&doubleValue);
 		if (S_OK == result && std::fabs(doubleValue) > 0.000001)
 		{
 			newVideoFormat.hdrMeta.maxDML = doubleValue;
@@ -1035,7 +1001,7 @@ HRESULT BlackmagicCaptureFilter::processVideoFrame(IDeckLinkVideoInputFrame* vid
 			#endif
 		}
 		result = metadataExtensions->GetFloat(bmdDeckLinkFrameMetadataHDRMaximumFrameAverageLightLevel,
-		                                      &doubleValue);
+			&doubleValue);
 		if (S_OK == result && std::fabs(doubleValue) > 0.000001)
 		{
 			newVideoFormat.hdrMeta.maxFALL = std::lround(doubleValue);
@@ -1058,7 +1024,7 @@ HRESULT BlackmagicCaptureFilter::processVideoFrame(IDeckLinkVideoInputFrame* vid
 			else
 			{
 				LOG_TRACE_L1(mLogData.logger, "[{}] Invalid HDR metadata detected in {}", mLogData.prefix,
-				             invalids);
+					invalids);
 			}
 			mInvalidHdrMetaDataItems = std::make_unique<std::string>(std::move(invalids));
 		}
@@ -1078,7 +1044,7 @@ HRESULT BlackmagicCaptureFilter::processVideoFrame(IDeckLinkVideoInputFrame* vid
 		{
 			for (auto i = 0; i < m_iPins; i++)
 			{
-				auto pin = dynamic_cast<CapturePin*>(m_paStreams[i]);
+				auto pin = dynamic_cast<capture_pin*>(m_paStreams[i]);
 				pin->ResizeMetrics(newVideoFormat.fps);
 			}
 		}
@@ -1087,8 +1053,8 @@ HRESULT BlackmagicCaptureFilter::processVideoFrame(IDeckLinkVideoInputFrame* vid
 		auto captureTime = referenceFrameTime - referenceFrameDuration;
 
 		mVideoFormat = newVideoFormat;
-		mVideoFrame = std::make_shared<VideoFrame>(mLogData, newVideoFormat, captureTime, mVideoFrameTime,
-		                                           frameDuration, mCurrentVideoFrameIndex, videoFrame);
+		mVideoFrame = std::make_shared<video_frame>(mLogData, newVideoFormat, captureTime, mVideoFrameTime,
+			frameDuration, mCurrentVideoFrameIndex, videoFrame);
 	}
 
 	// signal listeners
@@ -1103,7 +1069,7 @@ HRESULT BlackmagicCaptureFilter::processVideoFrame(IDeckLinkVideoInputFrame* vid
 	return S_OK;
 }
 
-HRESULT BlackmagicCaptureFilter::processAudioPacket(IDeckLinkAudioInputPacket* audioPacket, const REFERENCE_TIME& now)
+HRESULT blackmagic_capture_filter::processAudioPacket(IDeckLinkAudioInputPacket* audioPacket, const REFERENCE_TIME& now)
 {
 	void* audioData = nullptr;
 	auto result = audioPacket->GetBytes(&audioData);
@@ -1111,7 +1077,7 @@ HRESULT BlackmagicCaptureFilter::processAudioPacket(IDeckLinkAudioInputPacket* a
 	{
 		#ifndef NO_QUILL
 		LOG_WARNING(mLogData.logger, "[{}] Failed to get audioFrame bytes {:#08x})", mLogData.prefix,
-		            static_cast<unsigned long>(result));
+			static_cast<unsigned long>(result));
 		#endif
 
 		return E_FAIL;
@@ -1123,7 +1089,7 @@ HRESULT BlackmagicCaptureFilter::processAudioPacket(IDeckLinkAudioInputPacket* a
 	{
 		#ifndef NO_QUILL
 		LOG_WARNING(mLogData.logger, "[{}] Failed to get audioFrame bytes {:#08x})", mLogData.prefix,
-		            static_cast<unsigned long>(result));
+			static_cast<unsigned long>(result));
 		#endif
 
 		return E_FAIL;
@@ -1138,9 +1104,9 @@ HRESULT BlackmagicCaptureFilter::processAudioPacket(IDeckLinkAudioInputPacket* a
 		{
 			#ifndef NO_QUILL
 			LOG_WARNING(mLogData.logger,
-			            "[{}] Audio capture discontinuity detected, {} frames missed at frame {} ({} - {} / {}), increasing frame time to compensate",
-			            mLogData.prefix, missedFrames, mCurrentAudioFrameIndex,
-			            frameTime, mPreviousAudioFrameTime, mVideoSignal.frameInterval);
+				"[{}] Audio capture discontinuity detected, {} frames missed at frame {} ({} - {} / {}), increasing frame time to compensate",
+				mLogData.prefix, missedFrames, mCurrentAudioFrameIndex,
+				frameTime, mPreviousAudioFrameTime, mVideoSignal.frameInterval);
 			#endif
 			frameIndexIncrement += missedFrames;
 		}
@@ -1151,7 +1117,7 @@ HRESULT BlackmagicCaptureFilter::processAudioPacket(IDeckLinkAudioInputPacket* a
 
 	#ifndef NO_QUILL
 	LOG_TRACE_L2(mLogData.logger, "[{}] Captured audio frame {} at {} (locked: {})", mLogData.prefix,
-	             mCurrentAudioFrameIndex, frameTime, mVideoSignal.locked);
+		mCurrentAudioFrameIndex, frameTime, mVideoSignal.locked);
 	#endif
 
 	if (!mVideoSignal.locked)
@@ -1164,8 +1130,8 @@ HRESULT BlackmagicCaptureFilter::processAudioPacket(IDeckLinkAudioInputPacket* a
 		auto audioFrameLength = audioPacket->GetSampleFrameCount() * mDeviceInfo.audioChannelCount * audioByteDepth;
 
 		CAutoLock lock(&mFrameSec);
-		mAudioFrame = std::make_shared<AudioFrame>(mLogData, now, mAudioFrameTime, audioData, audioFrameLength,
-		                                           mAudioFormat, mCurrentAudioFrameIndex, audioPacket);
+		mAudioFrame = std::make_shared<audio_frame>(mLogData, now, mAudioFrameTime, audioData, audioFrameLength,
+			mAudioFormat, mCurrentAudioFrameIndex, audioPacket);
 	}
 
 	// signal listeners
@@ -1179,8 +1145,8 @@ HRESULT BlackmagicCaptureFilter::processAudioPacket(IDeckLinkAudioInputPacket* a
 	return S_OK;
 }
 
-HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame* videoFrame,
-                                                        IDeckLinkAudioInputPacket* audioPacket)
+HRESULT blackmagic_capture_filter::VideoInputFrameArrived(IDeckLinkVideoInputFrame* videoFrame,
+	IDeckLinkAudioInputPacket* audioPacket)
 {
 	REFERENCE_TIME now;
 	GetReferenceTime(&now);
@@ -1190,7 +1156,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 
 	#ifndef NO_QUILL
 	LOG_TRACE_L2(mLogData.logger, "[{}] Frame arrived at {} (V/A : {}/{})", mLogData.prefix, now,
-	             hasVideo, hasAudio);
+		hasVideo, hasAudio);
 	#endif
 
 	auto retVal = S_OK;
@@ -1212,7 +1178,7 @@ HRESULT BlackmagicCaptureFilter::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 	return retVal;
 }
 
-void BlackmagicCaptureFilter::LoadFormat(AUDIO_FORMAT* audioFormat, const AUDIO_SIGNAL* audioSignal)
+void blackmagic_capture_filter::LoadFormat(AUDIO_FORMAT* audioFormat, const AUDIO_SIGNAL* audioSignal)
 {
 	auto audioIn = *audioSignal;
 	// https://ia903006.us.archive.org/11/items/CEA-861-E/CEA-861-E.pdf
@@ -1275,14 +1241,14 @@ void BlackmagicCaptureFilter::LoadFormat(AUDIO_FORMAT* audioFormat, const AUDIO_
 	}
 }
 
-HRESULT BlackmagicCaptureFilter::Run(REFERENCE_TIME tStart)
+HRESULT blackmagic_capture_filter::Run(REFERENCE_TIME tStart)
 {
 	mVideoFrameTime = 0;
 	mAudioFrameTime = 0;
-	return HdmiCaptureFilter::Run(tStart);
+	return hdmi_capture_filter::Run(tStart);
 }
 
-HRESULT BlackmagicCaptureFilter::Notify(BMDNotifications topic, ULONGLONG param1, ULONGLONG param2)
+HRESULT blackmagic_capture_filter::Notify(BMDNotifications topic, ULONGLONG param1, ULONGLONG param2)
 {
 	// only interested in status changes
 	if (topic != bmdStatusChanged)
@@ -1342,14 +1308,14 @@ HRESULT BlackmagicCaptureFilter::Notify(BMDNotifications topic, ULONGLONG param1
 		else
 		{
 			LOG_TRACE_L1(mLogData.logger, "[{}] Failed to read {} {:#08x}", mLogData.prefix, desc,
-			             static_cast<unsigned long>(hr));
+				static_cast<unsigned long>(hr));
 		}
 		#endif
 	}
 	return S_OK;
 }
 
-HRESULT BlackmagicCaptureFilter::QueryInterface(const IID& riid, void** ppvObject)
+HRESULT blackmagic_capture_filter::QueryInterface(const IID& riid, void** ppvObject)
 {
 	if (riid == _uuidof(IDeckLinkInputCallback))
 	{
@@ -1360,10 +1326,10 @@ HRESULT BlackmagicCaptureFilter::QueryInterface(const IID& riid, void** ppvObjec
 		return GetInterface(static_cast<IDeckLinkNotificationCallback*>(this), ppvObject);
 	}
 
-	return HdmiCaptureFilter::NonDelegatingQueryInterface(riid, ppvObject);
+	return hdmi_capture_filter::NonDelegatingQueryInterface(riid, ppvObject);
 }
 
-void BlackmagicCaptureFilter::OnVideoSignalLoaded(VIDEO_SIGNAL* vs)
+void blackmagic_capture_filter::OnVideoSignalLoaded(VIDEO_SIGNAL* vs)
 {
 	mVideoInputStatus.inX = vs->cx;
 	mVideoInputStatus.inY = vs->cy;
@@ -1385,7 +1351,7 @@ void BlackmagicCaptureFilter::OnVideoSignalLoaded(VIDEO_SIGNAL* vs)
 	}
 }
 
-void BlackmagicCaptureFilter::OnAudioSignalLoaded(AUDIO_SIGNAL* as)
+void blackmagic_capture_filter::OnAudioSignalLoaded(AUDIO_SIGNAL* as)
 {
 	mAudioInputStatus.audioInStatus = true;
 	mAudioInputStatus.audioInIsPcm = true;
@@ -1401,11 +1367,11 @@ void BlackmagicCaptureFilter::OnAudioSignalLoaded(AUDIO_SIGNAL* as)
 	}
 }
 
-void BlackmagicCaptureFilter::OnDeviceUpdated()
+void blackmagic_capture_filter::OnDeviceUpdated()
 {
 	auto prev = mDeviceStatus.deviceDesc;
 	mDeviceStatus.deviceDesc = std::format("{0} [{1}.{2}.{3}]", mDeviceInfo.name, mDeviceInfo.apiVersion[0],
-	                                       mDeviceInfo.apiVersion[1], mDeviceInfo.apiVersion[2]);
+		mDeviceInfo.apiVersion[1], mDeviceInfo.apiVersion[2]);
 	mDeviceStatus.linkSpeed = mDeviceInfo.linkSpeed;
 	mDeviceStatus.linkWidth = mDeviceInfo.linkWidth;
 	mDeviceStatus.temperature = mDeviceInfo.temperature;
@@ -1423,7 +1389,7 @@ void BlackmagicCaptureFilter::OnDeviceUpdated()
 	}
 }
 
-HRESULT BlackmagicCaptureFilter::PinThreadCreated()
+HRESULT blackmagic_capture_filter::PinThreadCreated()
 {
 	HRESULT result = S_OK;
 	CAutoLock lock(&mDeckLinkSec);
@@ -1445,44 +1411,44 @@ HRESULT BlackmagicCaptureFilter::PinThreadCreated()
 		{
 			#ifndef NO_QUILL
 			LOG_ERROR(mLogData.logger, "[{}] Unable to subscribe for status notifications [{:#08x}]",
-			          mLogData.prefix, static_cast<unsigned long>(result));
+				mLogData.prefix, static_cast<unsigned long>(result));
 			#endif
 		}
 
 		result = mDeckLinkInput->EnableVideoInput(mVideoSignal.displayMode, mVideoSignal.pixelFormat,
-		                                          bmdVideoInputEnableFormatDetection);
+			bmdVideoInputEnableFormatDetection);
 		if (S_OK == result)
 		{
 			#ifndef NO_QUILL
 			LOG_INFO(mLogData.logger, "[{}] Enabled Video Input in display mode {}", mLogData.prefix,
-			         mVideoSignal.displayModeName);
+				mVideoSignal.displayModeName);
 			#endif
 		}
 		else
 		{
 			#ifndef NO_QUILL
 			LOG_ERROR(mLogData.logger, "[{}] Unable to EnableVideoInput [{:#08x}]", mLogData.prefix,
-			          static_cast<unsigned long>(result));
+				static_cast<unsigned long>(result));
 			#endif
 		}
 
 		if (mDeviceInfo.audioChannelCount > 0)
 		{
 			result = mDeckLinkInput->EnableAudioInput(bmdAudioSampleRate48kHz, audioBitDepth,
-			                                          mDeviceInfo.audioChannelCount);
+				mDeviceInfo.audioChannelCount);
 			// NOLINT(clang-diagnostic-shorten-64-to-32) values will only be 0/2/8/16
 			if (S_OK == result)
 			{
 				#ifndef NO_QUILL
 				LOG_INFO(mLogData.logger, "[{}] Enabled Audio Input for {} channels", mLogData.prefix,
-				         mDeviceInfo.audioChannelCount);
+					mDeviceInfo.audioChannelCount);
 				#endif
 			}
 			else
 			{
 				#ifndef NO_QUILL
 				LOG_ERROR(mLogData.logger, "[{}] Unable to EnableAudioInput [{:#08x}]", mLogData.prefix,
-				          static_cast<unsigned long>(result));
+					static_cast<unsigned long>(result));
 				#endif
 			}
 		}
@@ -1498,7 +1464,7 @@ HRESULT BlackmagicCaptureFilter::PinThreadCreated()
 		{
 			#ifndef NO_QUILL
 			LOG_WARNING(mLogData.logger, "[{}] Unable to start input streams (result {:#08x})", mLogData.prefix,
-			            static_cast<unsigned long>(result));
+				static_cast<unsigned long>(result));
 			#endif
 		}
 	}
@@ -1511,7 +1477,7 @@ HRESULT BlackmagicCaptureFilter::PinThreadCreated()
 	return S_OK;
 }
 
-HRESULT BlackmagicCaptureFilter::PinThreadDestroyed()
+HRESULT blackmagic_capture_filter::PinThreadDestroyed()
 {
 	HRESULT result = S_OK;
 	CAutoLock lock(&mDeckLinkSec);
@@ -1534,7 +1500,7 @@ HRESULT BlackmagicCaptureFilter::PinThreadDestroyed()
 		{
 			#ifndef NO_QUILL
 			LOG_WARNING(mLogData.logger, "[{}] Unable to stop input streams (result {:#08x})", mLogData.prefix,
-			            static_cast<unsigned long>(result));
+				static_cast<unsigned long>(result));
 			#endif
 		}
 
@@ -1551,7 +1517,7 @@ HRESULT BlackmagicCaptureFilter::PinThreadDestroyed()
 			{
 				#ifndef NO_QUILL
 				LOG_ERROR(mLogData.logger, "[{}] Unable to DisableAudioInput [{:#08x}]", mLogData.prefix,
-				          static_cast<unsigned long>(result));
+					static_cast<unsigned long>(result));
 				#endif
 			}
 		}
@@ -1567,7 +1533,7 @@ HRESULT BlackmagicCaptureFilter::PinThreadDestroyed()
 		{
 			#ifndef NO_QUILL
 			LOG_ERROR(mLogData.logger, "[{}] Unable to DisableVideoInput [{:#08x}]", mLogData.prefix,
-			          static_cast<unsigned long>(result));
+				static_cast<unsigned long>(result));
 			#endif
 		}
 
@@ -1582,7 +1548,7 @@ HRESULT BlackmagicCaptureFilter::PinThreadDestroyed()
 		{
 			#ifndef NO_QUILL
 			LOG_ERROR(mLogData.logger, "[{}] Unable to unsubscribe from status notifications [{:#08x}]",
-			          mLogData.prefix, static_cast<unsigned long>(result));
+				mLogData.prefix, static_cast<unsigned long>(result));
 			#endif
 		}
 	}
@@ -1593,571 +1559,4 @@ HRESULT BlackmagicCaptureFilter::PinThreadDestroyed()
 		#endif
 	}
 	return result;
-}
-
-
-///////////////////////////////////////////////////////////
-// BlackmagicVideoCapturePin
-///////////////////////////////////////////////////////////
-BlackmagicVideoCapturePin::BlackmagicVideoCapturePin(HRESULT* phr, BlackmagicCaptureFilter* pParent, bool pPreview,
-                                                     VIDEO_FORMAT pVideoFormat):
-	HdmiVideoCapturePin(
-		phr,
-		pParent,
-		pPreview ? "VideoPreview" : "VideoCapture",
-		pPreview ? L"Preview" : L"Capture",
-		pPreview ? "VideoPreview" : "VideoCapture",
-		std::move(pVideoFormat),
-		{
-			// standard consumer formats
-			{YUV2, {YV16, YUV2_YV16}},
-			{V210, {P210, V210_P210}}, // supported natively by madvr
-			{R210, {RGB48, R210_BGR48}}, // supported natively by jrvr >= MC34
-			// unlikely to be seen in the wild so just fallback to RGB using decklink sdk
-			{AY10, {RGBA, ANY_RGB}},
-			{R12B, {RGBA, ANY_RGB}},
-			{R12L, {RGBA, ANY_RGB}},
-			{R10B, {RGBA, ANY_RGB}},
-			{R10L, {RGBA, ANY_RGB}},
-		}
-	)
-{
-}
-
-BlackmagicVideoCapturePin::~BlackmagicVideoCapturePin()
-{
-	mCurrentFrame.reset();
-}
-
-HRESULT BlackmagicVideoCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFERENCE_TIME* pStartTime,
-                                                     REFERENCE_TIME* pEndTime, DWORD dwFlags)
-{
-	auto hasFrame = false;
-	auto retVal = S_FALSE;
-	auto handle = mFilter->GetVideoFrameHandle();
-
-	while (!hasFrame)
-	{
-		if (CheckStreamState(nullptr) == STREAM_DISCARDING)
-		{
-			#ifndef NO_QUILL
-			LOG_TRACE_L1(mLogData.logger, "[{}] Stream is discarding", mLogData.prefix);
-			#endif
-
-			mHasSignal = false;
-			break;
-		}
-		if (IAmStopped())
-		{
-			#ifndef NO_QUILL
-			LOG_TRACE_L1(mLogData.logger, "[{}] Stream has not started, retry after backoff", mLogData.prefix);
-			#endif
-
-			mHasSignal = false;
-			BACKOFF;
-			continue;
-		}
-		// grab next frame 
-		DWORD dwRet = WaitForSingleObject(handle, 1000);
-
-		// unknown, try again
-		if (dwRet == WAIT_FAILED)
-		{
-			#ifndef NO_QUILL
-			LOG_TRACE_L1(mLogData.logger, "[{}] Wait for frame failed, retrying", mLogData.prefix);
-			#endif
-
-			mHasSignal = false;
-			continue;
-		}
-
-		if (dwRet == WAIT_OBJECT_0)
-		{
-			mCurrentFrame = mFilter->GetVideoFrame();
-			auto newVideoFormat = mCurrentFrame->GetVideoFormat();
-			hasFrame = true;
-
-			mHasSignal = true;
-
-			auto hr = OnVideoSignal(newVideoFormat);
-			if (FAILED(hr))
-			{
-				mCurrentFrame.reset();
-				BACKOFF;
-				continue;
-			}
-
-			retVal = VideoCapturePin::GetDeliveryBuffer(ppSample, pStartTime, pEndTime, dwFlags);
-
-			if (FAILED(retVal))
-			{
-				hasFrame = false;
-
-				#ifndef NO_QUILL
-				LOG_WARNING(mLogData.logger,
-				            "[{}] Video frame buffered but unable to get delivery buffer, retry after backoff",
-				            mLogData.prefix);
-				#endif
-			}
-
-			if (hasFrame && mFirst)
-			{
-				OnChangeMediaType();
-			}
-
-			if (!hasFrame)
-			{
-				mCurrentFrame.reset();
-				SHORT_BACKOFF;
-			}
-		}
-	}
-	return retVal;
-}
-
-HRESULT BlackmagicVideoCapturePin::FillBuffer(IMediaSample* pms)
-{
-	auto retVal = S_OK;
-
-	auto endTime = mCurrentFrame->GetFrameTime();
-	auto startTime = endTime - mCurrentFrame->GetFrameDuration();
-	pms->SetTime(&startTime, &endTime);
-	mPreviousFrameTime = mCurrentFrameTime;
-	mCurrentFrameTime = endTime;
-
-	pms->SetSyncPoint(true);
-	auto gap = mCurrentFrame->GetFrameIndex() - mFrameCounter;
-	pms->SetDiscontinuity(gap != 1);
-
-	mFrameCounter = mCurrentFrame->GetFrameIndex();
-
-	AppendHdrSideDataIfNecessary(pms, endTime);
-
-	auto now = get_steady_clock_uptime_mics();
-
-	auto t1 = std::chrono::high_resolution_clock::now();
-
-	if (mFrameWriter->WriteTo(mCurrentFrame.get(), pms) != S_OK)
-	{
-		return S_FALSE;
-	}
-
-	auto t2 = std::chrono::high_resolution_clock::now();
-	auto convLat = duration_cast<std::chrono::microseconds>(t2 - t1).count();
-	auto capLat = now - mCurrentFrame->GetCaptureTime();
-
-	RecordLatency();
-
-	#ifndef NO_QUILL
-	REFERENCE_TIME rt;
-	GetReferenceTime(&rt);
-
-	if (!mLoggedLatencyHeader)
-	{
-		LOG_TRACE_L1(mLogData.videoLat,
-		             "idx,cap_lat,conv_lat,"
-		             "pt,st,et,"
-		             "ct,interval,delta"
-		             "dur,len,gap");
-		mLoggedLatencyHeader = true;
-	}
-	auto frameInterval = mCurrentFrameTime - mPreviousFrameTime;
-	LOG_TRACE_L1(mLogData.videoLat,
-	             "{},{:.3f},{:.3f},"
-	             "{},{},{},"
-	             "{},{},{},"
-	             "{},{},{}",
-	             mFrameCounter, static_cast<double>(capLat) / 1000.0, static_cast<double>(convLat) / 1000.0,
-	             mPreviousFrameTime, startTime, endTime,
-	             rt, frameInterval, frameInterval - mCurrentFrame->GetFrameDuration(),
-	             mCurrentFrame->GetFrameDuration(), mCurrentFrame->GetLength(), gap);
-	#endif
-
-	mCurrentFrame.reset();
-	mCurrentFrame = nullptr;
-
-	if (S_FALSE == HandleStreamStateChange(pms))
-	{
-		retVal = S_FALSE;
-	}
-
-	return retVal;
-}
-
-HRESULT BlackmagicVideoCapturePin::OnThreadCreate()
-{
-	#ifndef NO_QUILL
-	CustomFrontend::preallocate();
-
-	LOG_INFO(mLogData.logger, "[{}] BlackmagicVideoCapturePin::OnThreadCreate", mLogData.prefix);
-	#endif
-
-	UpdateDisplayStatus();
-
-	mRateSwitcher.InitIfNecessary();
-
-	return mFilter->PinThreadCreated();
-}
-
-void BlackmagicVideoCapturePin::DoThreadDestroy()
-{
-	#ifndef NO_QUILL
-	LOG_INFO(mLogData.logger, "[{}] BlackmagicVideoCapturePin::DoThreadDestroy", mLogData.prefix);
-	#endif
-
-	mFilter->PinThreadDestroyed();
-}
-
-void BlackmagicVideoCapturePin::OnChangeMediaType()
-{
-	VideoCapturePin::OnChangeMediaType();
-
-	mFilter->NotifyEvent(EC_VIDEO_SIZE_CHANGED, MAKELPARAM(mVideoFormat.cx, mVideoFormat.cy), 0);
-
-	ALLOCATOR_PROPERTIES props;
-	m_pAllocator->GetProperties(&props);
-	auto bufferSize = props.cbBuffer;
-	auto frameSize = mVideoFormat.imageSize;
-	if (std::cmp_greater(bufferSize, frameSize))
-	{
-		#ifndef NO_QUILL
-		LOG_TRACE_L1(mLogData.logger,
-		             "[{}] Likely padding requested by renderer, frame size is {} but buffer allocated is {}",
-		             mLogData.prefix, frameSize, bufferSize);
-		#endif
-	}
-}
-
-///////////////////////////////////////////////////////////
-// BlackmagicAudioCapturePin
-///////////////////////////////////////////////////////////
-BlackmagicAudioCapturePin::BlackmagicAudioCapturePin(HRESULT* phr, BlackmagicCaptureFilter* pParent, bool pPreview):
-	HdmiAudioCapturePin(
-		phr,
-		pParent,
-		pPreview ? "AudioPreview" : "AudioCapture",
-		pPreview ? L"AudioPreview" : L"AudioCapture",
-		pPreview ? "AudioPreview" : "AudioCapture"
-	)
-{
-}
-
-BlackmagicAudioCapturePin::~BlackmagicAudioCapturePin()
-= default;
-
-HRESULT BlackmagicAudioCapturePin::GetDeliveryBuffer(IMediaSample** ppSample, REFERENCE_TIME* pStartTime,
-                                                     REFERENCE_TIME* pEndTime, DWORD dwFlags)
-{
-	auto hasFrame = false;
-	auto retVal = S_FALSE;
-	auto handle = mFilter->GetAudioFrameHandle();
-	// keep going til we have a frame to process
-	while (!hasFrame)
-	{
-		if (CheckStreamState(nullptr) == STREAM_DISCARDING)
-		{
-			#ifndef NO_QUILL
-			LOG_TRACE_L1(mLogData.logger, "[{}] Stream is discarding", mLogData.prefix);
-			#endif
-
-			break;
-		}
-
-		if (IAmStopped())
-		{
-			#ifndef NO_QUILL
-			LOG_TRACE_L1(mLogData.logger, "[{}] Stream has not started, retry after backoff", mLogData.prefix);
-			#endif
-
-			BACKOFF;
-			continue;
-		}
-
-		// grab next frame 
-		DWORD dwRet = WaitForSingleObject(handle, 1000);
-
-		// unknown, try again
-		if (dwRet == WAIT_FAILED)
-		{
-			#ifndef NO_QUILL
-			LOG_TRACE_L1(mLogData.logger, "[{}] Wait for frame failed, retrying", mLogData.prefix);
-			#endif
-			continue;
-		}
-
-		if (dwRet == WAIT_OBJECT_0)
-		{
-			mCurrentFrame = mFilter->GetAudioFrame();
-			auto newAudioFormat = mCurrentFrame->GetFormat();
-			if (newAudioFormat.outputChannelCount == 0)
-			{
-				#ifndef NO_QUILL
-				LOG_TRACE_L1(mLogData.logger, "[{}] No output channels in signal, retry after backoff",
-				             mLogData.prefix);
-				#endif
-
-				mSinceLast = 0;
-
-				BACKOFF;
-				continue;
-			}
-
-			// detect format changes
-			if (ShouldChangeMediaType(&newAudioFormat))
-			{
-				#ifndef NO_QUILL
-				LOG_WARNING(mLogData.logger, "[{}] AudioFormat changed! Attempting to reconnect", mLogData.prefix);
-				#endif
-
-				CMediaType proposedMediaType(m_mt);
-				AudioFormatToMediaType(&proposedMediaType, &newAudioFormat);
-				auto hr = DoChangeMediaType(&proposedMediaType, &newAudioFormat);
-				if (FAILED(hr))
-				{
-					#ifndef NO_QUILL
-					LOG_WARNING(mLogData.logger,
-					            "[{}] AudioFormat changed but not able to reconnect ({:#08x}) retry after backoff",
-					            mLogData.prefix, static_cast<unsigned long>(hr));
-					#endif
-
-					// TODO communicate that we need to change somehow
-					BACKOFF;
-					continue;
-				}
-
-				mFilter->OnAudioFormatLoaded(&mAudioFormat);
-			}
-
-			retVal = AudioCapturePin::GetDeliveryBuffer(ppSample, pStartTime, pEndTime, dwFlags);
-
-			if (SUCCEEDED(retVal))
-			{
-				hasFrame = true;
-			}
-			else
-			{
-				#ifndef NO_QUILL
-				LOG_WARNING(mLogData.logger,
-				            "[{}] Audio frame buffered but unable to get delivery buffer, retry after backoff",
-				            mLogData.prefix);
-				#endif
-			}
-		}
-		if (!hasFrame)
-			SHORT_BACKOFF;
-	}
-	return retVal;
-}
-
-HRESULT BlackmagicAudioCapturePin::OnThreadCreate()
-{
-	#ifndef NO_QUILL
-	CustomFrontend::preallocate();
-
-	LOG_INFO(mLogData.logger, "[{}] BlackmagicAudioCapturePin::OnThreadCreate", mLogData.prefix);
-	#endif
-
-	return mFilter->PinThreadCreated();
-}
-
-HRESULT BlackmagicAudioCapturePin::FillBuffer(IMediaSample* pms)
-{
-	auto retVal = S_OK;
-
-	if (CheckStreamState(nullptr) == STREAM_DISCARDING)
-	{
-		#ifndef NO_QUILL
-		LOG_TRACE_L1(mLogData.logger, "[{}] Stream is discarding", mLogData.prefix);
-		#endif
-
-		return S_FALSE;
-	}
-
-	BYTE* pmsData;
-	pms->GetPointer(&pmsData);
-
-	auto gap = mCurrentFrame->GetFrameIndex() - mFrameCounter;
-	mFrameCounter = mCurrentFrame->GetFrameIndex();
-
-	long size = mCurrentFrame->GetLength();
-	long maxSize = pms->GetSize();
-	if (size > maxSize)
-	{
-		#ifndef NO_QUILL
-		LOG_WARNING(mLogData.logger, "[{}] Audio frame is larger than expected {} vs {}", mLogData.prefix, size,
-		            maxSize);
-		#endif
-	}
-	long actualSize = std::min(size, maxSize);
-
-	auto endTime = mCurrentFrame->GetFrameTime();
-	auto sampleLength = mAudioFormat.bitDepthInBytes * mAudioFormat.outputChannelCount;
-	auto sampleCount = size / sampleLength;
-	auto frameDuration = mAudioFormat.sampleInterval * sampleCount;
-	auto startTime = std::max(endTime - static_cast<int64_t>(frameDuration), 0LL);
-
-	if (mAudioFormat.outputChannelCount == 2)
-	{
-		memcpy(pmsData, mCurrentFrame->GetData(), actualSize);
-	}
-	else
-	{
-		const uint16_t* inputSamples = static_cast<const uint16_t*>(mCurrentFrame->GetData());
-		uint16_t* outputSamples = reinterpret_cast<uint16_t*>(pmsData);
-		auto inputSampleCount = mCurrentFrame->GetLength() / sizeof(uint16_t);
-		auto i = 0;
-		#ifdef __AVX2__
-		if (mAudioFormat.outputChannelCount == 8 || mAudioFormat.outputChannelCount == 4)
-		{
-			auto chunks = inputSampleCount / 16;
-			const __m256i shuffle_mask = mAudioFormat.outputChannelCount == 8
-				?
-				_mm256_setr_epi8(
-					0, 1, 2, 3, 6, 7, 4, 5, 12, 13, 14, 15, 8, 9, 10, 11,
-					0, 1, 2, 3, 6, 7, 4, 5, 12, 13, 14, 15, 8, 9, 10, 11
-				)
-				:
-				_mm256_setr_epi8(
-					0, 1, 2, 3, 6, 7, 4, 5, 8, 9, 10, 11, 14, 15, 12, 13,
-					0, 1, 2, 3, 6, 7, 4, 5, 8, 9, 10, 11, 14, 15, 12, 13
-				)
-			;
-			for (auto j = 0; j < chunks; j++)
-			{
-				__m256i samples = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(inputSamples + i));
-				__m256i shuffled = _mm256_shuffle_epi8(samples, shuffle_mask);
-				_mm256_storeu_si256(reinterpret_cast<__m256i*>(outputSamples+i), shuffled);
-				i += 16;
-			}
-		}
-		else if (mAudioFormat.outputChannelCount == 6)
-		{
-			// ignore, alignment issues in writing 96 bytes from each lane, maybe use sse instead?
-		}
-		#endif
-		// input is 1 2 3 4 5 6 7 8 repeating but have to swap 3 and 4 & 5/6 7/8
-		if (mAudioFormat.outputChannelCount == 8)
-		{
-			for (; i < inputSampleCount - 7; i += mAudioFormat.outputChannelCount)
-			{
-				outputSamples[i] = inputSamples[i]; // L
-				outputSamples[i + 1] = inputSamples[i + 1]; // R
-				outputSamples[i + 2] = inputSamples[i + 3]; // C
-				outputSamples[i + 3] = inputSamples[i + 2]; // LFE
-				outputSamples[i + 4] = inputSamples[i + 6]; // SL
-				outputSamples[i + 5] = inputSamples[i + 7]; // SR
-				outputSamples[i + 6] = inputSamples[i + 4]; // BL
-				outputSamples[i + 7] = inputSamples[i + 5]; // BR
-			}
-		}
-		else if (mAudioFormat.outputChannelCount == 6)
-		{
-			for (; i < inputSampleCount - 5; i += mAudioFormat.outputChannelCount)
-			{
-				outputSamples[i] = inputSamples[i];
-				outputSamples[i + 1] = inputSamples[i + 1];
-				outputSamples[i + 2] = inputSamples[i + 3];
-				outputSamples[i + 3] = inputSamples[i + 2];
-				outputSamples[i + 4] = inputSamples[i + 4];
-				outputSamples[i + 5] = inputSamples[i + 5];
-			}
-		}
-		else if (mAudioFormat.outputChannelCount == 4)
-		{
-			for (; i < inputSampleCount - 3; i += mAudioFormat.outputChannelCount)
-			{
-				outputSamples[i] = inputSamples[i];
-				outputSamples[i + 1] = inputSamples[i + 1];
-				outputSamples[i + 2] = inputSamples[i + 3];
-				outputSamples[i + 3] = inputSamples[i + 2];
-			}
-		}
-	}
-
-	pms->SetTime(&startTime, &endTime);
-	pms->SetSyncPoint(true);
-	pms->SetDiscontinuity(gap != 1);
-	pms->SetActualDataLength(actualSize);
-
-	mPreviousFrameTime = mCurrentFrameTime;
-	mCurrentFrameTime = endTime;
-
-	REFERENCE_TIME now;
-	mFilter->GetReferenceTime(&now);
-	auto capLat = now - mCurrentFrame->GetCaptureTime();
-	RecordLatency();
-
-	#ifndef NO_QUILL
-	if (!mLoggedLatencyHeader)
-	{
-		LOG_TRACE_L1(mLogData.audioLat,
-		             "codec,idx,lat,"
-		             "pt,st,et,"
-		             "ct,delta,len,"
-		             "count,gap");
-		mLoggedLatencyHeader = true;
-	}
-	LOG_TRACE_L1(mLogData.audioLat,
-	             "{},{},{},"
-	             "{},{},{},"
-	             "{},{},{},"
-	             "{},{}",
-	             codecNames[mAudioFormat.codec], mFrameCounter, capLat,
-	             mPreviousFrameTime, startTime, mCurrentFrameTime,
-	             now, mCurrentFrameTime - mPreviousFrameTime, mCurrentFrame->GetLength(),
-	             sampleCount, gap);
-	#endif
-
-	if (mUpdatedMediaType)
-	{
-		CMediaType cmt(m_mt);
-		AM_MEDIA_TYPE* sendMediaType = CreateMediaType(&cmt);
-		pms->SetMediaType(sendMediaType);
-		DeleteMediaType(sendMediaType);
-		mUpdatedMediaType = false;
-	}
-	if (S_FALSE == HandleStreamStateChange(pms))
-	{
-		retVal = S_FALSE;
-	}
-	return retVal;
-}
-
-HRESULT BlackmagicAudioCapturePin::DoChangeMediaType(const CMediaType* pmt, const AUDIO_FORMAT* newAudioFormat)
-{
-	#ifndef NO_QUILL
-	LOG_WARNING(mLogData.logger, "[{}] Proposing new audio format Fs: {} Bits: {} Channels: {} Codec: {}",
-	            mLogData.prefix,
-	            newAudioFormat->fs, newAudioFormat->bitDepth, newAudioFormat->outputChannelCount,
-	            codecNames[newAudioFormat->codec]);
-	#endif
-	long newSize = maxSamplesPerFrame * newAudioFormat->bitDepthInBytes * newAudioFormat->outputChannelCount;
-	long oldSize = maxSamplesPerFrame * mAudioFormat.bitDepthInBytes * mAudioFormat.outputChannelCount;
-	auto shouldRenegotiateOnQueryAccept = newSize != oldSize || mAudioFormat.codec != newAudioFormat->codec;
-	auto retVal = RenegotiateMediaType(pmt, newSize, shouldRenegotiateOnQueryAccept);
-	if (retVal == S_OK)
-	{
-		mAudioFormat = *newAudioFormat;
-	}
-	return retVal;
-}
-
-bool BlackmagicAudioCapturePin::ProposeBuffers(ALLOCATOR_PROPERTIES* pProperties)
-{
-	pProperties->cbBuffer = maxSamplesPerFrame * mAudioFormat.bitDepthInBytes * mAudioFormat.outputChannelCount;
-	if (pProperties->cBuffers < 1)
-	{
-		pProperties->cBuffers = 16;
-		return false;
-	}
-	return true;
-}
-
-void BlackmagicAudioCapturePin::DoThreadDestroy()
-{
-	#ifndef NO_QUILL
-	LOG_INFO(mLogData.logger, "[{}] BlackmagicAudioCapturePin::DoThreadDestroy", mLogData.prefix);
-	#endif
-
-	mFilter->PinThreadDestroyed();
 }

@@ -16,9 +16,9 @@
 #define BM_STRAIGHT_THROUGH_HEADER
 
 #include "VideoFrameWriter.h"
-#include "bmdomain.h"
+#include "video_frame.h"
 
-class StraightThrough : public IVideoFrameWriter<VideoFrame>
+class StraightThrough : public IVideoFrameWriter<video_frame>
 {
 public:
 	StraightThrough(const log_data& pLogData, int pX, int pY, const pixel_format* pPixelFormat)
@@ -28,7 +28,7 @@ public:
 
 	~StraightThrough() override = default;
 
-	HRESULT WriteTo(VideoFrame* srcFrame, IMediaSample* dstFrame) override
+	HRESULT WriteTo(video_frame* srcFrame, IMediaSample* dstFrame) override
 	{
 		if (S_FALSE == CheckFrameSizes(srcFrame->GetFrameIndex(), mOutputImageSize, dstFrame))
 		{

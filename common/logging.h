@@ -29,9 +29,9 @@
 #include "quill/LogMacros.h"
 #include "quill/std/WideString.h"
 
-constexpr std::string_view audioLatencyLoggerName{"aLat"};
-constexpr std::string_view videoLatencyLoggerName{"vLat"};
-constexpr std::string_view filterLoggerName{"filter"};
+inline constexpr std::string_view audioLatencyLoggerName{"aLat"};
+inline constexpr std::string_view videoLatencyLoggerName{"vLat"};
+inline constexpr std::string_view filterLoggerName{"filter"};
 
 struct CustomFrontendOptions
 {
