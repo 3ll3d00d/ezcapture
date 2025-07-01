@@ -347,7 +347,7 @@ void magewell_audio_capture_pin::CaptureFrame(const BYTE* pbFrame, int cbFrame, 
 	}
 }
 
-HRESULT magewell_audio_capture_pin::DoChangeMediaType(const CMediaType* pmt, const AUDIO_FORMAT* newAudioFormat)
+HRESULT magewell_audio_capture_pin::DoChangeMediaType(const CMediaType* pmt, const audio_format* newAudioFormat)
 {
 	#ifndef NO_QUILL
 	LOG_WARNING(mLogData.logger, "[{}] Proposing new audio format Fs: {} Bits: {} Channels: {} Codec: {}",
@@ -453,7 +453,7 @@ HRESULT magewell_audio_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample, R
 			continue;
 		}
 
-		AUDIO_FORMAT newAudioFormat(mAudioFormat);
+		audio_format newAudioFormat(mAudioFormat);
 		LoadFormat(&newAudioFormat, &mAudioSignal);
 
 		if (newAudioFormat.outputChannelCount == 0)
@@ -629,7 +629,7 @@ HRESULT magewell_audio_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample, R
 			fwrite(mFrameBuffer, maxFrameLengthInBytes, 1, mRawFile);
 			#endif
 
-			Codec* detectedCodec = &newAudioFormat.codec;
+			codec* detectedCodec = &newAudioFormat.codec;
 			const auto mightBeBitstream = newAudioFormat.fs >= 48000 && mSinceLast < mBitstreamDetectionWindowLength;
 			const auto examineBitstream = newAudioFormat.codec != PCM || mightBeBitstream || mDataBurstSize > 0;
 			if (examineBitstream)
@@ -1080,7 +1080,7 @@ void magewell_audio_capture_pin::CopyToBitstreamBuffer(BYTE* buf)
 }
 
 // probes a non PCM buffer for the codec based on format of the IEC 61937 dataframes and/or copies the content to the data burst burffer
-HRESULT magewell_audio_capture_pin::ParseBitstreamBuffer(uint16_t bufSize, enum Codec** codec)
+HRESULT magewell_audio_capture_pin::ParseBitstreamBuffer(uint16_t bufSize, enum codec** codec)
 {
 	uint16_t bytesRead = 0;
 	bool copiedBytes = false;
@@ -1252,7 +1252,7 @@ HRESULT magewell_audio_capture_pin::ParseBitstreamBuffer(uint16_t bufSize, enum 
 // identifies codecs that are known/expected to be carried via HDMI in an AV setup
 // from IEC 61937-2 Table 2
 HRESULT magewell_audio_capture_pin::GetCodecFromIEC61937Preamble(const IEC61937DataType dataType, uint16_t* burstSize,
-                                                                 Codec* codec)
+                                                                 codec* codec)
 {
 	switch (dataType & 0xff)
 	{
@@ -1290,7 +1290,7 @@ HRESULT magewell_audio_capture_pin::GetCodecFromIEC61937Preamble(const IEC61937D
 	return S_OK;
 }
 
-void magewell_audio_capture_pin::LoadFormat(AUDIO_FORMAT* audioFormat, const audio_signal* audioSignal) const
+void magewell_audio_capture_pin::LoadFormat(audio_format* audioFormat, const audio_signal* audioSignal) const
 {
 	auto audioIn = *audioSignal;
 	auto currentChannelAlloc = audioFormat->channelAllocation;

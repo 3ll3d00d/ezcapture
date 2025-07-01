@@ -94,7 +94,7 @@ public:
 
 protected:
 	video_capture_pin(HRESULT* phr, CSource* pParent, LPCSTR pObjectName, LPCWSTR pPinName, std::string pLogPrefix,
-	                  const VIDEO_FORMAT& pVideoFormat, pixel_format_fallbacks pFallbacks, device_type pType) :
+	                  const video_format& pVideoFormat, pixel_format_fallbacks pFallbacks, device_type pType) :
 		capture_pin(phr, pParent, pObjectName, pPinName, pLogPrefix, pType, true),
 		mVideoFormat(pVideoFormat),
 		mSignalledFormat(pVideoFormat.pixelFormat),
@@ -137,9 +137,9 @@ protected:
 	// CapturePin
 	bool ProposeBuffers(ALLOCATOR_PROPERTIES* pProperties) override;
 
-	void VideoFormatToMediaType(CMediaType* pmt, VIDEO_FORMAT* videoFormat) const;
-	bool ShouldChangeMediaType(VIDEO_FORMAT* newVideoFormat, bool pixelFallBackIsActive = false);
-	HRESULT DoChangeMediaType(const CMediaType* pNewMt, const VIDEO_FORMAT* newVideoFormat);
+	void VideoFormatToMediaType(CMediaType* pmt, video_format* videoFormat) const;
+	bool ShouldChangeMediaType(video_format* newVideoFormat, bool pixelFallBackIsActive = false);
+	HRESULT DoChangeMediaType(const CMediaType* pNewMt, const video_format* newVideoFormat);
 	virtual void UpdateDisplayStatus() = 0;
 
 	virtual void OnChangeMediaType()
@@ -152,7 +152,7 @@ protected:
 
 	virtual void DoSwitchMode() = 0;
 
-	VIDEO_FORMAT mVideoFormat{};
+	video_format mVideoFormat{};
 	pixel_format mSignalledFormat{NA};
 	pixel_format_fallbacks mFormatFallbacks{};
 };
@@ -162,7 +162,7 @@ class hdmi_video_capture_pin : public video_capture_pin
 {
 public:
 	hdmi_video_capture_pin(HRESULT* phr, F* pParent, LPCSTR pObjectName, LPCWSTR pPinName, std::string pLogPrefix,
-	                       VIDEO_FORMAT pVideoFormat, pixel_format_fallbacks pFallbacks, device_type pType)
+	                       video_format pVideoFormat, pixel_format_fallbacks pFallbacks, device_type pType)
 		: video_capture_pin(phr, pParent, pObjectName, pPinName, pLogPrefix, pVideoFormat, pFallbacks, pType),
 		  mFilter(pParent),
 		  mRateSwitcher(pLogPrefix, [this](const mode_switch_result& result)
@@ -237,7 +237,7 @@ protected:
 		OnFrameWriterStrategyUpdated();
 	}
 
-	boolean IsFallbackActive(const VIDEO_FORMAT* newVideoFormat) const
+	boolean IsFallbackActive(const video_format* newVideoFormat) const
 	{
 		if (newVideoFormat->pixelFormat.format != mVideoFormat.pixelFormat.format)
 		{
@@ -381,14 +381,14 @@ protected:
 		}
 	}
 
-	void LogHdrMetaIfPresent(const VIDEO_FORMAT* newVideoFormat) const
+	void LogHdrMetaIfPresent(const video_format* newVideoFormat) const
 	{
 		#ifndef NO_QUILL
 		logHdrMeta(newVideoFormat->hdrMeta, mVideoFormat.hdrMeta, mLogData);
 		#endif
 	}
 
-	HRESULT OnVideoSignal(VIDEO_FORMAT newVideoFormat)
+	HRESULT OnVideoSignal(video_format newVideoFormat)
 	{
 		auto retVal = S_RECONNECTION_UNNECESSARY;
 

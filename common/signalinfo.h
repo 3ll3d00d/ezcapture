@@ -41,18 +41,18 @@ DEFINE_GUID(IID_ISignalInfoCB,
 
 interface __declspec(uuid("4D6B8852-06A6-4997-BC07-3507BB77F748")) ISignalInfoCB
 {
-	STDMETHOD(Reload)(AUDIO_INPUT_STATUS* payload) = 0;
-	STDMETHOD(Reload)(AUDIO_OUTPUT_STATUS* payload) = 0;
-	STDMETHOD(Reload)(VIDEO_INPUT_STATUS* payload) = 0;
-	STDMETHOD(Reload)(VIDEO_OUTPUT_STATUS* payload) = 0;
-	STDMETHOD(Reload)(HDR_STATUS* payload) = 0;
-	STDMETHOD(Reload)(DEVICE_STATUS* payload) = 0;
-	STDMETHOD(Reload)(DISPLAY_STATUS* payload) = 0;
-	STDMETHOD(ReloadV1)(CAPTURE_LATENCY* payload) = 0;
-	STDMETHOD(ReloadV2)(CAPTURE_LATENCY* payload) = 0;
-	STDMETHOD(ReloadV3)(CAPTURE_LATENCY* payload) = 0;
-	STDMETHOD(ReloadA1)(CAPTURE_LATENCY* payload) = 0;
-	STDMETHOD(ReloadA2)(CAPTURE_LATENCY* payload) = 0;
+	STDMETHOD(Reload)(audio_input_status* payload) = 0;
+	STDMETHOD(Reload)(audio_output_status* payload) = 0;
+	STDMETHOD(Reload)(video_input_status* payload) = 0;
+	STDMETHOD(Reload)(video_output_status* payload) = 0;
+	STDMETHOD(Reload)(hdr_status* payload) = 0;
+	STDMETHOD(Reload)(device_status* payload) = 0;
+	STDMETHOD(Reload)(display_status* payload) = 0;
+	STDMETHOD(ReloadV1)(latency_stats* payload) = 0;
+	STDMETHOD(ReloadV2)(latency_stats* payload) = 0;
+	STDMETHOD(ReloadV3)(latency_stats* payload) = 0;
+	STDMETHOD(ReloadA1)(latency_stats* payload) = 0;
+	STDMETHOD(ReloadA2)(latency_stats* payload) = 0;
 	STDMETHOD(ReloadProfiles)(const bool& rateEnabled, const bool& profileEnabled, const DWORD& hdr, const DWORD & sdr) = 0;
 };
 
@@ -87,18 +87,18 @@ public:
 	HRESULT OnApplyChanges() override;
 	INT_PTR OnReceiveMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override;
 	// ISignalInfoCB
-	HRESULT Reload(AUDIO_INPUT_STATUS* payload) override;
-	HRESULT Reload(AUDIO_OUTPUT_STATUS* payload) override;
-	HRESULT Reload(VIDEO_INPUT_STATUS* payload) override;
-	HRESULT Reload(VIDEO_OUTPUT_STATUS* payload) override;
-	HRESULT Reload(HDR_STATUS* payload) override;
-	HRESULT Reload(DEVICE_STATUS* payload) override;
-	HRESULT Reload(DISPLAY_STATUS* payload) override;
-	HRESULT ReloadV1(CAPTURE_LATENCY* payload) override;
-	HRESULT ReloadV2(CAPTURE_LATENCY* payload) override;
-	HRESULT ReloadV3(CAPTURE_LATENCY* payload) override;
-	HRESULT ReloadA1(CAPTURE_LATENCY* payload) override;
-	HRESULT ReloadA2(CAPTURE_LATENCY* payload) override;
+	HRESULT Reload(audio_input_status* payload) override;
+	HRESULT Reload(audio_output_status* payload) override;
+	HRESULT Reload(video_input_status* payload) override;
+	HRESULT Reload(video_output_status* payload) override;
+	HRESULT Reload(hdr_status* payload) override;
+	HRESULT Reload(device_status* payload) override;
+	HRESULT Reload(display_status* payload) override;
+	HRESULT ReloadV1(latency_stats* payload) override;
+	HRESULT ReloadV2(latency_stats* payload) override;
+	HRESULT ReloadV3(latency_stats* payload) override;
+	HRESULT ReloadA1(latency_stats* payload) override;
+	HRESULT ReloadA2(latency_stats* payload) override;
 	HRESULT ReloadProfiles(const bool& rateEnabled, const bool& profileEnabled, const DWORD& hdr, const DWORD& sdr) override;
 
 private:

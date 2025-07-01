@@ -93,7 +93,7 @@ inline void logVideoMediaType(const log_data& log, const std::string& desc, cons
 	#endif
 }
 
-inline void doLogHdrMeta(const HDR_META& newMeta, const log_data& log, bool logPrimaries, bool logWp, bool logMax,
+inline void doLogHdrMeta(const hdr_meta& newMeta, const log_data& log, bool logPrimaries, bool logWp, bool logMax,
                          bool logTf)
 {
 	#ifndef NO_QUILL
@@ -121,7 +121,7 @@ inline void doLogHdrMeta(const HDR_META& newMeta, const log_data& log, bool logP
 	#endif
 }
 
-inline void logHdrMeta(const HDR_META& newMeta, const HDR_META& oldMeta, const log_data& log)
+inline void logHdrMeta(const hdr_meta& newMeta, const hdr_meta& oldMeta, const log_data& log)
 {
 	#ifndef NO_QUILL
 	if (newMeta.exists())

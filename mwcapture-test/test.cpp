@@ -6,7 +6,7 @@
 
 TEST(HDR, CanParseHDRInfoFrame)
 {
-	HDR_META o{};
+	hdr_meta o{};
 	HDMI_HDR_INFOFRAME_PAYLOAD i{
 		//02 00 34 21 AA 9B 96 19 FC 08 48 8A 08 39 13 3D 42 40 9F 0F 32 00 A0 0F E8 03 
 		.byEOTF = 0x02,

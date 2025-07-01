@@ -48,7 +48,7 @@ public:
 	HRESULT FillBuffer(IMediaSample* pms) override;
 
 protected:
-	HRESULT DoChangeMediaType(const CMediaType* pmt, const AUDIO_FORMAT* newAudioFormat);
+	HRESULT DoChangeMediaType(const CMediaType* pmt, const audio_format* newAudioFormat);
 	bool ProposeBuffers(ALLOCATOR_PROPERTIES* pProperties) override;
 	void DoThreadDestroy() override;
 

@@ -96,11 +96,11 @@ public:
 			mInfoCallback->Reload(&mHdrStatus);
 			mInfoCallback->Reload(&mDeviceStatus);
 			mInfoCallback->Reload(&mDisplayStatus);
-			mInfoCallback->ReloadV1(&mVideoCaptureLatencyStatus);
-			mInfoCallback->ReloadV2(&mVideoConversionLatencyStatus);
-			mInfoCallback->ReloadV3(&mVideoAllocatorLatencyStatus);
-			mInfoCallback->ReloadA1(&mAudioCaptureLatencyStatus);
-			mInfoCallback->ReloadA2(&mAudioAllocatorLatencyStatus);
+			mInfoCallback->ReloadV1(&mVideoLatencyStats1);
+			mInfoCallback->ReloadV2(&mVideoLatencyStats2);
+			mInfoCallback->ReloadV3(&mVideoLatencyStats3);
+			mInfoCallback->ReloadA1(&mAudioLatencyStats1);
+			mInfoCallback->ReloadA2(&mAudioLatencyStats2);
 			mInfoCallback->ReloadProfiles(mRefreshRateSwitchEnabled, mHdrProfileSwitchEnabled, mHdrProfile,
 				mSdrProfile);
 			return S_OK;
@@ -162,62 +162,38 @@ public:
 	STDMETHODIMP CreatePage(const GUID& guid, IPropertyPage** ppPage) override;
 
 	void OnModeUpdated(const mode_switch_result& result);
-	void OnVideoFormatLoaded(VIDEO_FORMAT* vf);
-	void OnAudioFormatLoaded(AUDIO_FORMAT* af);
+	void OnVideoFormatLoaded(video_format* vf);
+	void OnAudioFormatLoaded(audio_format* af);
 	void OnHdrUpdated(MediaSideDataHDR* hdr, MediaSideDataHDRContentLightLevel* light);
 
 	void RecordVideoFrameLatency(const frame_metrics& metrics)
 	{
-		// TODO impl
+		CaptureLatency(metrics.m1, mVideoLatencyStats1, metrics.name1);
+		CaptureLatency(metrics.m2, mVideoLatencyStats1, metrics.name2);
+		bool has3 = !metrics.name3.empty();
+		if (has3)
+		{
+			CaptureLatency(metrics.m3, mVideoLatencyStats1, metrics.name3);
+		}
+		if (mInfoCallback != nullptr)
+		{
+			mInfoCallback->ReloadV1(&mVideoLatencyStats1);
+			mInfoCallback->ReloadV2(&mVideoLatencyStats2);
+			if (has3)
+			{
+				mInfoCallback->ReloadV3(&mVideoLatencyStats3);
+			}
+		}
 	}
 
 	void RecordAudioFrameLatency(const frame_metrics& metrics)
 	{
-		// TODO impl
-	}
-
-	void OnVideoCaptureLatencyUpdated(const metric& metric)
-	{
-		CaptureLatency(metric, mVideoCaptureLatencyStatus, "Video Capture");
+		CaptureLatency(metrics.m1, mAudioLatencyStats1, metrics.name1);
+		CaptureLatency(metrics.m2, mAudioLatencyStats1, metrics.name2);
 		if (mInfoCallback != nullptr)
 		{
-			mInfoCallback->ReloadV1(&mVideoCaptureLatencyStatus);
-		}
-	}
-
-	void OnVideoConversionLatencyUpdated(const metric& metric)
-	{
-		CaptureLatency(metric, mVideoConversionLatencyStatus, "Video Conversion");
-		if (mInfoCallback != nullptr)
-		{
-			mInfoCallback->ReloadV2(&mVideoConversionLatencyStatus);
-		}
-	}
-
-	void OnVideoAllocatorLatencyUpdated(const metric& metric)
-	{
-		CaptureLatency(metric, mVideoAllocatorLatencyStatus, "Video Allocator");
-		if (mInfoCallback != nullptr)
-		{
-			mInfoCallback->ReloadV3(&mVideoAllocatorLatencyStatus);
-		}
-	}
-
-	void OnAudioCaptureLatencyUpdated(const metric& metric)
-	{
-		CaptureLatency(metric, mAudioCaptureLatencyStatus, "Audio Capture");
-		if (mInfoCallback != nullptr)
-		{
-			mInfoCallback->ReloadA1(&mAudioCaptureLatencyStatus);
-		}
-	}
-
-	void OnAudioAllocatorLatencyUpdated(const metric& metric)
-	{
-		CaptureLatency(metric, mAudioAllocatorLatencyStatus, "Audio Allocator");
-		if (mInfoCallback != nullptr)
-		{
-			mInfoCallback->ReloadA2(&mAudioAllocatorLatencyStatus);
+			mInfoCallback->ReloadA1(&mVideoLatencyStats1);
+			mInfoCallback->ReloadA2(&mVideoLatencyStats2);
 		}
 	}
 
@@ -234,18 +210,18 @@ protected:
 
 	log_data mLogData{};
 	IReferenceClock* mClock;
-	DEVICE_STATUS mDeviceStatus{};
-	DISPLAY_STATUS mDisplayStatus{};
-	AUDIO_INPUT_STATUS mAudioInputStatus{};
-	AUDIO_OUTPUT_STATUS mAudioOutputStatus{};
-	VIDEO_INPUT_STATUS mVideoInputStatus{};
-	VIDEO_OUTPUT_STATUS mVideoOutputStatus{};
-	CAPTURE_LATENCY mVideoCaptureLatencyStatus{};
-	CAPTURE_LATENCY mVideoConversionLatencyStatus{};
-	CAPTURE_LATENCY mVideoAllocatorLatencyStatus{};
-	CAPTURE_LATENCY mAudioCaptureLatencyStatus{};
-	CAPTURE_LATENCY mAudioAllocatorLatencyStatus{};
-	HDR_STATUS mHdrStatus{};
+	device_status mDeviceStatus{};
+	display_status mDisplayStatus{};
+	audio_input_status mAudioInputStatus{};
+	audio_output_status mAudioOutputStatus{};
+	video_input_status mVideoInputStatus{};
+	video_output_status mVideoOutputStatus{};
+	latency_stats mVideoLatencyStats1{};
+	latency_stats mVideoLatencyStats2{};
+	latency_stats mVideoLatencyStats3{};
+	latency_stats mAudioLatencyStats1{};
+	latency_stats mAudioLatencyStats2{};
+	hdr_status mHdrStatus{};
 	ISignalInfoCB* mInfoCallback = nullptr;
 	std::set<DWORD> mRefreshRates{};
 	std::wstring mRegKeyBase{};
@@ -255,11 +231,12 @@ protected:
 	bool mRefreshRateSwitchEnabled{ true };
 
 private:
-	void CaptureLatency(const metric& metric, CAPTURE_LATENCY& lat, const std::string& desc)
+	void CaptureLatency(const metric& metric, latency_stats& lat, const std::string& desc)
 	{
 		lat.min = metric.min();
 		lat.mean = metric.mean();
 		lat.max = metric.max();
+		lat.name = desc;
 
 		#ifndef NO_QUILL
 		LOG_TRACE_L2(mLogData.logger, "[{}] {} latency stats {:.3f},{:.3f},{:.3f}", mLogData.prefix,

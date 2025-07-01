@@ -416,7 +416,7 @@ void capture_filter::OnModeUpdated(const mode_switch_result& result)
 	}
 }
 
-void capture_filter::OnVideoFormatLoaded(VIDEO_FORMAT* vf)
+void capture_filter::OnVideoFormatLoaded(video_format* vf)
 {
 	mVideoOutputStatus.outX = vf->cx;
 	mVideoOutputStatus.outY = vf->cy;
@@ -548,7 +548,7 @@ void capture_filter::OnHdrUpdated(MediaSideDataHDR* hdr, MediaSideDataHDRContent
 	}
 }
 
-void capture_filter::OnAudioFormatLoaded(AUDIO_FORMAT* af)
+void capture_filter::OnAudioFormatLoaded(audio_format* af)
 {
 	mAudioOutputStatus.audioOutChannelLayout = af->channelLayout;
 	mAudioOutputStatus.audioOutBitDepth = af->bitDepth;

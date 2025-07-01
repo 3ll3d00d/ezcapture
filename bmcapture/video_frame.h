@@ -29,7 +29,7 @@
 class video_frame
 {
 public:
-	video_frame(log_data logData, VIDEO_FORMAT format, int64_t captureTime, int64_t frameTime, int64_t duration,
+	video_frame(log_data logData, video_format format, int64_t captureTime, int64_t frameTime, int64_t duration,
 		uint64_t index, IDeckLinkVideoFrame* frame) :
 		mFormat(std::move(format)),
 		mCaptureTime(captureTime),
@@ -103,7 +103,7 @@ public:
 
 	int64_t GetFrameDuration() const { return mFrameDuration; }
 
-	VIDEO_FORMAT GetVideoFormat() const { return mFormat; }
+	video_format GetVideoFormat() const { return mFormat; }
 
 	int GetWidth() const { return mFormat.cx; }
 
@@ -114,7 +114,7 @@ public:
 	IDeckLinkVideoFrame* GetRawFrame() const { return mFrame; }
 
 private:
-	VIDEO_FORMAT mFormat{};
+	video_format mFormat{};
 	int64_t mCaptureTime{ 0 };
 	int64_t mFrameTime{ 0 };
 	int64_t mFrameDuration{ 0 };

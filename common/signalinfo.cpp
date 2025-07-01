@@ -234,7 +234,7 @@ INT_PTR CSignalInfoProp::OnReceiveMessage(HWND hwnd, UINT uMsg, WPARAM wParam, L
 	return CBasePropertyPage::OnReceiveMessage(hwnd, uMsg, wParam, lParam);
 }
 
-HRESULT CSignalInfoProp::Reload(AUDIO_INPUT_STATUS* payload)
+HRESULT CSignalInfoProp::Reload(audio_input_status* payload)
 {
 	WCHAR buffer[28];
 	_snwprintf_s(buffer, _TRUNCATE, L"%hs", payload->audioInStatus ? "LOCKED" : "NONE");
@@ -255,7 +255,7 @@ HRESULT CSignalInfoProp::Reload(AUDIO_INPUT_STATUS* payload)
 	return S_OK;
 }
 
-HRESULT CSignalInfoProp::Reload(AUDIO_OUTPUT_STATUS* payload)
+HRESULT CSignalInfoProp::Reload(audio_output_status* payload)
 {
 	WCHAR buffer[28];
 	_snwprintf_s(buffer, _TRUNCATE, L"%hs", payload->audioOutCodec.c_str());
@@ -291,7 +291,7 @@ HRESULT CSignalInfoProp::Reload(AUDIO_OUTPUT_STATUS* payload)
 	return S_OK;
 }
 
-HRESULT CSignalInfoProp::Reload(VIDEO_INPUT_STATUS* payload)
+HRESULT CSignalInfoProp::Reload(video_input_status* payload)
 {
 	WCHAR buffer[28];
 	_snwprintf_s(buffer, _TRUNCATE, L"%d x %d (%d:%d) %d bit", payload->inX, payload->inY, payload->inAspectX,
@@ -314,7 +314,7 @@ HRESULT CSignalInfoProp::Reload(VIDEO_INPUT_STATUS* payload)
 	return S_OK;
 }
 
-HRESULT CSignalInfoProp::Reload(VIDEO_OUTPUT_STATUS* payload)
+HRESULT CSignalInfoProp::Reload(video_output_status* payload)
 {
 	WCHAR buffer[28];
 	_snwprintf_s(buffer, _TRUNCATE, L"%d x %d (%d:%d) %d bit", payload->outX, payload->outY, payload->outAspectX,
@@ -335,7 +335,7 @@ HRESULT CSignalInfoProp::Reload(VIDEO_OUTPUT_STATUS* payload)
 	return S_OK;
 }
 
-HRESULT CSignalInfoProp::Reload(HDR_STATUS* payload)
+HRESULT CSignalInfoProp::Reload(hdr_status* payload)
 {
 	WCHAR buffer[28];
 	if (payload->hdrOn)
@@ -369,7 +369,7 @@ HRESULT CSignalInfoProp::Reload(HDR_STATUS* payload)
 	return S_OK;
 }
 
-HRESULT CSignalInfoProp::Reload(DEVICE_STATUS* payload)
+HRESULT CSignalInfoProp::Reload(device_status* payload)
 {
 	WCHAR buffer[256];
 	if (!payload->deviceDesc.empty())
@@ -434,7 +434,7 @@ HRESULT CSignalInfoProp::Reload(DEVICE_STATUS* payload)
 	return S_OK;
 }
 
-HRESULT CSignalInfoProp::Reload(DISPLAY_STATUS* payload)
+HRESULT CSignalInfoProp::Reload(display_status* payload)
 {
 	if (!payload->status.empty())
 	{
@@ -445,7 +445,7 @@ HRESULT CSignalInfoProp::Reload(DISPLAY_STATUS* payload)
 	return S_OK;
 }
 
-HRESULT CSignalInfoProp::ReloadV1(CAPTURE_LATENCY* payload)
+HRESULT CSignalInfoProp::ReloadV1(latency_stats* payload)
 {
 	WCHAR buffer[256];
 	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / 1000.0,
@@ -454,7 +454,7 @@ HRESULT CSignalInfoProp::ReloadV1(CAPTURE_LATENCY* payload)
 	return S_OK;
 }
 
-HRESULT CSignalInfoProp::ReloadV2(CAPTURE_LATENCY* payload)
+HRESULT CSignalInfoProp::ReloadV2(latency_stats* payload)
 {
 	WCHAR buffer[256];
 	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / 1000.0,
@@ -463,7 +463,7 @@ HRESULT CSignalInfoProp::ReloadV2(CAPTURE_LATENCY* payload)
 	return S_OK;
 }
 
-HRESULT CSignalInfoProp::ReloadV3(CAPTURE_LATENCY* payload)
+HRESULT CSignalInfoProp::ReloadV3(latency_stats* payload)
 {
 	WCHAR buffer[256];
 	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / 1000.0,
@@ -472,7 +472,7 @@ HRESULT CSignalInfoProp::ReloadV3(CAPTURE_LATENCY* payload)
 	return S_OK;
 }
 
-HRESULT CSignalInfoProp::ReloadA1(CAPTURE_LATENCY* payload)
+HRESULT CSignalInfoProp::ReloadA1(latency_stats* payload)
 {
 	WCHAR buffer[256];
 	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / 1000.0,
@@ -481,7 +481,7 @@ HRESULT CSignalInfoProp::ReloadA1(CAPTURE_LATENCY* payload)
 	return S_OK;
 }
 
-HRESULT CSignalInfoProp::ReloadA2(CAPTURE_LATENCY* payload)
+HRESULT CSignalInfoProp::ReloadA2(latency_stats* payload)
 {
 	WCHAR buffer[256];
 	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / 1000.0,

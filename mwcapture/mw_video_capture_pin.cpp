@@ -419,7 +419,7 @@ magewell_video_capture_pin::magewell_video_capture_pin(HRESULT* phr, magewell_ca
 		pPreview ? "VideoPreview" : "VideoCapture",
 		pPreview ? L"Preview" : L"Capture",
 		pPreview ? "VideoPreview" : "VideoCapture",
-		VIDEO_FORMAT{},
+		video_format{},
 		{
 			{UYVY, {YV16, UYVY_YV16}},
 			{YUY2, {YV16, YUY2_YV16}},
@@ -577,7 +577,7 @@ void magewell_video_capture_pin::DoThreadDestroy()
 	}
 }
 
-void magewell_video_capture_pin::LoadFormat(VIDEO_FORMAT* videoFormat, video_signal* videoSignal,
+void magewell_video_capture_pin::LoadFormat(video_format* videoFormat, video_signal* videoSignal,
                                             const usb_capture_formats* captureFormats)
 {
 	auto subsampling = RGB_444;
@@ -935,7 +935,7 @@ HRESULT magewell_video_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample, R
 			mHasSignal = false;
 		}
 
-		VIDEO_FORMAT newVideoFormat;
+		video_format newVideoFormat;
 		LoadFormat(&newVideoFormat, &mVideoSignal, &mUsbCaptureFormats);
 
 		auto shouldResize = newVideoFormat.frameInterval != mVideoFormat.frameInterval;

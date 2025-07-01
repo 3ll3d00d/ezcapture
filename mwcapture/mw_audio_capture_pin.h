@@ -35,8 +35,8 @@ public:
 	~magewell_audio_capture_pin() override;
 
 	void CopyToBitstreamBuffer(BYTE* buf);
-	HRESULT ParseBitstreamBuffer(uint16_t bufSize, enum Codec** codec);
-	HRESULT GetCodecFromIEC61937Preamble(enum IEC61937DataType dataType, uint16_t* burstSize, enum Codec* codec);
+	HRESULT ParseBitstreamBuffer(uint16_t bufSize, enum codec** codec);
+	HRESULT GetCodecFromIEC61937Preamble(enum IEC61937DataType dataType, uint16_t* burstSize, enum codec* codec);
 
 	//////////////////////////////////////////////////////////////////////////
 	//  CBaseOutputPin
@@ -118,14 +118,14 @@ protected:
 	FILE* mEncodedOutFile;
 	#endif
 	// TODO remove after SDK bug is fixed
-	Codec mDetectedCodec{ PCM };
+	codec mDetectedCodec{ PCM };
 	bool mProbeOnTimer{ false };
 
 	static void CaptureFrame(const BYTE* pbFrame, int cbFrame, UINT64 u64TimeStamp, void* pParam);
 
-	void LoadFormat(AUDIO_FORMAT* audioFormat, const audio_signal* audioSignal) const;
+	void LoadFormat(audio_format* audioFormat, const audio_signal* audioSignal) const;
 	HRESULT LoadSignal(HCHANNEL* hChannel);
-	HRESULT DoChangeMediaType(const CMediaType* pmt, const AUDIO_FORMAT* newAudioFormat);
+	HRESULT DoChangeMediaType(const CMediaType* pmt, const audio_format* newAudioFormat);
 	void StopCapture();
 	bool ProposeBuffers(ALLOCATOR_PROPERTIES* pProperties) override;
 	void DoThreadDestroy() override;

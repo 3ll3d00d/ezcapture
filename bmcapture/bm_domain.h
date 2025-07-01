@@ -73,7 +73,7 @@ struct audio_signal
 class audio_frame
 {
 public:
-	audio_frame(log_data logData, int64_t captureTime, int64_t frameTime, void* data, long len, AUDIO_FORMAT fmt,
+	audio_frame(log_data logData, int64_t captureTime, int64_t frameTime, void* data, long len, audio_format fmt,
 	           uint64_t frameIndex, IDeckLinkAudioInputPacket* packet) :
 		mCaptureTime(captureTime),
 		mFrameTime(frameTime),
@@ -131,7 +131,7 @@ public:
 
 	long GetLength() const { return mLength; }
 
-	AUDIO_FORMAT GetFormat() const { return mFormat; }
+	audio_format GetFormat() const { return mFormat; }
 
 	uint64_t GetFrameIndex() const { return mFrameIndex; }
 
@@ -140,7 +140,7 @@ private:
 	int64_t mFrameTime{0};
 	void* mData = nullptr;
 	long mLength{0};
-	AUDIO_FORMAT mFormat{};
+	audio_format mFormat{};
 	log_data mLogData;
 	uint64_t mFrameIndex{0};
 	IDeckLinkAudioInputPacket* mPacket;

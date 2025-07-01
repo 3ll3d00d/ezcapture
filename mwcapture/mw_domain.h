@@ -135,7 +135,7 @@ inline pixel_format_by_bit_depth_subsampling generatePixelFormatMatrix(device_ty
 }
 
 // utility functions
-inline void LoadHdrMeta(HDR_META* meta, const HDMI_HDR_INFOFRAME_PAYLOAD* frame)
+inline void LoadHdrMeta(hdr_meta* meta, const HDMI_HDR_INFOFRAME_PAYLOAD* frame)
 {
 	auto hdrIn = *frame;
 	auto hdrOut = meta;

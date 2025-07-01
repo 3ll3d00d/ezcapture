@@ -297,7 +297,7 @@ enum protocol
 	USB
 };
 
-struct DEVICE_STATUS
+struct device_status
 {
 	protocol protocol{PCIE};
 	std::string deviceDesc{};
@@ -309,7 +309,7 @@ struct DEVICE_STATUS
 	int16_t maxReadRequestSize{-1};
 };
 
-struct HDR_META
+struct hdr_meta
 {
 	double r_primary_x{0.0};
 	double r_primary_y{0.0};
@@ -343,7 +343,7 @@ struct HDR_META
 	}
 };
 
-inline boolean hdrMetaExists(const HDR_META* hdrOut)
+inline boolean hdrMetaExists(const hdr_meta* hdrOut)
 {
 	return
 		hdrOut->r_primary_x != 0.0 &&
@@ -360,7 +360,7 @@ inline boolean hdrMetaExists(const HDR_META* hdrOut)
 		hdrOut->maxFALL != 0;
 }
 
-struct AUDIO_INPUT_STATUS
+struct audio_input_status
 {
 	bool audioInStatus;
 	bool audioInIsPcm;
@@ -371,7 +371,7 @@ struct AUDIO_INPUT_STATUS
 	unsigned char audioInLfeLevel;
 };
 
-struct AUDIO_OUTPUT_STATUS
+struct audio_output_status
 {
 	std::string audioOutChannelLayout;
 	unsigned char audioOutBitDepth;
@@ -383,7 +383,7 @@ struct AUDIO_OUTPUT_STATUS
 	uint16_t audioOutDataBurstSize;
 };
 
-struct VIDEO_INPUT_STATUS
+struct video_input_status
 {
 	int inX{-1};
 	int inY{-1};
@@ -400,7 +400,7 @@ struct VIDEO_INPUT_STATUS
 	bool validSignal{false};
 };
 
-struct VIDEO_OUTPUT_STATUS
+struct video_output_status
 {
 	int outX{-1};
 	int outY{-1};
@@ -416,20 +416,21 @@ struct VIDEO_OUTPUT_STATUS
 	std::string outTransferFunction;
 };
 
-struct DISPLAY_STATUS
+struct display_status
 {
 	int freq{0};
 	std::wstring status;
 };
 
-struct CAPTURE_LATENCY
+struct latency_stats
 {
+	std::string name;
 	uint64_t min{0};
 	double mean{0.0};
 	uint64_t max{0};
 };
 
-struct HDR_STATUS
+struct hdr_status
 {
 	bool hdrOn{false};
 	double hdrPrimaryRX;
@@ -446,7 +447,7 @@ struct HDR_STATUS
 	double hdrMaxFALL;
 };
 
-struct VIDEO_FORMAT
+struct video_format
 {
 	colour_format colourFormat{REC709};
 	pixel_format pixelFormat{NV12};
@@ -454,7 +455,7 @@ struct VIDEO_FORMAT
 	int cy{2160};
 	double fps{50.0};
 	LONGLONG frameInterval{200000};
-	HDR_META hdrMeta{};
+	hdr_meta hdrMeta{};
 	int aspectX{16};
 	int aspectY{9};
 	quantisation_range quantisation{QUANTISATION_UNKNOWN};
@@ -476,7 +477,7 @@ struct VIDEO_FORMAT
 	}
 };
 
-enum Codec
+enum codec
 {
 	PCM,
 	AC3,
@@ -499,7 +500,7 @@ static const std::string codecNames[8] = {
 	"PAUSE_OR_NULL"
 };
 
-struct AUDIO_FORMAT
+struct audio_format
 {
 	boolean pcm{true};
 	DWORD fs{48000};
@@ -517,7 +518,7 @@ struct AUDIO_FORMAT
 	std::string channelLayout;
 	int lfeChannelIndex{not_present};
 	double lfeLevelAdjustment{1.0};
-	Codec codec{PCM};
+	codec codec{PCM};
 	// encoded content only
 	uint16_t dataBurstSize{0};
 };
@@ -558,19 +559,18 @@ typedef std::map<pixel_format, std::pair<pixel_format, frame_writer_strategy>> p
 
 struct frame_metrics
 {
-	metric wait;
-	metric allocated;
-	metric buffer;
-	metric read;
-	metric convert;
+	metric m1;
+	std::string name1{"Capture"};
+	metric m2;
+	std::string name2{"Conversion"};
+	metric m3;
+	std::string name3{};
 
 	void resize(uint16_t sz)
 	{
-		wait.resize(sz);
-		allocated.resize(sz);
-		buffer.resize(sz);
-		read.resize(sz);
-		convert.resize(sz);
+		m1.resize(sz);
+		m2.resize(sz);
+		m3.resize(sz);
 	}
 };
 
@@ -633,6 +633,32 @@ public:
 
 	boolean recordTo(frame_metrics& metrics) const
 	{
+		if (mDeviceType == MW_PRO)
+		{
+			if (mVideo)
+			{
+				metrics.m1.sample(mTs[READ] - mTs[BUFFERING]);
+				metrics.m2.sample(mTs[CONVERTED] - mTs[READ]);
+
+				metrics.m3.sample(mTs[READ] - mTs[BUFFERED]);
+				metrics.name2 = "Host";
+			}
+			else
+			{
+				metrics.m1.sample(mTs[BUFFER_ALLOCATED] - mTs[BUFFERING]);
+				metrics.m2.sample(mTs[CONVERTED] - mTs[BUFFER_ALLOCATED]);
+			}
+		}
+		else if (mDeviceType == MW_USB_PLUS || mDeviceType == MW_USB_PRO)
+		{
+			metrics.m1.sample(mTs[READ] - mTs[BUFFERING]);
+			metrics.m2.sample(mTs[CONVERTED] - mTs[READ]);
+		}
+		else
+		{
+			metrics.m1.sample(mTs[READ] - mTs[BUFFERING]);
+			metrics.m2.sample(mTs[CONVERTED] - mTs[READ]);
+		}
 		/*
 		 * Magewell PRO Video: WAITING, WAIT_COMPLETE, BUFFER_ALLOCATED, BUFFERING, BUFFERED, READING, READ, CONVERTED
 		 * Magewell PRO Audio: WAITING, WAIT_COMPLETE, BUFFERING, READING, READ, BUFFER_ALLOCATED, CONVERTED

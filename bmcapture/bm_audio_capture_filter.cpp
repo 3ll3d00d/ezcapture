@@ -312,7 +312,7 @@ HRESULT blackmagic_audio_capture_pin::FillBuffer(IMediaSample* pms)
 	return retVal;
 }
 
-HRESULT blackmagic_audio_capture_pin::DoChangeMediaType(const CMediaType* pmt, const AUDIO_FORMAT* newAudioFormat)
+HRESULT blackmagic_audio_capture_pin::DoChangeMediaType(const CMediaType* pmt, const audio_format* newAudioFormat)
 {
 	#ifndef NO_QUILL
 	LOG_WARNING(mLogData.logger, "[{}] Proposing new audio format Fs: {} Bits: {} Channels: {} Codec: {}",

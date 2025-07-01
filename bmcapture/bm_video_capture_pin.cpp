@@ -24,7 +24,7 @@ static int64_t get_steady_clock_uptime_mics()
 
 
 blackmagic_video_capture_pin::blackmagic_video_capture_pin(HRESULT* phr, blackmagic_capture_filter* pParent,
-                                                           bool pPreview, VIDEO_FORMAT pVideoFormat) :
+                                                           bool pPreview, video_format pVideoFormat) :
 	hdmi_video_capture_pin(
 		phr,
 		pParent,

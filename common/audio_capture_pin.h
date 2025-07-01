@@ -42,9 +42,9 @@ protected:
 	{
 	}
 
-	static void AudioFormatToMediaType(CMediaType* pmt, AUDIO_FORMAT* audioFormat);
+	static void AudioFormatToMediaType(CMediaType* pmt, audio_format* audioFormat);
 
-	bool ShouldChangeMediaType(AUDIO_FORMAT* newAudioFormat);
+	bool ShouldChangeMediaType(audio_format* newAudioFormat);
 
 	//////////////////////////////////////////////////////////////////////////
 	//  CSourceStream
@@ -61,7 +61,7 @@ protected:
 	HRESULT STDMETHODCALLTYPE GetNumberOfCapabilities(int* piCount, int* piSize) override;
 	HRESULT STDMETHODCALLTYPE GetStreamCaps(int iIndex, AM_MEDIA_TYPE** pmt, BYTE* pSCC) override;
 
-	AUDIO_FORMAT mAudioFormat{};
+	audio_format mAudioFormat{};
 };
 
 

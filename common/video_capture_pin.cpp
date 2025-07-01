@@ -17,7 +17,7 @@
 
 #include <DXVA.h>
 
-void video_capture_pin::VideoFormatToMediaType(CMediaType* pmt, VIDEO_FORMAT* videoFormat) const
+void video_capture_pin::VideoFormatToMediaType(CMediaType* pmt, video_format* videoFormat) const
 {
 	auto pvi = reinterpret_cast<VIDEOINFOHEADER2*>(pmt->AllocFormatBuffer(sizeof(VIDEOINFOHEADER2)));
 	ZeroMemory(pvi, sizeof(VIDEOINFOHEADER2));
@@ -85,7 +85,7 @@ void video_capture_pin::VideoFormatToMediaType(CMediaType* pmt, VIDEO_FORMAT* vi
 	pmt->SetSubtype(&subTypeGUID);
 }
 
-bool video_capture_pin::ShouldChangeMediaType(VIDEO_FORMAT* newVideoFormat, bool pixelFallBackIsActive)
+bool video_capture_pin::ShouldChangeMediaType(video_format* newVideoFormat, bool pixelFallBackIsActive)
 {
 	auto reconnect = false;
 	if (newVideoFormat->cx != mVideoFormat.cx || newVideoFormat->cy != mVideoFormat.cy)
@@ -177,7 +177,7 @@ bool video_capture_pin::ShouldChangeMediaType(VIDEO_FORMAT* newVideoFormat, bool
 	return reconnect;
 }
 
-HRESULT video_capture_pin::DoChangeMediaType(const CMediaType* pNewMt, const VIDEO_FORMAT* newVideoFormat)
+HRESULT video_capture_pin::DoChangeMediaType(const CMediaType* pNewMt, const video_format* newVideoFormat)
 {
 	#ifndef NO_QUILL
 	LOG_WARNING(mLogData.logger,

@@ -81,7 +81,7 @@ HRESULT audio_capture_pin::DecideAllocator(IMemInputPin* pPin, IMemAllocator** p
 	return hr;
 }
 
-void audio_capture_pin::AudioFormatToMediaType(CMediaType* pmt, AUDIO_FORMAT* audioFormat)
+void audio_capture_pin::AudioFormatToMediaType(CMediaType* pmt, audio_format* audioFormat)
 {
 	// based on https://github.com/Nevcairiel/LAVFilters/blob/81c5676cb99d0acfb1457b8165a0becf5601cae3/decoder/LAVAudio/LAVAudio.cpp#L1186
 	pmt->majortype = MEDIATYPE_Audio;
@@ -196,7 +196,7 @@ void audio_capture_pin::AudioFormatToMediaType(CMediaType* pmt, AUDIO_FORMAT* au
 	}
 }
 
-bool audio_capture_pin::ShouldChangeMediaType(AUDIO_FORMAT* newAudioFormat)
+bool audio_capture_pin::ShouldChangeMediaType(audio_format* newAudioFormat)
 {
 	auto reconnect = false;
 	if (mAudioFormat.inputChannelCount != newAudioFormat->inputChannelCount)

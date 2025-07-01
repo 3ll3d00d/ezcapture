@@ -48,7 +48,7 @@ CUnknown* blackmagic_capture_filter::CreateInstance(LPUNKNOWN punk, HRESULT* phr
 	return pNewObject;
 }
 
-void blackmagic_capture_filter::LoadFormat(VIDEO_FORMAT* videoFormat, const video_signal* videoSignal)
+void blackmagic_capture_filter::LoadFormat(video_format* videoFormat, const video_signal* videoSignal)
 {
 	videoFormat->cx = videoSignal->cx;
 	videoFormat->cy = videoSignal->cy;
@@ -787,7 +787,7 @@ HRESULT blackmagic_capture_filter::processVideoFrame(IDeckLinkVideoInputFrame* v
 		return E_FAIL;
 
 	// metadata
-	VIDEO_FORMAT newVideoFormat{};
+	video_format newVideoFormat{};
 	LoadFormat(&newVideoFormat, &mVideoSignal);
 
 	auto doubleValue = 0.0;
@@ -1178,7 +1178,7 @@ HRESULT blackmagic_capture_filter::VideoInputFrameArrived(IDeckLinkVideoInputFra
 	return retVal;
 }
 
-void blackmagic_capture_filter::LoadFormat(AUDIO_FORMAT* audioFormat, const audio_signal* audioSignal)
+void blackmagic_capture_filter::LoadFormat(audio_format* audioFormat, const audio_signal* audioSignal)
 {
 	auto audioIn = *audioSignal;
 	// https://ia903006.us.archive.org/11/items/CEA-861-E/CEA-861-E.pdf

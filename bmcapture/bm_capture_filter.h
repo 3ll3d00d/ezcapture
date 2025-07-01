@@ -154,9 +154,9 @@ public:
 	HRESULT processAudioPacket(IDeckLinkAudioInputPacket* audioPacket, const REFERENCE_TIME& now);
 
 protected:
-	static void LoadFormat(VIDEO_FORMAT* videoFormat, const video_signal* videoSignal);
+	static void LoadFormat(video_format* videoFormat, const video_signal* videoSignal);
 	static void LoadSignalFromDisplayMode(video_signal* newSignal, IDeckLinkDisplayMode* newDisplayMode);
-	static void LoadFormat(AUDIO_FORMAT* audioFormat, const audio_signal* audioSignal);
+	static void LoadFormat(audio_format* audioFormat, const audio_signal* audioSignal);
 
 	STDMETHODIMP Run(REFERENCE_TIME tStart) override;
 
@@ -175,7 +175,7 @@ private:
 
 	uint8_t mRunningPins{ 0 };
 	video_signal mVideoSignal{};
-	VIDEO_FORMAT mVideoFormat{};
+	video_format mVideoFormat{};
 
 	int64_t mPreviousVideoFrameTime{ invalidFrameTime };
 	int64_t mVideoFrameTime{ 0 };
@@ -184,7 +184,7 @@ private:
 	HANDLE mVideoFrameEvent;
 
 	audio_signal mAudioSignal{};
-	AUDIO_FORMAT mAudioFormat{};
+	audio_format mAudioFormat{};
 	int64_t mPreviousAudioFrameTime{ invalidFrameTime };
 	int64_t mAudioFrameTime{ 0 };
 	uint64_t mCurrentAudioFrameIndex{ 0 };

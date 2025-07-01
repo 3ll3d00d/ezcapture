@@ -32,7 +32,7 @@ class blackmagic_video_capture_pin final :
 	public hdmi_video_capture_pin<blackmagic_capture_filter, video_frame>
 {
 public:
-	blackmagic_video_capture_pin(HRESULT* phr, blackmagic_capture_filter* pParent, bool pPreview, VIDEO_FORMAT pVideoFormat);
+	blackmagic_video_capture_pin(HRESULT* phr, blackmagic_capture_filter* pParent, bool pPreview, video_format pVideoFormat);
 	~blackmagic_video_capture_pin() override;
 
 	//////////////////////////////////////////////////////////////////////////

@@ -71,7 +71,7 @@ protected:
 	void DoThreadDestroy() override;
 	void StopCapture();
 
-	void LoadFormat(VIDEO_FORMAT* videoFormat, video_signal* videoSignal, const usb_capture_formats* captureFormats);
+	void LoadFormat(video_format* videoFormat, video_signal* videoSignal, const usb_capture_formats* captureFormats);
 	// USB only
 	static void CaptureFrame(BYTE* pbFrame, int cbFrame, UINT64 u64TimeStamp, void* pParam);
 
