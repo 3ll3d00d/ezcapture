@@ -87,8 +87,8 @@ TEST(DIMS, CanCalcImageDims)
 
 TEST(PIX, NoFallbacksRequired)
 {
-	auto pro = generatePixelFormatMatrix(USB_PRO, {BGR24.fourcc, Y210.fourcc, P010.fourcc});
-	auto plus = generatePixelFormatMatrix(USB_PLUS, {BGR24.fourcc, UYVY.fourcc, NV12.fourcc});
+	auto pro = generatePixelFormatMatrix(MW_USB_PRO, {BGR24.fourcc, Y210.fourcc, P010.fourcc});
+	auto plus = generatePixelFormatMatrix(MW_USB_PLUS, {BGR24.fourcc, UYVY.fourcc, NV12.fourcc});
 	for (int i = 0; i < bitDepthCount; ++i)
 	{
 		for (int j = 0; j < subsamplingCount; ++j)
@@ -101,7 +101,7 @@ TEST(PIX, NoFallbacksRequired)
 
 TEST(PIX, FirstFallback)
 {
-	auto pro = generatePixelFormatMatrix(USB_PRO, {BGR24.fourcc, UYVY.fourcc, P010.fourcc});
+	auto pro = generatePixelFormatMatrix(MW_USB_PRO, {BGR24.fourcc, UYVY.fourcc, P010.fourcc});
 	for (int i = 0; i < bitDepthCount; ++i)
 	{
 		for (int j = 0; j < subsamplingCount; ++j)
@@ -127,7 +127,7 @@ TEST(PIX, FirstFallback)
 
 TEST(PIX, ManyFallbacks)
 {
-	auto pro = generatePixelFormatMatrix(USB_PRO, {NV12.fourcc});
+	auto pro = generatePixelFormatMatrix(MW_USB_PRO, {NV12.fourcc});
 	for (int i = 0; i < bitDepthCount; ++i)
 	{
 		for (int j = 0; j < subsamplingCount; ++j)

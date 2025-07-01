@@ -38,6 +38,26 @@ inline constexpr auto unity = 1.0;
 
 #define ROOT_REG_KEY L"Software\\3ll3d00d\\"
 
+enum device_type : uint8_t
+{
+	MW_USB_PLUS,
+	MW_USB_PRO,
+	MW_PRO,
+	BM_DECKLINK
+};
+
+inline const char* devicetype_to_name(device_type e)
+{
+	switch (e)
+	{
+	case MW_USB_PLUS: return "USB_PLUS";
+	case MW_USB_PRO: return "USB_PRO";
+	case MW_PRO: return "PRO";
+	case BM_DECKLINK: return "BM";
+	default: return "unknown";
+	}
+}
+
 enum colour_format :std::uint8_t
 {
 	COLOUR_FORMAT_UNKNOWN = 0, ///<unknown color format
@@ -567,12 +587,27 @@ enum ts_type : uint8_t
 	COMPLETE // system time for comparison
 };
 
+static int64_t high_res_now()
+{
+	using std::chrono::high_resolution_clock;
+	using std::chrono::microseconds;
+	using std::chrono::duration_cast;
+	return duration_cast<microseconds>(high_resolution_clock::now().time_since_epoch()).count() * 10;
+}
+
 class frame_ts
 {
 public:
-	void initialise(int64_t pInitTime)
+	frame_ts(device_type pType, bool pVideo):
+		mDeviceType(pType),
+		mVideo(pVideo)
 	{
-		mInitTime = pInitTime;
+	}
+
+	void initialise(int64_t pInitTime, int64_t pEndTime)
+	{
+		mReferenceStartTime = pInitTime;
+		mReferenceEndTime = pEndTime;
 		reset();
 	}
 
@@ -583,10 +618,7 @@ public:
 
 	void end()
 	{
-		using std::chrono::high_resolution_clock;
-		using std::chrono::microseconds;
-		using std::chrono::duration_cast;
-		snap(duration_cast<microseconds>(high_resolution_clock::now().time_since_epoch()).count() * 10, COMPLETE);
+		mTs[COMPLETE] = high_res_now() - mReferenceEndTime;
 	}
 
 	int64_t get(ts_type type) const
@@ -611,12 +643,15 @@ public:
 	}
 
 private:
-	int64_t mInitTime{0}; // time used to offset all subsequent timestamps
+	device_type mDeviceType;
+	bool mVideo;
+	int64_t mReferenceStartTime{0}; // time used to offset all measurement timestamps
+	int64_t mReferenceEndTime{0}; // time used to offset the end timestamp
 	std::array<int64_t, 9> mTs{};
 
 	int64_t offset(int64_t val) const
 	{
-		return val - mInitTime;
+		return val - mReferenceStartTime;
 	}
 };
 

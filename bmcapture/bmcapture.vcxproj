@@ -444,7 +444,7 @@
     <ClInclude Include="bm_domain.h" />
     <ClInclude Include="bm_video_capture_pin.h" />
     <ClInclude Include="MediaSampleBackedDecklinkBuffer.h" />
-    <ClInclude Include="StraightThrough.h" />
+    <ClInclude Include="straight_through.h" />
     <ClInclude Include="video_frame.h" />
   </ItemGroup>
   <ItemGroup>

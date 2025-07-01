@@ -48,7 +48,7 @@ CUnknown* blackmagic_capture_filter::CreateInstance(LPUNKNOWN punk, HRESULT* phr
 	return pNewObject;
 }
 
-void blackmagic_capture_filter::LoadFormat(VIDEO_FORMAT* videoFormat, const VIDEO_SIGNAL* videoSignal)
+void blackmagic_capture_filter::LoadFormat(VIDEO_FORMAT* videoFormat, const video_signal* videoSignal)
 {
 	videoFormat->cx = videoSignal->cx;
 	videoFormat->cy = videoSignal->cy;
@@ -529,7 +529,7 @@ blackmagic_capture_filter::~blackmagic_capture_filter()
 	CloseHandle(mVideoFrameEvent);
 }
 
-void blackmagic_capture_filter::LoadSignalFromDisplayMode(VIDEO_SIGNAL* newSignal, IDeckLinkDisplayMode* newDisplayMode)
+void blackmagic_capture_filter::LoadSignalFromDisplayMode(video_signal* newSignal, IDeckLinkDisplayMode* newDisplayMode)
 {
 	newSignal->displayMode = newDisplayMode->GetDisplayMode();
 
@@ -555,7 +555,7 @@ HRESULT blackmagic_capture_filter::VideoInputFormatChanged(BMDVideoInputFormatCh
 	IDeckLinkDisplayMode* newDisplayMode,
 	BMDDetectedVideoInputFormatFlags detectedSignalFlags)
 {
-	VIDEO_SIGNAL newSignal = mVideoSignal;
+	video_signal newSignal = mVideoSignal;
 	if (notificationEvents & bmdVideoInputColorspaceChanged)
 	{
 		#ifndef NO_QUILL
@@ -1178,7 +1178,7 @@ HRESULT blackmagic_capture_filter::VideoInputFrameArrived(IDeckLinkVideoInputFra
 	return retVal;
 }
 
-void blackmagic_capture_filter::LoadFormat(AUDIO_FORMAT* audioFormat, const AUDIO_SIGNAL* audioSignal)
+void blackmagic_capture_filter::LoadFormat(AUDIO_FORMAT* audioFormat, const audio_signal* audioSignal)
 {
 	auto audioIn = *audioSignal;
 	// https://ia903006.us.archive.org/11/items/CEA-861-E/CEA-861-E.pdf
@@ -1329,7 +1329,7 @@ HRESULT blackmagic_capture_filter::QueryInterface(const IID& riid, void** ppvObj
 	return hdmi_capture_filter::NonDelegatingQueryInterface(riid, ppvObject);
 }
 
-void blackmagic_capture_filter::OnVideoSignalLoaded(VIDEO_SIGNAL* vs)
+void blackmagic_capture_filter::OnVideoSignalLoaded(video_signal* vs)
 {
 	mVideoInputStatus.inX = vs->cx;
 	mVideoInputStatus.inY = vs->cy;
@@ -1351,7 +1351,7 @@ void blackmagic_capture_filter::OnVideoSignalLoaded(VIDEO_SIGNAL* vs)
 	}
 }
 
-void blackmagic_capture_filter::OnAudioSignalLoaded(AUDIO_SIGNAL* as)
+void blackmagic_capture_filter::OnAudioSignalLoaded(audio_signal* as)
 {
 	mAudioInputStatus.audioInStatus = true;
 	mAudioInputStatus.audioInIsPcm = true;

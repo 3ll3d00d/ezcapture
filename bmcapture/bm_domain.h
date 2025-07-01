@@ -25,7 +25,7 @@
 #include "domain.h"
 #include "logging.h"
 
-struct DEVICE_INFO
+struct device_info
 {
 	std::string name{};
 	int apiVersion[3]{0, 0, 0};
@@ -39,7 +39,7 @@ struct DEVICE_INFO
 	double temperature;
 };
 
-struct VIDEO_SIGNAL
+struct video_signal
 {
 	BMDPixelFormat pixelFormat{bmdFormat8BitARGB};
 	BMDDisplayMode displayMode{bmdMode4K2160p2398};
@@ -64,7 +64,7 @@ struct VIDEO_SIGNAL
 	}
 };
 
-struct AUDIO_SIGNAL
+struct audio_signal
 {
 	uint8_t channelCount{2};
 	uint8_t bitDepth{16};

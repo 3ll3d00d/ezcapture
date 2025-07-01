@@ -71,7 +71,7 @@ protected:
 	void DoThreadDestroy() override;
 	void StopCapture();
 
-	void LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL* videoSignal, const USB_CAPTURE_FORMATS* captureFormats);
+	void LoadFormat(VIDEO_FORMAT* videoFormat, video_signal* videoSignal, const usb_capture_formats* captureFormats);
 	// USB only
 	static void CaptureFrame(BYTE* pbFrame, int cbFrame, UINT64 u64TimeStamp, void* pParam);
 
@@ -93,7 +93,7 @@ protected:
 	class video_frame_grabber
 	{
 	public:
-		video_frame_grabber(magewell_video_capture_pin* pin, HCHANNEL hChannel, DeviceType deviceType, IMediaSample* pms);
+		video_frame_grabber(magewell_video_capture_pin* pin, HCHANNEL hChannel, device_type deviceType, IMediaSample* pms);
 		~video_frame_grabber();
 
 		video_frame_grabber(video_frame_grabber const&) = delete;
@@ -106,7 +106,7 @@ protected:
 	private:
 		log_data mLogData;
 		HCHANNEL hChannel;
-		DeviceType deviceType;
+		device_type deviceType;
 		magewell_video_capture_pin* pin;
 		IMediaSample* pms;
 		BYTE* pmsData;
@@ -138,8 +138,8 @@ protected:
 	// pro only
 	HANDLE mCaptureEvent;
 
-	VIDEO_SIGNAL mVideoSignal{};
-	USB_CAPTURE_FORMATS mUsbCaptureFormats{};
+	video_signal mVideoSignal{};
+	usb_capture_formats mUsbCaptureFormats{};
 	bool mHasHdrInfoFrame{ false };
 	// USB only
 	std::unique_ptr<VideoCapture> mVideoCapture;

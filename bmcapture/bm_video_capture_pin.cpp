@@ -43,7 +43,8 @@ blackmagic_video_capture_pin::blackmagic_video_capture_pin(HRESULT* phr, blackma
 			{R12L, {RGBA, ANY_RGB}},
 			{R10B, {RGBA, ANY_RGB}},
 			{R10L, {RGBA, ANY_RGB}},
-		}
+		},
+		BM_DECKLINK
 	)
 {
 }

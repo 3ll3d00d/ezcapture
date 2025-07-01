@@ -21,7 +21,7 @@
     <ClInclude Include="..\common\resource.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="StraightThrough.h">
+    <ClInclude Include="straight_through.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="mw_capture_filter.h">

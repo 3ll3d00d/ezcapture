@@ -27,13 +27,13 @@
 class runtime_aware
 {
 public:
-	void SetStartTime(int64_t streamStartTime)
+	void SetStartTime(int64_t streamStartTime, int64_t streamHighResStartTime)
 	{
 		mStreamStartTime = streamStartTime;
-		mFrameTs.initialise(streamStartTime);
+		mFrameTs.initialise(streamStartTime, streamHighResStartTime);
 
 		#ifndef NO_QUILL
-		LOG_WARNING(mLogData.logger, "[{}] CapturePin::SetStartTime at {}", mLogData.prefix, streamStartTime);
+		LOG_WARNING(mLogData.logger, "[{}] CapturePin::SetStartTime at {} / {}", mLogData.prefix, streamStartTime, streamHighResStartTime);
 		#endif
 	}
 
@@ -57,7 +57,8 @@ public:
 	}
 
 protected:
-	runtime_aware(const std::string& pLogPrefix)
+	runtime_aware(const std::string& pLogPrefix, device_type pType, bool pVideo) :
+		mFrameTs(pType, pVideo)
 	{
 		mLogData.init(pLogPrefix);
 	}
@@ -65,7 +66,7 @@ protected:
 	log_data mLogData{};
 	int64_t mStreamStartTime{-1LL};
 	int64_t mStreamStopTime{-1LL};
-	frame_ts mFrameTs{};
+	frame_ts mFrameTs;
 };
 
 #endif

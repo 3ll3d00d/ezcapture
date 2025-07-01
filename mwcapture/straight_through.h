@@ -18,15 +18,15 @@
 #include "VideoFrameWriter.h"
 #include "mw_domain.h"
 
-class StraightThrough : public IVideoFrameWriter<video_sample_buffer>
+class straight_through : public IVideoFrameWriter<video_sample_buffer>
 {
 public:
-	StraightThrough(const log_data& pLogData, int pX, int pY, const pixel_format* pPixelFormat)
+	straight_through(const log_data& pLogData, int pX, int pY, const pixel_format* pPixelFormat)
 		: IVideoFrameWriter(pLogData, pX, pY, pPixelFormat)
 	{
 	}
 
-	~StraightThrough() override = default;
+	~straight_through() override = default;
 
 	HRESULT WriteTo(video_sample_buffer* srcFrame, IMediaSample* dstFrame) override
 	{

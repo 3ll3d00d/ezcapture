@@ -17,9 +17,9 @@
 #include "modeswitcher.h"
 
 capture_pin::capture_pin(HRESULT* phr, CSource* pParent, LPCSTR pObjectName, LPCWSTR pPinName,
-                         const std::string& pLogPrefix) :
+                         const std::string& pLogPrefix, device_type pType, bool pVideo) :
 	CSourceStream(pObjectName, phr, pParent, pPinName),
-	runtime_aware(pLogPrefix)
+	runtime_aware(pLogPrefix, pType, pVideo)
 {
 	mLogData.init(pLogPrefix);
 }
@@ -62,12 +62,12 @@ HRESULT capture_pin::OnThreadStartPlay()
 	if (IsStreamStopped())
 	{
 		LOG_WARNING(mLogData.logger, "[{}] Pin worker thread starting at {} but stream not started yet",
-			mLogData.prefix, rt);
+		            mLogData.prefix, rt);
 	}
 	else
 	{
 		LOG_WARNING(mLogData.logger, "[{}] Pin worker thread starting at {}, stream started at {}", mLogData.prefix, rt,
-			mStreamStartTime);
+		            mStreamStartTime);
 	}
 	#endif
 	return S_OK;
@@ -77,10 +77,10 @@ STDMETHODIMP capture_pin::NonDelegatingQueryInterface(REFIID riid, void** ppv)
 {
 	CheckPointer(ppv, E_POINTER)
 
-		if (riid == _uuidof(IAMStreamConfig))
-		{
-			return GetInterface(static_cast<IAMStreamConfig*>(this), ppv);
-		}
+	if (riid == _uuidof(IAMStreamConfig))
+	{
+		return GetInterface(static_cast<IAMStreamConfig*>(this), ppv);
+	}
 	if (riid == _uuidof(IKsPropertySet))
 	{
 		return GetInterface(static_cast<IKsPropertySet*>(this), ppv);
@@ -122,7 +122,7 @@ HRESULT capture_pin::DoBufferProcessingLoop(void)
 			{
 				#ifndef NO_QUILL
 				LOG_WARNING(mLogData.logger, "[{}] Failed to GetDeliveryBuffer ({:#08x}), retrying", mLogData.prefix,
-					static_cast<unsigned long>(hrBuf));
+				            static_cast<unsigned long>(hrBuf));
 				#endif
 				SHORT_BACKOFF;
 				continue;
@@ -141,8 +141,8 @@ HRESULT capture_pin::DoBufferProcessingLoop(void)
 				{
 					#ifndef NO_QUILL
 					LOG_WARNING(mLogData.logger,
-						"[{}] Failed to deliver sample downstream ({:#08x}), process loop will exit",
-						mLogData.prefix, static_cast<unsigned long>(hr));
+					            "[{}] Failed to deliver sample downstream ({:#08x}), process loop will exit",
+					            mLogData.prefix, static_cast<unsigned long>(hr));
 					#endif
 
 					return S_OK;
@@ -159,7 +159,7 @@ HRESULT capture_pin::DoBufferProcessingLoop(void)
 			{
 				#ifndef NO_QUILL
 				LOG_WARNING(mLogData.logger, "[{}] FillBuffer failed ({:#08x}), sending EOS and EC_ERRORABORT",
-					mLogData.prefix, static_cast<unsigned long>(hr));
+				            mLogData.prefix, static_cast<unsigned long>(hr));
 				#endif
 
 				pSample->Release();
@@ -177,7 +177,7 @@ HRESULT capture_pin::DoBufferProcessingLoop(void)
 		{
 			#ifndef NO_QUILL
 			LOG_INFO(mLogData.logger, "[{}] DoBufferProcessingLoop Replying to CMD {}", mLogData.prefix,
-				static_cast<int>(com));
+			         static_cast<int>(com));
 			#endif
 			Reply(NOERROR);
 		}
@@ -185,7 +185,7 @@ HRESULT capture_pin::DoBufferProcessingLoop(void)
 		{
 			#ifndef NO_QUILL
 			LOG_ERROR(mLogData.logger, "[{}] DoBufferProcessingLoop Replying to UNEXPECTED CMD {}", mLogData.prefix,
-				static_cast<int>(com));
+			          static_cast<int>(com));
 			#endif
 			Reply(static_cast<DWORD>(E_UNEXPECTED));
 		}
@@ -195,7 +195,8 @@ HRESULT capture_pin::DoBufferProcessingLoop(void)
 			LOG_INFO(mLogData.logger, "[{}] DoBufferProcessingLoop CMD_STOP will exit", mLogData.prefix);
 			#endif
 		}
-	} while (com != CMD_STOP);
+	}
+	while (com != CMD_STOP);
 
 	#ifndef NO_QUILL
 	LOG_INFO(mLogData.logger, "[{}] Exiting DoBufferProcessingLoop", mLogData.prefix);
@@ -253,7 +254,7 @@ STDMETHODIMP capture_pin::SetFormat(AM_MEDIA_TYPE* pmt)
 {
 	#ifndef NO_QUILL
 	LOG_WARNING(mLogData.logger, "[{}] CapturePin::SetFormat ignored MT with GUID {}", mLogData.prefix,
-		pmt->majortype.Data1);
+	            pmt->majortype.Data1);
 	#endif
 	return VFW_E_INVALIDMEDIATYPE;
 }
@@ -272,7 +273,7 @@ HRESULT capture_pin::SetMediaType(const CMediaType* pmt)
 
 	#ifndef NO_QUILL
 	LOG_TRACE_L3(mLogData.logger, "[{}] CapturePin::SetMediaType ({:#08x})", mLogData.prefix,
-		static_cast<unsigned long>(hr));
+	             static_cast<unsigned long>(hr));
 	#endif
 
 	return hr;
@@ -281,14 +282,14 @@ HRESULT capture_pin::SetMediaType(const CMediaType* pmt)
 HRESULT capture_pin::DecideBufferSize(IMemAllocator* pIMemAlloc, ALLOCATOR_PROPERTIES* pProperties)
 {
 	CheckPointer(pIMemAlloc, E_POINTER)
-		CheckPointer(pProperties, E_POINTER)
-		CAutoLock cAutoLock(m_pFilter->pStateLock());
+	CheckPointer(pProperties, E_POINTER)
+	CAutoLock cAutoLock(m_pFilter->pStateLock());
 	HRESULT hr = NOERROR;
 	auto acceptedUpstreamBufferCount = ProposeBuffers(pProperties);
 
 	#ifndef NO_QUILL
 	LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::DecideBufferSize size: {} count: {} (from upstream? {})",
-		mLogData.prefix, pProperties->cbBuffer, pProperties->cBuffers, acceptedUpstreamBufferCount);
+	             mLogData.prefix, pProperties->cbBuffer, pProperties->cBuffers, acceptedUpstreamBufferCount);
 	#endif
 
 	ALLOCATOR_PROPERTIES actual;
@@ -298,7 +299,7 @@ HRESULT capture_pin::DecideBufferSize(IMemAllocator* pIMemAlloc, ALLOCATOR_PROPE
 	{
 		#ifndef NO_QUILL
 		LOG_WARNING(mLogData.logger, "[{}] CapturePin::DecideBufferSize failed to SetProperties result {:#08x}",
-			mLogData.prefix, static_cast<unsigned long>(hr));
+		            mLogData.prefix, static_cast<unsigned long>(hr));
 		#endif
 
 		return hr;
@@ -307,7 +308,7 @@ HRESULT capture_pin::DecideBufferSize(IMemAllocator* pIMemAlloc, ALLOCATOR_PROPE
 	{
 		#ifndef NO_QUILL
 		LOG_WARNING(mLogData.logger, "[{}] CapturePin::DecideBufferSize actual buffer is {} not {}", mLogData.prefix,
-			actual.cbBuffer, pProperties->cbBuffer);
+		            actual.cbBuffer, pProperties->cbBuffer);
 		#endif
 
 		return E_FAIL;
@@ -320,7 +321,7 @@ HRESULT capture_pin::DecideBufferSize(IMemAllocator* pIMemAlloc, ALLOCATOR_PROPE
 // CapturePin -> IKsPropertySet
 //////////////////////////////////////////////////////////////////////////
 HRESULT capture_pin::Set(REFGUID guidPropSet, DWORD dwID, void* pInstanceData,
-	DWORD cbInstanceData, void* pPropData, DWORD cbPropData)
+                         DWORD cbInstanceData, void* pPropData, DWORD cbPropData)
 {
 	// Set: Cannot set any properties.
 	return E_NOTIMPL;
@@ -374,7 +375,7 @@ receiveconnection:
 	{
 		#ifndef NO_QUILL
 		LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::RenegotiateMediaType ReceiveConnection succeeded [{:#08x}]",
-			mLogData.prefix, static_cast<unsigned long>(hr));
+		             mLogData.prefix, static_cast<unsigned long>(hr));
 		#endif
 
 		hr = SetMediaType(pmt);
@@ -386,7 +387,7 @@ receiveconnection:
 		{
 			#ifndef NO_QUILL
 			LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::RenegotiateMediaType SetMediaType failed [{:#08x}]",
-				mLogData.prefix, static_cast<unsigned long>(hr));
+			             mLogData.prefix, static_cast<unsigned long>(hr));
 			#endif
 		}
 	}
@@ -396,7 +397,7 @@ receiveconnection:
 		{
 			#ifndef NO_QUILL
 			LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::NegotiateMediaType Buffers outstanding, retrying in 10ms..",
-				mLogData.prefix);
+			             mLogData.prefix);
 			#endif
 
 			BACKOFF;
@@ -429,7 +430,7 @@ receiveconnection:
 			{
 				#ifndef NO_QUILL
 				LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::NegotiateMediaType - No buffer change",
-					mLogData.prefix);
+				             mLogData.prefix);
 				#endif
 
 				retVal = S_OK;
@@ -451,8 +452,8 @@ receiveconnection:
 						{
 							#ifndef NO_QUILL
 							LOG_TRACE_L1(mLogData.logger, "[{}] Updated allocator to {} bytes {} buffers",
-								mLogData.prefix,
-								props.cbBuffer, props.cBuffers);
+							             mLogData.prefix,
+							             props.cbBuffer, props.cBuffers);
 							#endif
 							retVal = S_OK;
 						}
@@ -471,8 +472,8 @@ receiveconnection:
 					{
 						#ifndef NO_QUILL
 						LOG_WARNING(mLogData.logger,
-							"[{}] Allocator did not accept update to {} bytes {} buffers [{:#08x}]",
-							mLogData.prefix, props.cbBuffer, props.cBuffers, static_cast<unsigned long>(hr));
+						            "[{}] Allocator did not accept update to {} bytes {} buffers [{:#08x}]",
+						            mLogData.prefix, props.cbBuffer, props.cBuffers, static_cast<unsigned long>(hr));
 						#endif
 					}
 				}
@@ -480,8 +481,8 @@ receiveconnection:
 				{
 					#ifndef NO_QUILL
 					LOG_WARNING(mLogData.logger,
-						"[{}] Allocator did not commit update to {} bytes {} buffers [{:#08x}]",
-						mLogData.prefix, props.cbBuffer, props.cBuffers, static_cast<unsigned long>(hr));
+					            "[{}] Allocator did not commit update to {} bytes {} buffers [{:#08x}]",
+					            mLogData.prefix, props.cbBuffer, props.cBuffers, static_cast<unsigned long>(hr));
 					#endif
 				}
 			}
@@ -509,7 +510,7 @@ receiveconnection:
 		// reinstate the old formats otherwise we're stuck thinking we have the new format
 		#ifndef NO_QUILL
 		LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::NegotiateMediaType failed {:#08x}", mLogData.prefix,
-			static_cast<unsigned long>(retVal));
+		             static_cast<unsigned long>(retVal));
 		#endif
 
 		SetMediaType(&oldMediaType);

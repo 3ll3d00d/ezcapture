@@ -34,9 +34,9 @@
 #include "yuv2_yv16.h"
 #include "yuy2_yv16.h"
 
- /**
-  * A stream of video flowing from the capture device to an output pin.
-  */
+/**
+ * A stream of video flowing from the capture device to an output pin.
+ */
 class video_capture_pin : public capture_pin
 {
 public:
@@ -86,7 +86,7 @@ public:
 
 		#ifndef NO_QUILL
 		LOG_TRACE_L3(mLogData.logger, "[{}] CapturePin::CheckMediaType (idx: {}, res: {:#08x}, sz: {})",
-			mLogData.prefix, idx, static_cast<unsigned long>(hr), pmt->GetSampleSize());
+		             mLogData.prefix, idx, static_cast<unsigned long>(hr), pmt->GetSampleSize());
 		#endif
 
 		return hr;
@@ -94,8 +94,8 @@ public:
 
 protected:
 	video_capture_pin(HRESULT* phr, CSource* pParent, LPCSTR pObjectName, LPCWSTR pPinName, std::string pLogPrefix,
-		const VIDEO_FORMAT& pVideoFormat, pixel_format_fallbacks pFallbacks) :
-		capture_pin(phr, pParent, pObjectName, pPinName, pLogPrefix),
+	                  const VIDEO_FORMAT& pVideoFormat, pixel_format_fallbacks pFallbacks, device_type pType) :
+		capture_pin(phr, pParent, pObjectName, pPinName, pLogPrefix, pType, true),
 		mVideoFormat(pVideoFormat),
 		mSignalledFormat(pVideoFormat.pixelFormat),
 		mFormatFallbacks(std::move(pFallbacks))
@@ -153,7 +153,7 @@ protected:
 	virtual void DoSwitchMode() = 0;
 
 	VIDEO_FORMAT mVideoFormat{};
-	pixel_format mSignalledFormat{ NA };
+	pixel_format mSignalledFormat{NA};
 	pixel_format_fallbacks mFormatFallbacks{};
 };
 
@@ -162,13 +162,13 @@ class hdmi_video_capture_pin : public video_capture_pin
 {
 public:
 	hdmi_video_capture_pin(HRESULT* phr, F* pParent, LPCSTR pObjectName, LPCWSTR pPinName, std::string pLogPrefix,
-		VIDEO_FORMAT pVideoFormat, pixel_format_fallbacks pFallbacks)
-		: video_capture_pin(phr, pParent, pObjectName, pPinName, pLogPrefix, pVideoFormat, pFallbacks),
-		mFilter(pParent),
-		mRateSwitcher(pLogPrefix, [this](const mode_switch_result& result)
-			{
-				mFilter->OnModeUpdated(result);
-			})
+	                       VIDEO_FORMAT pVideoFormat, pixel_format_fallbacks pFallbacks, device_type pType)
+		: video_capture_pin(phr, pParent, pObjectName, pPinName, pLogPrefix, pVideoFormat, pFallbacks, pType),
+		  mFilter(pParent),
+		  mRateSwitcher(pLogPrefix, [this](const mode_switch_result& result)
+		  {
+			  mFilter->OnModeUpdated(result);
+		  })
 	{
 	}
 
@@ -176,7 +176,7 @@ public:
 	{
 		auto search = mFormatFallbacks.find(mVideoFormat.pixelFormat);
 		SetFrameWriterStrategy(search == mFormatFallbacks.end() ? STRAIGHT_THROUGH : search->second.second,
-			mVideoFormat.pixelFormat);
+		                       mVideoFormat.pixelFormat);
 	}
 
 	void RecordLatency()
@@ -190,7 +190,7 @@ public:
 protected:
 	F* mFilter;
 	std::unique_ptr<IVideoFrameWriter<VF>> mFrameWriter;
-	frame_writer_strategy mFrameWriterStrategy{ UNKNOWN };
+	frame_writer_strategy mFrameWriterStrategy{UNKNOWN};
 	AsyncModeSwitcher mRateSwitcher;
 
 	virtual void OnFrameWriterStrategyUpdated()
@@ -230,7 +230,7 @@ protected:
 
 		#ifndef NO_QUILL
 		LOG_TRACE_L1(mLogData.logger, "[{}] Updating conversion strategy from {} to {}", mLogData.prefix,
-			to_string(mFrameWriterStrategy), to_string(newStrategy));
+		             to_string(mFrameWriterStrategy), to_string(newStrategy));
 		#endif
 		mFrameWriterStrategy = newStrategy;
 
@@ -315,7 +315,7 @@ protected:
 				{
 					#ifndef NO_QUILL
 					LOG_TRACE_L1(mLogData.logger, "[{}] Updating HDR meta in frame {}, last update at {}",
-						mLogData.prefix, mFrameCounter, mLastSentHdrMetaAt);
+					             mLogData.prefix, mFrameCounter, mLastSentHdrMetaAt);
 					#endif
 
 					MediaSideDataHDR hdr;
@@ -335,7 +335,7 @@ protected:
 					hdr.min_display_mastering_luminance = mVideoFormat.hdrMeta.minDML;
 
 					pMediaSideData->SetSideData(IID_MediaSideDataHDR, reinterpret_cast<const BYTE*>(&hdr),
-						sizeof(hdr));
+					                            sizeof(hdr));
 
 					MediaSideDataHDRContentLightLevel hdrLightLevel;
 					ZeroMemory(&hdrLightLevel, sizeof(hdrLightLevel));
@@ -344,23 +344,23 @@ protected:
 					hdrLightLevel.MaxFALL = mVideoFormat.hdrMeta.maxFALL;
 
 					pMediaSideData->SetSideData(IID_MediaSideDataHDRContentLightLevel,
-						reinterpret_cast<const BYTE*>(&hdrLightLevel),
-						sizeof(hdrLightLevel));
+					                            reinterpret_cast<const BYTE*>(&hdrLightLevel),
+					                            sizeof(hdrLightLevel));
 					pMediaSideData->Release();
 
 					#ifndef NO_QUILL
 					LOG_TRACE_L1(mLogData.logger, "[{}] HDR meta: R {:.4f} {:.4f}", mLogData.prefix,
-						hdr.display_primaries_x[2], hdr.display_primaries_y[2]);
+					             hdr.display_primaries_x[2], hdr.display_primaries_y[2]);
 					LOG_TRACE_L1(mLogData.logger, "[{}] HDR meta: G {:.4f} {:.4f}", mLogData.prefix,
-						hdr.display_primaries_x[0], hdr.display_primaries_y[0]);
+					             hdr.display_primaries_x[0], hdr.display_primaries_y[0]);
 					LOG_TRACE_L1(mLogData.logger, "[{}] HDR meta: B {:.4f} {:.4f}", mLogData.prefix,
-						hdr.display_primaries_x[1], hdr.display_primaries_y[1]);
+					             hdr.display_primaries_x[1], hdr.display_primaries_y[1]);
 					LOG_TRACE_L1(mLogData.logger, "[{}] HDR meta: W {:.4f} {:.4f}", mLogData.prefix,
-						hdr.white_point_x, hdr.white_point_y);
+					             hdr.white_point_x, hdr.white_point_y);
 					LOG_TRACE_L1(mLogData.logger, "[{}] HDR meta: DML {} {}", mLogData.prefix,
-						hdr.min_display_mastering_luminance, hdr.max_display_mastering_luminance);
+					             hdr.min_display_mastering_luminance, hdr.max_display_mastering_luminance);
 					LOG_TRACE_L1(mLogData.logger, "[{}] HDR meta: MaxCLL/MaxFALL {} {}", mLogData.prefix,
-						hdrLightLevel.MaxCLL, hdrLightLevel.MaxFALL);
+					             hdrLightLevel.MaxCLL, hdrLightLevel.MaxFALL);
 					#endif
 
 					mFilter->OnHdrUpdated(&hdr, &hdrLightLevel);
@@ -369,8 +369,8 @@ protected:
 				{
 					#ifndef NO_QUILL
 					LOG_WARNING(mLogData.logger,
-						"[{}] HDR meta to send via MediaSideDataHDR but not supported by MediaSample",
-						mLogData.prefix);
+					            "[{}] HDR meta to send via MediaSideDataHDR but not supported by MediaSample",
+					            mLogData.prefix);
 					#endif
 				}
 			}
@@ -422,8 +422,8 @@ protected:
 
 					#ifndef NO_QUILL
 					LOG_WARNING(mLogData.logger,
-						"[{}] VideoFormat changed but not able to reconnect! [Result: {:#08x}] Attempting fallback format {}",
-						mLogData.prefix, static_cast<unsigned long>(hr), fallbackPixelFormat.name);
+					            "[{}] VideoFormat changed but not able to reconnect! [Result: {:#08x}] Attempting fallback format {}",
+					            mLogData.prefix, static_cast<unsigned long>(hr), fallbackPixelFormat.name);
 					#endif
 
 					auto fallbackVideoFormat = std::move(newVideoFormat);
@@ -441,8 +441,8 @@ protected:
 
 						#ifndef NO_QUILL
 						LOG_WARNING(mLogData.logger,
-							"[{}] VideoFormat changed and fallback format {} required to reconnect, updating frame conversion strategy to {}",
-							mLogData.prefix, fallbackVideoFormat.pixelFormat.name, to_string(strategy));
+						            "[{}] VideoFormat changed and fallback format {} required to reconnect, updating frame conversion strategy to {}",
+						            mLogData.prefix, fallbackVideoFormat.pixelFormat.name, to_string(strategy));
 						#endif
 
 						SetFrameWriterStrategy(search->second.second, signalledFormat);
@@ -453,9 +453,9 @@ protected:
 					{
 						#ifndef NO_QUILL
 						LOG_WARNING(mLogData.logger,
-							"[{}] VideoFormat changed but fallback format also not able to reconnect! Will retry after backoff [Result: {:#08x}]",
-							mLogData.prefix, static_cast<unsigned long>(hr),
-							fallbackVideoFormat.pixelFormat.name);
+						            "[{}] VideoFormat changed but fallback format also not able to reconnect! Will retry after backoff [Result: {:#08x}]",
+						            mLogData.prefix, static_cast<unsigned long>(hr),
+						            fallbackVideoFormat.pixelFormat.name);
 						#endif
 
 						retVal = E_FAIL;
@@ -465,8 +465,8 @@ protected:
 				{
 					#ifndef NO_QUILL
 					LOG_ERROR(mLogData.logger,
-						"[{}] VideoFormat changed but not able to reconnect! Will retry after backoff [Result: {:#08x}]",
-						mLogData.prefix, static_cast<unsigned long>(hr));
+					          "[{}] VideoFormat changed but not able to reconnect! Will retry after backoff [Result: {:#08x}]",
+					          mLogData.prefix, static_cast<unsigned long>(hr));
 					#endif
 
 					retVal = E_FAIL;

@@ -37,8 +37,8 @@ EXTERN_C const GUID MEDIASUBTYPE_PCM_SOWT;
 class audio_capture_pin : public capture_pin
 {
 protected:
-	audio_capture_pin(HRESULT* phr, CSource* pParent, LPCSTR pObjectName, LPCWSTR pPinName, std::string pLogPrefix) :
-		capture_pin(phr, pParent, pObjectName, pPinName, pLogPrefix)
+	audio_capture_pin(HRESULT* phr, CSource* pParent, LPCSTR pObjectName, LPCWSTR pPinName, std::string pLogPrefix, device_type pType) :
+		capture_pin(phr, pParent, pObjectName, pPinName, pLogPrefix, pType, false)
 	{
 	}
 
@@ -69,8 +69,8 @@ template <class F>
 class hdmi_audio_capture_pin : public audio_capture_pin
 {
 public:
-	hdmi_audio_capture_pin(HRESULT* phr, F* pParent, LPCSTR pObjectName, LPCWSTR pPinName, std::string pLogPrefix)
-		: audio_capture_pin(phr, pParent, pObjectName, pPinName, pLogPrefix),
+	hdmi_audio_capture_pin(HRESULT* phr, F* pParent, LPCSTR pObjectName, LPCWSTR pPinName, std::string pLogPrefix, device_type pType)
+		: audio_capture_pin(phr, pParent, pObjectName, pPinName, pLogPrefix, pType),
 		  mFilter(pParent)
 	{
 	}

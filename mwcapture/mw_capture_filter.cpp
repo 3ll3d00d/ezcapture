@@ -61,17 +61,17 @@ magewell_capture_filter::magewell_capture_filter(LPUNKNOWN punk, HRESULT* phr) :
 	}
 	#endif
 	CAutoLock lck(&m_cStateLock);
-	DEVICE_INFO* diToUse(nullptr);
+	device_info* diToUse(nullptr);
 	int channelCount = MWGetChannelCount();
 	// TODO read HKEY_LOCAL_MACHINE L"Software\\mwcapture\\devicepath"
 	for (int i = 0; i < channelCount; i++)
 	{
-		DEVICE_INFO di{};
+		device_info di{};
 		MWCAP_CHANNEL_INFO mci;
 		MWGetChannelInfoByIndex(i, &mci);
 		if (mci.wFamilyID == MW_FAMILY_ID_PRO_CAPTURE)
 		{
-			di.deviceType = PRO;
+			di.deviceType = MW_PRO;
 			di.serialNo = std::string{ mci.szBoardSerialNo };
 			MWCAP_PRO_CAPTURE_INFO info;
 			MWGetFamilyInfoByIndex(i, &info, sizeof(MWCAP_PRO_CAPTURE_INFO));
@@ -84,11 +84,11 @@ magewell_capture_filter::magewell_capture_filter(LPUNKNOWN punk, HRESULT* phr) :
 		{
 			if (0 == strcmp(mci.szProductName, "USB Capture HDMI 4K+"))
 			{
-				di.deviceType = USB_PLUS;
+				di.deviceType = MW_USB_PLUS;
 			}
 			else if (0 == strcmp(mci.szProductName, "USB Capture HDMI 4K Pro"))
 			{
-				di.deviceType = USB_PRO;
+				di.deviceType = MW_USB_PRO;
 			}
 			else
 			{
@@ -212,7 +212,7 @@ magewell_capture_filter::magewell_capture_filter(LPUNKNOWN punk, HRESULT* phr) :
 		magewell_capture_filter::OnDeviceUpdated();
 	}
 
-	mClock = new MWReferenceClock(phr, mDeviceInfo.hChannel, mDeviceInfo.deviceType == PRO);
+	mClock = new MWReferenceClock(phr, mDeviceInfo.hChannel, mDeviceInfo.deviceType == MW_PRO);
 
 	auto vp = new magewell_video_capture_pin(phr, this, false);
 	vp->UpdateFrameWriterStrategy();
@@ -233,19 +233,19 @@ magewell_capture_filter::~magewell_capture_filter()
 
 void magewell_capture_filter::SnapHardwareDetails()
 {
-	if (mDeviceInfo.deviceType == PRO)
+	if (mDeviceInfo.deviceType == MW_PRO)
 	{
 		uint32_t temp;
 		MWGetTemperature(mDeviceInfo.hChannel, &temp);
 		mDeviceInfo.temperature = temp;
 	}
-	else if (mDeviceInfo.deviceType == USB_PLUS)
+	else if (mDeviceInfo.deviceType == MW_USB_PLUS)
 	{
 		int16_t temp;
 		MWUSBGetCoreTemperature(mDeviceInfo.hChannel, &temp);
 		mDeviceInfo.temperature = temp;
 	}
-	else if (mDeviceInfo.deviceType == USB_PRO)
+	else if (mDeviceInfo.deviceType == MW_USB_PRO)
 	{
 		int16_t val;
 		MWUSBGetCoreTemperature(mDeviceInfo.hChannel, &val);
@@ -255,7 +255,7 @@ void magewell_capture_filter::SnapHardwareDetails()
 	}
 }
 
-void magewell_capture_filter::OnVideoSignalLoaded(VIDEO_SIGNAL* vs)
+void magewell_capture_filter::OnVideoSignalLoaded(video_signal* vs)
 {
 	mVideoInputStatus.inX = vs->signalStatus.cx;
 	mVideoInputStatus.inY = vs->signalStatus.cy;
@@ -358,7 +358,7 @@ void magewell_capture_filter::OnVideoSignalLoaded(VIDEO_SIGNAL* vs)
 	}
 }
 
-void magewell_capture_filter::OnAudioSignalLoaded(AUDIO_SIGNAL* as)
+void magewell_capture_filter::OnAudioSignalLoaded(audio_signal* as)
 {
 	// TODO always false, is it a bug in SDK?
 	// mStatusInfo.audioInStatus = as->signalStatus.bChannelStatusValid;
@@ -387,7 +387,7 @@ void magewell_capture_filter::OnDeviceUpdated()
 	mDeviceStatus.temperature = mDeviceInfo.temperature / 10.0;
 	mDeviceStatus.linkSpeed = mDeviceInfo.linkSpeed;
 	mDeviceStatus.fanSpeed = mDeviceInfo.fanSpeed;
-	if (mDeviceInfo.deviceType == PRO)
+	if (mDeviceInfo.deviceType == MW_PRO)
 	{
 		mDeviceStatus.linkWidth = mDeviceInfo.linkWidth;
 		mDeviceStatus.maxReadRequestSize = mDeviceInfo.maxReadRequestSize;
@@ -416,7 +416,7 @@ HCHANNEL magewell_capture_filter::GetChannelHandle() const
 	return mDeviceInfo.hChannel;
 }
 
-DeviceType magewell_capture_filter::GetDeviceType() const
+device_type magewell_capture_filter::GetDeviceType() const
 {
 	return mDeviceInfo.deviceType;
 }

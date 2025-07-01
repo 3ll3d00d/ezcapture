@@ -22,9 +22,9 @@
 #endif
 
 #include "capture_filter.h"
+#include <atlcomcli.h>
 #include "bm_domain.h"
 #include "video_frame.h"
-#include <atlcomcli.h>
 #include <functional>
 #include <chrono>
 
@@ -82,7 +82,7 @@ public:
  * Can inject HDR/WCG data if found on the incoming HDMI stream.
  */
 class blackmagic_capture_filter final :
-	public hdmi_capture_filter<DEVICE_INFO, VIDEO_SIGNAL, AUDIO_SIGNAL>,
+	public hdmi_capture_filter<device_info, video_signal, audio_signal>,
 	public IDeckLinkInputCallback,
 	public IDeckLinkNotificationCallback
 {
@@ -91,8 +91,8 @@ public:
 	static CUnknown* WINAPI CreateInstance(LPUNKNOWN punk, HRESULT* phr);
 
 	// Callbacks to update the prop page data
-	void OnVideoSignalLoaded(VIDEO_SIGNAL* vs) override;
-	void OnAudioSignalLoaded(AUDIO_SIGNAL* as) override;
+	void OnVideoSignalLoaded(video_signal* vs) override;
+	void OnAudioSignalLoaded(audio_signal* as) override;
 	void OnDeviceUpdated() override;
 
 	// filter <-> pin communication
@@ -154,9 +154,9 @@ public:
 	HRESULT processAudioPacket(IDeckLinkAudioInputPacket* audioPacket, const REFERENCE_TIME& now);
 
 protected:
-	static void LoadFormat(VIDEO_FORMAT* videoFormat, const VIDEO_SIGNAL* videoSignal);
-	static void LoadSignalFromDisplayMode(VIDEO_SIGNAL* newSignal, IDeckLinkDisplayMode* newDisplayMode);
-	static void LoadFormat(AUDIO_FORMAT* audioFormat, const AUDIO_SIGNAL* audioSignal);
+	static void LoadFormat(VIDEO_FORMAT* videoFormat, const video_signal* videoSignal);
+	static void LoadSignalFromDisplayMode(video_signal* newSignal, IDeckLinkDisplayMode* newDisplayMode);
+	static void LoadFormat(AUDIO_FORMAT* audioFormat, const audio_signal* audioSignal);
 
 	STDMETHODIMP Run(REFERENCE_TIME tStart) override;
 
@@ -174,7 +174,7 @@ private:
 	CCritSec mDeckLinkSec;
 
 	uint8_t mRunningPins{ 0 };
-	VIDEO_SIGNAL mVideoSignal{};
+	video_signal mVideoSignal{};
 	VIDEO_FORMAT mVideoFormat{};
 
 	int64_t mPreviousVideoFrameTime{ invalidFrameTime };
@@ -183,7 +183,7 @@ private:
 	std::shared_ptr<video_frame> mVideoFrame;
 	HANDLE mVideoFrameEvent;
 
-	AUDIO_SIGNAL mAudioSignal{};
+	audio_signal mAudioSignal{};
 	AUDIO_FORMAT mAudioFormat{};
 	int64_t mPreviousAudioFrameTime{ invalidFrameTime };
 	int64_t mAudioFrameTime{ 0 };

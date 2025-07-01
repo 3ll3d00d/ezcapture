@@ -25,7 +25,7 @@
 #include "video_capture_pin.h"
 #include "VideoFrameWriter.h"
 #include "any_rgb.h"
-#include "StraightThrough.h"
+#include "straight_through.h"
 #include <memory>
 
 class blackmagic_video_capture_pin final :
@@ -62,7 +62,7 @@ private:
 			mFrameWriter = std::make_unique<any_rgb>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
 			break;
 		case STRAIGHT_THROUGH:
-			mFrameWriter = std::make_unique<StraightThrough>(mLogData, mVideoFormat.cx, mVideoFormat.cy,
+			mFrameWriter = std::make_unique<straight_through>(mLogData, mVideoFormat.cx, mVideoFormat.cy,
 				&mVideoFormat.pixelFormat);
 			break;
 		case YUY2_YV16:

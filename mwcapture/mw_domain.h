@@ -25,24 +25,6 @@
 #include <LibMWCapture/MWHDMIPackets.h>
 #include "domain.h"
 
-enum DeviceType : uint8_t
-{
-	USB_PLUS,
-	USB_PRO,
-	PRO
-};
-
-inline const char* devicetype_to_name(DeviceType e)
-{
-	switch (e)
-	{
-	case USB_PLUS: return "USB_PLUS";
-	case USB_PRO: return "USB_PRO";
-	case PRO: return "PRO";
-	default: return "unknown";
-	}
-}
-
 inline constexpr auto chromaticity_scale_factor = 0.00002;
 inline constexpr auto high_luminance_scale_factor = 1.0;
 inline constexpr auto low_luminance_scale_factor = 0.0001;
@@ -92,23 +74,23 @@ const pixel_format_alternatives usbPlusPixelFormatAlternatives = {
 	{NV12, {UYVY, YUY2, BGR24}},
 };
 
-const std::map<DeviceType, pixel_format_alternatives> formatAlternativesByDeviceType = {
-	{USB_PLUS, usbPlusPixelFormatAlternatives},
-	{USB_PRO, usbProPixelFormatAlternatives}
+const std::map<device_type, pixel_format_alternatives> formatAlternativesByDeviceType = {
+	{MW_USB_PLUS, usbPlusPixelFormatAlternatives},
+	{MW_USB_PRO, usbProPixelFormatAlternatives}
 };
 
-inline pixel_format_by_bit_depth_subsampling generatePixelFormatMatrix(DeviceType deviceType,
+inline pixel_format_by_bit_depth_subsampling generatePixelFormatMatrix(device_type deviceType,
                                                                        const std::vector<DWORD>& fourccs)
 {
-	if (deviceType == PRO)
+	if (deviceType == MW_PRO)
 	{
 		return proPixelFormats;
 	}
 
-	pixel_format_alternatives alternatives = deviceType == USB_PRO
+	pixel_format_alternatives alternatives = deviceType == MW_USB_PRO
 		                                         ? usbProPixelFormatAlternatives
 		                                         : usbPlusPixelFormatAlternatives;
-	pixel_format_by_bit_depth_subsampling proposed = deviceType == USB_PRO ? usbProPixelFormats : usbPlusPixelFormats;
+	pixel_format_by_bit_depth_subsampling proposed = deviceType == MW_USB_PRO ? usbProPixelFormats : usbPlusPixelFormats;
 
 
 	auto formatExists = [&, fourccs](DWORD target) { return std::ranges::find(fourccs, target) != fourccs.end(); };
@@ -260,7 +242,7 @@ constexpr int maxFrameLengthInBytes = MWCAP_AUDIO_SAMPLES_PER_FRAME * MWCAP_AUDI
 
 EXTERN_C const GUID CLSID_MWCAPTURE_FILTER;
 
-struct USB_CAPTURE_FORMATS
+struct usb_capture_formats
 {
 	bool usb{false};
 	MWCAP_VIDEO_OUTPUT_FOURCC fourccs;
@@ -268,7 +250,7 @@ struct USB_CAPTURE_FORMATS
 	MWCAP_VIDEO_OUTPUT_FRAME_SIZE frameSizes;
 };
 
-struct VIDEO_SIGNAL
+struct video_signal
 {
 	MWCAP_INPUT_SPECIFIC_STATUS inputStatus;
 	MWCAP_VIDEO_SIGNAL_STATUS signalStatus;
@@ -279,16 +261,16 @@ struct VIDEO_SIGNAL
 	HDMI_AVI_INFOFRAME_PAYLOAD aviInfo;
 };
 
-struct AUDIO_SIGNAL
+struct audio_signal
 {
 	MWCAP_AUDIO_SIGNAL_STATUS signalStatus;
 	MWCAP_AUDIO_CAPTURE_FRAME frameInfo;
 	HDMI_AUDIO_INFOFRAME_PAYLOAD audioInfo;
 };
 
-struct DEVICE_INFO
+struct device_info
 {
-	DeviceType deviceType;
+	device_type deviceType;
 	std::string serialNo{};
 	WCHAR devicePath[128];
 	HCHANNEL hChannel;

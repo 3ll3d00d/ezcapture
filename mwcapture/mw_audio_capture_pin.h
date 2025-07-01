@@ -87,7 +87,7 @@ protected:
 	HANDLE mCaptureEvent;
 
 	double minus_10db{ pow(10.0, -10.0 / 20.0) };
-	AUDIO_SIGNAL mAudioSignal{};
+	audio_signal mAudioSignal{};
 	BYTE mFrameBuffer[maxFrameLengthInBytes];
 	// IEC61937 processing
 	uint32_t mBitstreamDetectionWindowLength{ 0 };
@@ -123,7 +123,7 @@ protected:
 
 	static void CaptureFrame(const BYTE* pbFrame, int cbFrame, UINT64 u64TimeStamp, void* pParam);
 
-	void LoadFormat(AUDIO_FORMAT* audioFormat, const AUDIO_SIGNAL* audioSignal) const;
+	void LoadFormat(AUDIO_FORMAT* audioFormat, const audio_signal* audioSignal) const;
 	HRESULT LoadSignal(HCHANNEL* hChannel);
 	HRESULT DoChangeMediaType(const CMediaType* pmt, const AUDIO_FORMAT* newAudioFormat);
 	void StopCapture();

@@ -47,12 +47,12 @@ inline void logBitmapHeader(const log_data& log, const std::string& desc, const 
 	{
 		auto name = rgb ? "RGB" : pix->name;
 		LOG_WARNING(log.logger, "[{}] {} {},{},{},{},{}", log.prefix, desc, bmi->biBitCount, bmi->biWidth,
-			bmi->biHeight, bmi->biSizeImage, name);
+		            bmi->biHeight, bmi->biSizeImage, name);
 	}
 	else
 	{
 		LOG_WARNING(log.logger, "[{}] {} {},{},{},{},{:#08x}", log.prefix, desc, bmi->biBitCount, bmi->biWidth,
-			bmi->biHeight, bmi->biSizeImage, bmi->biCompression);
+		            bmi->biHeight, bmi->biSizeImage, bmi->biCompression);
 	}
 	#endif
 }
@@ -88,31 +88,31 @@ inline void logVideoMediaType(const log_data& log, const std::string& desc, cons
 	if (!matched)
 	{
 		LOG_WARNING(log.logger, "[{}] {} ignored unknown type {:#08x} - {:#08x}", log.prefix, desc,
-			pmt->majortype.Data1, pmt->formattype.Data1);
+		            pmt->majortype.Data1, pmt->formattype.Data1);
 	}
 	#endif
 }
 
 inline void doLogHdrMeta(const HDR_META& newMeta, const log_data& log, bool logPrimaries, bool logWp, bool logMax,
-	bool logTf)
+                         bool logTf)
 {
 	#ifndef NO_QUILL
 	if (logPrimaries)
 	{
 		LOG_INFO(log.logger, "[{}] Primaries RGB {:.4f} x {:.4f} {:.4f} x {:.4f} {:.4f} x {:.4f}",
-			log.prefix,
-			newMeta.r_primary_x, newMeta.r_primary_y, newMeta.g_primary_x, newMeta.g_primary_y,
-			newMeta.b_primary_x, newMeta.b_primary_y);
+		         log.prefix,
+		         newMeta.r_primary_x, newMeta.r_primary_y, newMeta.g_primary_x, newMeta.g_primary_y,
+		         newMeta.b_primary_x, newMeta.b_primary_y);
 	}
 	if (logWp)
 	{
 		LOG_INFO(log.logger, "[{}] Whitepoint {:.4f} x {:.4f}", log.prefix,
-			newMeta.whitepoint_x, newMeta.whitepoint_y);
+		         newMeta.whitepoint_x, newMeta.whitepoint_y);
 	}
 	if (logMax)
 	{
 		LOG_INFO(log.logger, "[{}] DML/MaxCLL/MaxFALL {:.4f} / {:.4f} {} {}", log.prefix,
-			newMeta.minDML, newMeta.maxDML, newMeta.maxCLL, newMeta.maxFALL);
+		         newMeta.minDML, newMeta.maxDML, newMeta.maxCLL, newMeta.maxFALL);
 	}
 	if (logTf)
 	{
@@ -222,9 +222,9 @@ public:
 	//  IKsPropertySet
 	//////////////////////////////////////////////////////////////////////////
 	HRESULT STDMETHODCALLTYPE Set(REFGUID guidPropSet, DWORD dwID, void* pInstanceData, DWORD cbInstanceData,
-		void* pPropData, DWORD cbPropData) override;
+	                              void* pPropData, DWORD cbPropData) override;
 	HRESULT STDMETHODCALLTYPE Get(REFGUID guidPropSet, DWORD dwPropID, void* pInstanceData, DWORD cbInstanceData,
-		void* pPropData, DWORD cbPropData, DWORD* pcbReturned) override;
+	                              void* pPropData, DWORD cbPropData, DWORD* pcbReturned) override;
 	HRESULT STDMETHODCALLTYPE QuerySupported(REFGUID guidPropSet, DWORD dwPropID, DWORD* pTypeSupport) override;
 
 	//////////////////////////////////////////////////////////////////////////
@@ -253,7 +253,8 @@ public:
 	}
 
 protected:
-	capture_pin(HRESULT* phr, CSource* pParent, LPCSTR pObjectName, LPCWSTR pPinName, const std::string& pLogPrefix);
+	capture_pin(HRESULT* phr, CSource* pParent, LPCSTR pObjectName, LPCWSTR pPinName, const std::string& pLogPrefix,
+	            device_type pType, bool pVideo);
 
 	virtual void DoThreadDestroy() = 0;
 	virtual bool ProposeBuffers(ALLOCATOR_PROPERTIES* pProperties) = 0;
@@ -262,20 +263,20 @@ protected:
 
 	log_data mLogData{};
 	CCritSec mCaptureCritSec;
-	uint64_t mFrameCounter{ 0 };
-	bool mPreview{ false };
-	WORD mSinceLast{ 0 };
+	uint64_t mFrameCounter{0};
+	bool mPreview{false};
+	WORD mSinceLast{0};
 
-	bool mFirst{ true };
-	bool mLastSampleDiscarded{ false };
-	bool mUpdatedMediaType{ false };
-	bool mHasSignal{ false };
-	LONGLONG mLastSentHdrMetaAt{ 0 };
+	bool mFirst{true};
+	bool mLastSampleDiscarded{false};
+	bool mUpdatedMediaType{false};
+	bool mHasSignal{false};
+	LONGLONG mLastSentHdrMetaAt{0};
 	// per frame
-	LONGLONG mPreviousFrameTime{ 0 };
-	LONGLONG mCurrentFrameTime{ 0 };
+	LONGLONG mPreviousFrameTime{0};
+	LONGLONG mCurrentFrameTime{0};
 	// measurements
-	bool mLoggedLatencyHeader{ false };
+	bool mLoggedLatencyHeader{false};
 	metric mCaptureLatency{};
 	metric mConversionLatency{};
 	metric mAllocatorLatency{};

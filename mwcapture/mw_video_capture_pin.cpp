@@ -19,7 +19,7 @@
 #endif
 
 #include "mw_video_capture_pin.h"
-#include "StraightThrough.h"
+#include "straight_through.h"
 #include <memory>
 
 magewell_video_capture_pin::VideoCapture::VideoCapture(magewell_video_capture_pin* pin, HCHANNEL hChannel) :
@@ -27,20 +27,20 @@ magewell_video_capture_pin::VideoCapture::VideoCapture(magewell_video_capture_pi
 	mLogData(pin->mLogData)
 {
 	mEvent = MWCreateVideoCapture(hChannel, pin->mVideoFormat.cx, pin->mVideoFormat.cy,
-		pin->mSignalledFormat.fourcc, pin->mVideoFormat.frameInterval, CaptureFrame,
-		pin);
+	                              pin->mSignalledFormat.fourcc, pin->mVideoFormat.frameInterval, CaptureFrame,
+	                              pin);
 	#ifndef NO_QUILL
 	if (mEvent == nullptr)
 	{
 		LOG_ERROR(mLogData.logger, "[{}] MWCreateVideoCapture failed [{}x{} '{}' {}]", mLogData.prefix,
-			pin->mVideoFormat.cx, pin->mVideoFormat.cy, pin->mSignalledFormat.name,
-			pin->mVideoFormat.frameInterval);
+		          pin->mVideoFormat.cx, pin->mVideoFormat.cy, pin->mSignalledFormat.name,
+		          pin->mVideoFormat.frameInterval);
 	}
 	else
 	{
 		LOG_INFO(mLogData.logger, "[{}] MWCreateVideoCapture succeeded [{}x{} '{}' {}]", mLogData.prefix,
-			pin->mVideoFormat.cx, pin->mVideoFormat.cy, pin->mSignalledFormat.name,
-			pin->mVideoFormat.frameInterval);
+		         pin->mVideoFormat.cx, pin->mVideoFormat.cy, pin->mSignalledFormat.name,
+		         pin->mVideoFormat.frameInterval);
 	}
 	#endif
 }
@@ -77,8 +77,8 @@ magewell_video_capture_pin::VideoCapture::~VideoCapture()
 //  magewell_video_capture_pin::VideoFrameGrabber
 //////////////////////////////////////////////////////////////////////////
 magewell_video_capture_pin::video_frame_grabber::video_frame_grabber(magewell_video_capture_pin* pin,
-	HCHANNEL hChannel, DeviceType deviceType,
-	IMediaSample* pms) :
+                                                                     HCHANNEL hChannel, device_type deviceType,
+                                                                     IMediaSample* pms) :
 	mLogData(pin->mLogData),
 	hChannel(hChannel),
 	deviceType(deviceType),
@@ -87,7 +87,7 @@ magewell_video_capture_pin::video_frame_grabber::video_frame_grabber(magewell_vi
 {
 	this->pms->GetPointer(&pmsData);
 
-	if (deviceType == PRO)
+	if (deviceType == MW_PRO)
 	{
 		#ifndef NO_QUILL
 		LOG_TRACE_L3(mLogData.logger, "[{}] Pinning {} bytes", this->mLogData.prefix, this->pms->GetSize());
@@ -98,11 +98,11 @@ magewell_video_capture_pin::video_frame_grabber::video_frame_grabber(magewell_vi
 
 magewell_video_capture_pin::video_frame_grabber::~video_frame_grabber()
 {
-	if (deviceType == PRO)
+	if (deviceType == MW_PRO)
 	{
 		#ifndef NO_QUILL
 		LOG_TRACE_L3(mLogData.logger, "[{}] Unpinning {} bytes, captured {} bytes", mLogData.prefix, pms->GetSize(),
-			pms->GetActualDataLength());
+		             pms->GetActualDataLength());
 		#endif
 
 		MWUnpinVideoBuffer(hChannel, pmsData);
@@ -113,7 +113,7 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 {
 	auto retVal = S_OK;
 	auto hasFrame = false;
-	auto proDevice = deviceType == PRO;
+	auto proDevice = deviceType == MW_PRO;
 	auto mustExit = false;
 	int64_t now;
 	while (!hasFrame && !mustExit)
@@ -125,19 +125,19 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 			{
 				#ifndef NO_QUILL
 				LOG_TRACE_L1(mLogData.logger, "[{}] Can't get VideoBufferInfo ({})", mLogData.prefix,
-					static_cast<int>(pin->mLastMwResult));
+				             static_cast<int>(pin->mLastMwResult));
 				#endif
 
 				continue;
 			}
 
 			pin->mLastMwResult = MWGetVideoFrameInfo(hChannel, pin->mVideoSignal.bufferInfo.iNewestBuffered,
-				&pin->mVideoSignal.frameInfo);
+			                                         &pin->mVideoSignal.frameInfo);
 			if (pin->mLastMwResult != MW_SUCCEEDED)
 			{
 				#ifndef NO_QUILL
 				LOG_TRACE_L1(mLogData.logger, "[{}] Can't get VideoFrameInfo ({})", mLogData.prefix,
-					static_cast<int>(pin->mLastMwResult));
+				             static_cast<int>(pin->mLastMwResult));
 				#endif
 
 				continue;
@@ -184,9 +184,9 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 			{
 				#ifndef NO_QUILL
 				LOG_WARNING(mLogData.logger,
-					"[{}] Unexpected failed call to MWCaptureVideoFrameToVirtualAddressEx ({})",
-					mLogData.prefix,
-					static_cast<int>(pin->mLastMwResult));
+				            "[{}] Unexpected failed call to MWCaptureVideoFrameToVirtualAddressEx ({})",
+				            mLogData.prefix,
+				            static_cast<int>(pin->mLastMwResult));
 				#endif
 				break;
 			}
@@ -198,7 +198,7 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 				{
 					#ifndef NO_QUILL
 					LOG_TRACE_L1(mLogData.logger, "[{}] Unexpected capture event ({:#08x})", mLogData.prefix,
-						static_cast<unsigned long>(dwRet));
+					             static_cast<unsigned long>(dwRet));
 					#endif
 
 					if (dwRet == STATUS_TIMEOUT)
@@ -225,12 +225,13 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 				if (pin->mLastMwResult != MW_SUCCEEDED)
 				{
 					LOG_TRACE_L1(mLogData.logger, "[{}] MWGetVideoCaptureStatus failed ({})", mLogData.prefix,
-						static_cast<int>(pin->mLastMwResult));
+					             static_cast<int>(pin->mLastMwResult));
 				}
 				#endif
 
 				hasFrame = pin->mVideoSignal.captureStatus.bFrameCompleted;
-			} while (pin->mLastMwResult == MW_SUCCEEDED && !hasFrame);
+			}
+			while (pin->mLastMwResult == MW_SUCCEEDED && !hasFrame);
 
 			if (hasFrame)
 			{
@@ -278,7 +279,7 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 	{
 		// in place byteswap so no need for frame conversion buffer
 		if (pin->mVideoFormat.pixelFormat.format == pixel_format::AYUV)
-			// || pin->mVideoFormat.pixelFormat.format == pixel_format::P010)
+		// || pin->mVideoFormat.pixelFormat.format == pixel_format::P010)
 		{
 			// endianness is wrong on a per pixel basis
 			uint32_t sampleIdx = 0;
@@ -306,6 +307,7 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 		}
 		pin->GetReferenceTime(&now);
 		pin->mFrameTs.snap(now, CONVERTED);
+		pin->mFrameTs.end();
 
 		pin->mPreviousFrameTime = pin->mCurrentFrameTime;
 		pin->mCurrentFrameTime = pin->mFrameTs.get(BUFFERING);
@@ -330,28 +332,28 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 		pin->SnapTemperatureIfNecessary(endTime);
 
 		#ifndef NO_QUILL
-		bool isPro = pin->mFilter->GetDeviceType() == PRO;
+		bool isPro = pin->mFilter->GetDeviceType() == MW_PRO;
 		if (!pin->mLoggedLatencyHeader)
 		{
 			pin->mLoggedLatencyHeader = true;
 			if (isPro)
 			{
 				LOG_TRACE_L1(mLogData.videoLat,
-					"idx,waiting,waitComplete,"
-					"bufferAllocated,buffering,buffered,"
-					"reading,read,converted,"
-					"sysTime,actualInterval,expectedInterval,"
-					"deltaInterval,imageSize,missedFrames,"
-					"startTime,endTime");
+				             "idx,waiting,waitComplete,"
+				             "bufferAllocated,buffering,buffered,"
+				             "reading,read,converted,"
+				             "sysTime,actualInterval,expectedInterval,"
+				             "deltaInterval,imageSize,missedFrames,"
+				             "startTime,endTime");
 			}
 			else
 			{
 				LOG_TRACE_L1(mLogData.videoLat,
-					"idx,waitComplete,buffering,"
-					"reading,read,converted,"
-					"sysTime,actualInterval,expectedInterval,"
-					"deltaInterval,imageSize,missedFrames,"
-					"startTime,endTime");
+				             "idx,waitComplete,buffering,"
+				             "reading,read,converted,"
+				             "sysTime,actualInterval,expectedInterval,"
+				             "deltaInterval,imageSize,missedFrames,"
+				             "startTime,endTime");
 			}
 		}
 		auto frameInterval = pin->mCurrentFrameTime - pin->mPreviousFrameTime;
@@ -361,40 +363,41 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 		if (vf.imageSize != sz)
 		{
 			LOG_TRACE_L3(mLogData.logger, "[{}] Video format size mismatch (format: {} buffer: {})", mLogData.prefix,
-				vf.imageSize, sz);
+			             vf.imageSize, sz);
 		}
 		auto ts = pin->mFrameTs;
 		if (isPro)
 		{
 			LOG_TRACE_L1(mLogData.videoLat,
-				"{},{},{},"
-				"{},{},{},"
-				"{},{},{},"
-				"{},{},{},"
-				"{},{},{},"
-				"{},{}",
-				pin->mFrameCounter, ts.get(WAITING), ts.get(WAIT_COMPLETE),
-				ts.get(BUFFER_ALLOCATED), ts.get(BUFFERING), ts.get(BUFFERED),
-				ts.get(READING), ts.get(READ), ts.get(CONVERTED),
-				ts.get(COMPLETE), frameInterval, vf.frameInterval,
-				frameInterval - vf.frameInterval, vf.imageSize, missedFrame,
-				startTime, endTime);
+			             "{},{},{},"
+			             "{},{},{},"
+			             "{},{},{},"
+			             "{},{},{},"
+			             "{},{},{},"
+			             "{},{}",
+			             pin->mFrameCounter, ts.get(WAITING), ts.get(WAIT_COMPLETE),
+			             ts.get(BUFFER_ALLOCATED), ts.get(BUFFERING), ts.get(BUFFERED),
+			             ts.get(READING), ts.get(READ), ts.get(CONVERTED),
+			             ts.get(COMPLETE), frameInterval, vf.frameInterval,
+			             frameInterval - vf.frameInterval, vf.imageSize, missedFrame,
+			             startTime, endTime);
 		}
 		else
 		{
 			LOG_TRACE_L1(mLogData.videoLat,
-				"{},{},{},"
-				"{},{},{},"
-				"{},{},{},"
-				"{},{},{},"
-				"{},{}",
-				pin->mFrameCounter, ts.get(WAIT_COMPLETE), ts.get(BUFFERING),
-				ts.get(READING), ts.get(READ), ts.get(CONVERTED),
-				ts.get(COMPLETE), frameInterval, vf.frameInterval,
-				frameInterval - vf.frameInterval, vf.imageSize, missedFrame,
-				startTime, endTime);
+			             "{},{},{},"
+			             "{},{},{},"
+			             "{},{},{},"
+			             "{},{},{},"
+			             "{},{}",
+			             pin->mFrameCounter, ts.get(WAIT_COMPLETE), ts.get(BUFFERING),
+			             ts.get(READING), ts.get(READ), ts.get(CONVERTED),
+			             ts.get(COMPLETE), frameInterval, vf.frameInterval,
+			             frameInterval - vf.frameInterval, vf.imageSize, missedFrame,
+			             startTime, endTime);
 		}
-		LOG_TRACE_L1(mLogData.logger, "[{}] Captured frame {} (signal? {})", pin->mFrameCounter, pin->mHasSignal);
+		LOG_TRACE_L1(mLogData.logger, "[{}] Captured frame {} (signal? {})", mLogData.prefix, pin->mFrameCounter,
+		             pin->mHasSignal);
 		#endif
 	}
 	else
@@ -422,8 +425,9 @@ magewell_video_capture_pin::magewell_video_capture_pin(HRESULT* phr, magewell_ca
 			{YUY2, {YV16, YUY2_YV16}},
 			{Y210, {P210, Y210_P210}},
 			{BGR10, {RGB48, BGR10_BGR48}},
-		}
-		),
+		},
+		pParent->GetDeviceType()
+	),
 	mNotify(nullptr),
 	mCaptureEvent(nullptr),
 	mNotifyEvent(CreateEvent(nullptr, FALSE, FALSE, nullptr)),
@@ -432,7 +436,7 @@ magewell_video_capture_pin::magewell_video_capture_pin(HRESULT* phr, magewell_ca
 {
 	auto hChannel = mFilter->GetChannelHandle();
 
-	if (mFilter->GetDeviceType() != PRO)
+	if (mFilter->GetDeviceType() != MW_PRO)
 	{
 		if (MW_SUCCEEDED == MWUSBGetVideoOutputFOURCC(hChannel, &mUsbCaptureFormats.fourccs))
 		{
@@ -443,7 +447,7 @@ magewell_video_capture_pin::magewell_video_capture_pin(HRESULT* phr, magewell_ca
 					mUsbCaptureFormats.usb = true;
 					#ifndef NO_QUILL
 					{
-						std::string tmp{ "['" };
+						std::string tmp{"['"};
 						for (int i = 0; i < mUsbCaptureFormats.fourccs.byCount; i++)
 						{
 							if (i != 0) tmp += "', '";
@@ -457,7 +461,7 @@ magewell_video_capture_pin::magewell_video_capture_pin(HRESULT* phr, magewell_ca
 						LOG_INFO(mLogData.logger, "[{}] USB colour formats {}", mLogData.prefix, tmp);
 					}
 					{
-						std::string tmp{ "['" };
+						std::string tmp{"['"};
 						for (int i = 0; i < mUsbCaptureFormats.frameIntervals.byCount; i++)
 						{
 							if (i != 0) tmp += "', '";
@@ -468,7 +472,7 @@ magewell_video_capture_pin::magewell_video_capture_pin(HRESULT* phr, magewell_ca
 					}
 
 					{
-						std::string tmp{ "['" };
+						std::string tmp{"['"};
 						for (int i = 0; i < mUsbCaptureFormats.frameSizes.byCount; i++)
 						{
 							if (i != 0) tmp += "', '";
@@ -481,7 +485,7 @@ magewell_video_capture_pin::magewell_video_capture_pin(HRESULT* phr, magewell_ca
 					#endif
 
 					std::vector<DWORD> fourccs(mUsbCaptureFormats.fourccs.adwFOURCCs,
-						std::end(mUsbCaptureFormats.fourccs.adwFOURCCs));
+					                           std::end(mUsbCaptureFormats.fourccs.adwFOURCCs));
 					mPixelFormatMatrix = generatePixelFormatMatrix(mFilter->GetDeviceType(), fourccs);
 					#ifndef NO_QUILL
 					{
@@ -489,10 +493,10 @@ magewell_video_capture_pin::magewell_video_capture_pin(HRESULT* phr, magewell_ca
 						{
 							auto& formats = mPixelFormatMatrix[i];
 							auto tmp = std::format("[RGB: {}, 4:2:0: {}, 4:2:2: {}, 4:4:4: {}]",
-								formats[0].name, formats[3].name, formats[1].name, formats[2].name);
+							                       formats[0].name, formats[3].name, formats[1].name, formats[2].name);
 							auto depth = i == 0 ? "8" : i == 1 ? "10" : "12";
 							LOG_INFO(mLogData.logger, "[{}] Pixel format mapping: {} bit {}", mLogData.prefix, depth,
-								tmp);
+							         tmp);
 						}
 					}
 					#endif
@@ -573,8 +577,8 @@ void magewell_video_capture_pin::DoThreadDestroy()
 	}
 }
 
-void magewell_video_capture_pin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIGNAL* videoSignal,
-	const USB_CAPTURE_FORMATS* captureFormats)
+void magewell_video_capture_pin::LoadFormat(VIDEO_FORMAT* videoFormat, video_signal* videoSignal,
+                                            const usb_capture_formats* captureFormats)
 {
 	auto subsampling = RGB_444;
 	auto bitDepth = 8;
@@ -608,7 +612,7 @@ void magewell_video_capture_pin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIG
 	auto pfIdx = bitDepth == 8 ? 0 : bitDepth == 10 ? 1 : 2;
 
 	auto deviceType = mFilter->GetDeviceType();
-	videoFormat->bottomUpDib = deviceType == PRO;
+	videoFormat->bottomUpDib = deviceType == MW_PRO;
 	videoFormat->pixelFormat = mPixelFormatMatrix[pfIdx][subsampling];
 	if (videoFormat->colourFormat == REC709)
 	{
@@ -641,7 +645,7 @@ void magewell_video_capture_pin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIG
 		if (!found)
 		{
 			#ifndef NO_QUILL
-			std::string tmp{ "['" };
+			std::string tmp{"['"};
 			for (int i = 0; i < captureFormats->fourccs.byCount; i++)
 			{
 				if (i != 0) tmp += "', '";
@@ -654,8 +658,8 @@ void magewell_video_capture_pin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIG
 			tmp += "']";
 
 			LOG_ERROR(mLogData.logger,
-				"[{}] Supported format is {} but card is configured to use {}, video capture will fail",
-				mLogData.prefix, videoFormat->pixelFormat.name, tmp);
+			          "[{}] Supported format is {} but card is configured to use {}, video capture will fail",
+			          mLogData.prefix, videoFormat->pixelFormat.name, tmp);
 			#endif
 		}
 
@@ -674,8 +678,8 @@ void magewell_video_capture_pin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIG
 				byDefault];
 			#ifndef NO_QUILL
 			LOG_WARNING(mLogData.logger,
-				"[{}] Requested frame interval {} is not configured, using default of {} instead",
-				mLogData.prefix, requestedInterval, videoFormat->frameInterval);
+			            "[{}] Requested frame interval {} is not configured, using default of {} instead",
+			            mLogData.prefix, requestedInterval, videoFormat->frameInterval);
 			#endif
 		}
 
@@ -697,8 +701,8 @@ void magewell_video_capture_pin::LoadFormat(VIDEO_FORMAT* videoFormat, VIDEO_SIG
 
 			#ifndef NO_QUILL
 			LOG_WARNING(mLogData.logger,
-				"[{}] Requested frame dimension {}x{} is not configured, using default of {}x{} instead",
-				mLogData.prefix, requestedCx, requestedCy, videoFormat->cx, videoFormat->cy);
+			            "[{}] Requested frame dimension {}x{} is not configured, using default of {}x{} instead",
+			            mLogData.prefix, requestedCx, requestedCy, videoFormat->cx, videoFormat->cy);
 			#endif
 		}
 	}
@@ -740,8 +744,8 @@ HRESULT magewell_video_capture_pin::LoadSignal(HCHANNEL* pChannel)
 	{
 		#ifndef NO_QUILL
 		LOG_ERROR(mLogData.logger,
-			"[{}] LoadSignal MWGetInputSpecificStatus is invalid, will display no/unsupported signal image",
-			mLogData.prefix);
+		          "[{}] LoadSignal MWGetInputSpecificStatus is invalid, will display no/unsupported signal image",
+		          mLogData.prefix);
 		#endif
 
 		mVideoSignal.inputStatus.hdmiStatus.byBitDepth = 8;
@@ -764,8 +768,8 @@ HRESULT magewell_video_capture_pin::LoadSignal(HCHANNEL* pChannel)
 				{
 					#ifndef NO_QUILL
 					LOG_TRACE_L1(mLogData.logger, "[{}] HDR Infoframe is present tf: {} to {}", mLogData.prefix,
-						mVideoSignal.hdrInfo.byEOTF,
-						pkt.hdrInfoFramePayload.byEOTF);
+					             mVideoSignal.hdrInfo.byEOTF,
+					             pkt.hdrInfoFramePayload.byEOTF);
 					#endif
 					mHasHdrInfoFrame = true;
 				}
@@ -807,22 +811,22 @@ void magewell_video_capture_pin::OnFrameWriterStrategyUpdated()
 	switch (mFrameWriterStrategy)
 	{
 	case STRAIGHT_THROUGH:
-		mFrameWriter = std::make_unique<StraightThrough>(mLogData, mVideoFormat.cx, mVideoFormat.cy,
-			&mVideoFormat.pixelFormat);
+		mFrameWriter = std::make_unique<straight_through>(mLogData, mVideoFormat.cx, mVideoFormat.cy,
+		                                                  &mVideoFormat.pixelFormat);
 		break;
 	case ANY_RGB:
 	case YUV2_YV16:
 	case R210_BGR48:
 		#ifndef NO_QUILL
 		LOG_ERROR(mLogData.logger, "[{}] Conversion strategy {} is not supported by mwcapture",
-			mLogData.prefix, to_string(mFrameWriterStrategy));
+		          mLogData.prefix, to_string(mFrameWriterStrategy));
 		#endif
 		break;
 	default:
 		hdmi_video_capture_pin::OnFrameWriterStrategyUpdated();
 	}
 	// has to happen after signalledFormat has been updated
-	auto resetVideoCapture = mFilter->GetDeviceType() != PRO && !mFirst;
+	auto resetVideoCapture = mFilter->GetDeviceType() != MW_PRO && !mFirst;
 	if (resetVideoCapture && mVideoCapture)
 		mVideoCapture.reset();
 
@@ -872,11 +876,11 @@ void magewell_video_capture_pin::CaptureFrame(BYTE* pbFrame, int cbFrame, UINT64
 
 // loops til we have a frame to process, dealing with any mediatype changes as we go and then grabs a buffer once it's time to go
 HRESULT magewell_video_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample, REFERENCE_TIME* pStartTime,
-	REFERENCE_TIME* pEndTime, DWORD dwFlags)
+                                                      REFERENCE_TIME* pEndTime, DWORD dwFlags)
 {
 	auto hasFrame = false;
 	auto retVal = S_FALSE;
-	auto proDevice = mFilter->GetDeviceType() == PRO;
+	auto proDevice = mFilter->GetDeviceType() == MW_PRO;
 	auto hChannel = mFilter->GetChannelHandle();
 	int64_t now;
 
@@ -917,7 +921,7 @@ HRESULT magewell_video_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample, R
 		{
 			#ifndef NO_QUILL
 			LOG_TRACE_L2(mLogData.logger, "[{}] Signal is not locked ({})", mLogData.prefix,
-				static_cast<int>(mVideoSignal.signalStatus.state));
+			             static_cast<int>(mVideoSignal.signalStatus.state));
 			#endif
 
 			mHasSignal = false;
@@ -981,7 +985,7 @@ HRESULT magewell_video_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample, R
 				{
 					#ifndef NO_QUILL
 					LOG_TRACE_L1(mLogData.logger, "[{}] MWGetNotifyStatus failed {}", mLogData.prefix,
-						static_cast<int>(mLastMwResult));
+					             static_cast<int>(mLastMwResult));
 					#endif
 
 					mFrameTs.reset();
@@ -1003,7 +1007,7 @@ HRESULT magewell_video_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample, R
 				{
 					#ifndef NO_QUILL
 					LOG_TRACE_L1(mLogData.logger, "[{}] Video input source change, retry after backoff",
-						mLogData.prefix);
+					             mLogData.prefix);
 					#endif
 
 					mFrameTs.reset();
@@ -1044,8 +1048,8 @@ HRESULT magewell_video_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample, R
 					hasFrame = false;
 					#ifndef NO_QUILL
 					LOG_WARNING(mLogData.logger,
-						"[{}] Video frame buffered but unable to get delivery buffer, retry after backoff",
-						mLogData.prefix);
+					            "[{}] Video frame buffered but unable to get delivery buffer, retry after backoff",
+					            mLogData.prefix);
 					#endif
 				}
 			}
@@ -1064,7 +1068,7 @@ HRESULT magewell_video_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample, R
 
 				#ifndef NO_QUILL
 				LOG_TRACE_L1(mLogData.logger, "[{}] Timeout and no signal, get delivery buffer for no signal image",
-					mLogData.prefix);
+				             mLogData.prefix);
 				#endif
 
 				retVal = video_capture_pin::GetDeliveryBuffer(ppSample, pStartTime, pEndTime, dwFlags);
@@ -1073,7 +1077,7 @@ HRESULT magewell_video_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample, R
 				{
 					#ifndef NO_QUILL
 					LOG_WARNING(mLogData.logger, "[{}] Unable to get delivery buffer, retry after backoff",
-						mLogData.prefix);
+					            mLogData.prefix);
 					#endif
 					SHORT_BACKOFF;
 				}
@@ -1092,7 +1096,7 @@ HRESULT magewell_video_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample, R
 			{
 				#ifndef NO_QUILL
 				LOG_WARNING(mLogData.logger, "[{}] Wait for frame unexpected response ({:#08x})", mLogData.prefix,
-					static_cast<unsigned long>(dwRet));
+				            static_cast<unsigned long>(dwRet));
 				#endif
 			}
 		}
@@ -1135,7 +1139,7 @@ HRESULT magewell_video_capture_pin::OnThreadCreate()
 	mFilter->OnVideoSignalLoaded(&mVideoSignal);
 
 	auto deviceType = mFilter->GetDeviceType();
-	if (deviceType == PRO)
+	if (deviceType == MW_PRO)
 	{
 		// start capture
 		mCaptureEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
@@ -1153,9 +1157,9 @@ HRESULT magewell_video_capture_pin::OnThreadCreate()
 
 		// register for signal change events & video buffering 
 		mNotify = MWRegisterNotify(hChannel, mNotifyEvent,
-			MWCAP_NOTIFY_VIDEO_SIGNAL_CHANGE |
-			MWCAP_NOTIFY_VIDEO_FRAME_BUFFERING |
-			MWCAP_NOTIFY_VIDEO_INPUT_SOURCE_CHANGE);
+		                           MWCAP_NOTIFY_VIDEO_SIGNAL_CHANGE |
+		                           MWCAP_NOTIFY_VIDEO_FRAME_BUFFERING |
+		                           MWCAP_NOTIFY_VIDEO_INPUT_SOURCE_CHANGE);
 		if (!mNotify)
 		{
 			#ifndef NO_QUILL
@@ -1176,7 +1180,7 @@ HRESULT magewell_video_capture_pin::OnThreadCreate()
 void magewell_video_capture_pin::StopCapture()
 {
 	auto deviceType = mFilter->GetDeviceType();
-	if (deviceType == PRO)
+	if (deviceType == MW_PRO)
 	{
 		MWStopVideoCapture(mFilter->GetChannelHandle());
 	}

@@ -26,7 +26,7 @@
 #include "signalinfo.h"
 #include "modeswitcher.h"
 
-#include <Windows.h>
+#include <streams.h>
 #include "ISpecifyPropertyPages2.h"
 #include "lavfilters_side_data.h"
 #include <set>

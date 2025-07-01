@@ -24,7 +24,6 @@
 #include "capture_filter.h"
 #include "modeswitcher.h"
 #include "mw_domain.h"
-#include "VideoFrameWriter.h"
 #include "LibMWCapture/MWCapture.h"
 
 class MWReferenceClock final :
@@ -62,7 +61,7 @@ public:
  * Can inject HDR/WCG data if found on the incoming HDMI stream.
  */
 class magewell_capture_filter final :
-	public hdmi_capture_filter<DEVICE_INFO, VIDEO_SIGNAL, AUDIO_SIGNAL>
+	public hdmi_capture_filter<device_info, video_signal, audio_signal>
 {
 public:
 	// Provide the way for COM to create a Filter object
@@ -70,13 +69,13 @@ public:
 
 	HCHANNEL GetChannelHandle() const;
 
-	DeviceType GetDeviceType() const;
+	device_type GetDeviceType() const;
 
 	void SnapHardwareDetails();
 
 	// Callbacks to update the prop page data
-	void OnVideoSignalLoaded(VIDEO_SIGNAL* vs) override;
-	void OnAudioSignalLoaded(AUDIO_SIGNAL* as) override;
+	void OnVideoSignalLoaded(video_signal* vs) override;
+	void OnAudioSignalLoaded(audio_signal* as) override;
 	void OnDeviceUpdated() override;
 
 private:

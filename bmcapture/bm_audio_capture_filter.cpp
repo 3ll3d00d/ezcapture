@@ -25,7 +25,8 @@ blackmagic_audio_capture_pin::blackmagic_audio_capture_pin(HRESULT* phr, blackma
 		pParent,
 		pPreview ? "AudioPreview" : "AudioCapture",
 		pPreview ? L"AudioPreview" : L"AudioCapture",
-		pPreview ? "AudioPreview" : "AudioCapture"
+		pPreview ? "AudioPreview" : "AudioCapture",
+		BM_DECKLINK
 	)
 {
 }

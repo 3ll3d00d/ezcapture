@@ -49,7 +49,7 @@ capture_filter::capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSI
 	auto now = std::chrono::system_clock::now();
 	auto epochSeconds = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
 	auto filterFileSink = CustomFrontend::create_or_get_sink<quill::RotatingFileSink>(
-		(std::filesystem::temp_directory_path() / std::format("%s_%d.log", pLogPrefix, epochSeconds)).string(),
+		(std::filesystem::temp_directory_path() / std::format("{}_{}.log", pLogPrefix, epochSeconds)).string(),
 		[]()
 		{
 			quill::RotatingFileSinkConfig cfg;
@@ -70,14 +70,14 @@ capture_filter::capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSI
 			                                     quill::Timezone::GmtTime
 		                                     });
 	auto audioLatencySink = CustomFrontend::create_or_get_sink<quill::RotatingFileSink>(
-		(std::filesystem::temp_directory_path() / std::format("%s_audio_%d.csv", pLogPrefix, epochSeconds)).string(),
+		(std::filesystem::temp_directory_path() / std::format("{}_audio_{}.csv", pLogPrefix, epochSeconds)).string(),
 		[]()
 		{
 			quill::RotatingFileSinkConfig cfg;
 			cfg.set_max_backup_files(3);
 			cfg.set_rotation_time_daily("00:00");
 			cfg.set_rotation_naming_scheme(quill::RotatingFileSinkConfig::RotationNamingScheme::Date);
-			cfg.set_filename_append_option(quill::FilenameAppendOption::StartDate);
+			cfg.set_filename_append_option(quill::FilenameAppendOption::None);
 			return cfg;
 		}(),
 		quill::FileEventNotifier{});
@@ -90,14 +90,14 @@ capture_filter::capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSI
 			                                     quill::Timezone::GmtTime
 		                                     });
 	auto videoLatencySink = CustomFrontend::create_or_get_sink<quill::RotatingFileSink>(
-		(std::filesystem::temp_directory_path() / std::format("%s_video_%d.csv", pLogPrefix, epochSeconds)).string(),
+		(std::filesystem::temp_directory_path() / std::format("{}_video_{}.csv", pLogPrefix, epochSeconds)).string(),
 		[]()
 		{
 			quill::RotatingFileSinkConfig cfg;
 			cfg.set_max_backup_files(3);
 			cfg.set_rotation_time_daily("00:00");
 			cfg.set_rotation_naming_scheme(quill::RotatingFileSinkConfig::RotationNamingScheme::Date);
-			cfg.set_filename_append_option(quill::FilenameAppendOption::StartDate);
+			cfg.set_filename_append_option(quill::FilenameAppendOption::None);
 			return cfg;
 		}(),
 		quill::FileEventNotifier{});
@@ -251,15 +251,16 @@ STDMETHODIMP capture_filter::Run(REFERENCE_TIME tStart)
 {
 	int64_t rt;
 	GetReferenceTime(&rt);
+	int64_t hrt = high_res_now();
 
 	#ifndef NO_QUILL
-	LOG_INFO(mLogData.logger, "[{}] Filter has started running at {}", mLogData.prefix, rt);
+	LOG_INFO(mLogData.logger, "[{}] Filter has started running at {} / {}", mLogData.prefix, rt, hrt);
 	#endif
 
 	for (auto i = 0; i < m_iPins; i++)
 	{
 		auto stream = dynamic_cast<runtime_aware*>(m_paStreams[i]);
-		stream->SetStartTime(rt);
+		stream->SetStartTime(rt, hrt);
 		auto s1 = dynamic_cast<CBaseStreamControl*>(m_paStreams[i]);
 		s1->NotifyFilterState(State_Running, tStart);
 	}
