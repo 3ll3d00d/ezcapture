@@ -451,6 +451,9 @@ HRESULT CSignalInfoProp::ReloadV1(latency_stats* payload)
 	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / 1000.0,
 	             payload->mean / 1000.0, static_cast<double>(payload->max) / 1000.0);
 	SendDlgItemMessage(m_Dlg, IDC_VIDEO_CAP_LAT, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+
+	_snwprintf(buffer, _TRUNCATE, L"%hs", payload->name.c_str());
+	SendDlgItemMessage(m_Dlg, IDC_VIDEO_CAP_LAT_LABEL, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 	return S_OK;
 }
 
@@ -460,15 +463,32 @@ HRESULT CSignalInfoProp::ReloadV2(latency_stats* payload)
 	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / 1000.0,
 	             payload->mean / 1000.0, static_cast<double>(payload->max) / 1000.0);
 	SendDlgItemMessage(m_Dlg, IDC_VIDEO_CONV_LAT, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+
+	_snwprintf(buffer, _TRUNCATE, L"%hs", payload->name.c_str());
+	SendDlgItemMessage(m_Dlg, IDC_VIDEO_CONV_LAT_LABEL, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 	return S_OK;
 }
 
 HRESULT CSignalInfoProp::ReloadV3(latency_stats* payload)
 {
-	WCHAR buffer[256];
-	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / 1000.0,
-	             payload->mean / 1000.0, static_cast<double>(payload->max) / 1000.0);
-	SendDlgItemMessage(m_Dlg, IDC_VIDEO_ALLOC_LAT, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+	if (payload->name.empty())
+	{
+		ShowWindow(GetDlgItem(m_Dlg, IDC_VIDEO_ALLOC_LAT), SW_HIDE);
+		ShowWindow(GetDlgItem(m_Dlg, IDC_VIDEO_ALLOC_LAT_LABEL), SW_HIDE);
+	}
+	else
+	{
+		WCHAR buffer[256];
+		_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / 1000.0,
+			payload->mean / 1000.0, static_cast<double>(payload->max) / 1000.0);
+		SendDlgItemMessage(m_Dlg, IDC_VIDEO_ALLOC_LAT, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+
+		_snwprintf(buffer, _TRUNCATE, L"%hs", payload->name.c_str());
+		SendDlgItemMessage(m_Dlg, IDC_VIDEO_ALLOC_LAT_LABEL, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+
+		ShowWindow(GetDlgItem(m_Dlg, IDC_VIDEO_ALLOC_LAT), SW_SHOW);
+		ShowWindow(GetDlgItem(m_Dlg, IDC_VIDEO_ALLOC_LAT_LABEL), SW_SHOW);
+}
 	return S_OK;
 }
 
@@ -478,6 +498,9 @@ HRESULT CSignalInfoProp::ReloadA1(latency_stats* payload)
 	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / 1000.0,
 	             payload->mean / 1000.0, static_cast<double>(payload->max) / 1000.0);
 	SendDlgItemMessage(m_Dlg, IDC_AUDIO_CAP_LAT, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+
+	_snwprintf(buffer, _TRUNCATE, L"%hs", payload->name.c_str());
+	SendDlgItemMessage(m_Dlg, IDC_AUDIO_CAP_LAT_LABEL, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 	return S_OK;
 }
 
@@ -487,6 +510,9 @@ HRESULT CSignalInfoProp::ReloadA2(latency_stats* payload)
 	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / 1000.0,
 	             payload->mean / 1000.0, static_cast<double>(payload->max) / 1000.0);
 	SendDlgItemMessage(m_Dlg, IDC_AUDIO_ALLOC_LAT, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+
+	_snwprintf(buffer, _TRUNCATE, L"%hs", payload->name.c_str());
+	SendDlgItemMessage(m_Dlg, IDC_AUDIO_ALLOC_LAT_LABEL, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 	return S_OK;
 }
 

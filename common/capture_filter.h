@@ -169,11 +169,15 @@ public:
 	void RecordVideoFrameLatency(const frame_metrics& metrics)
 	{
 		CaptureLatency(metrics.m1, mVideoLatencyStats1, metrics.name1);
-		CaptureLatency(metrics.m2, mVideoLatencyStats1, metrics.name2);
-		bool has3 = !metrics.name3.empty();
+		CaptureLatency(metrics.m2, mVideoLatencyStats2, metrics.name2);
+		const bool has3 = !metrics.name3.empty();
 		if (has3)
 		{
-			CaptureLatency(metrics.m3, mVideoLatencyStats1, metrics.name3);
+			CaptureLatency(metrics.m3, mVideoLatencyStats3, metrics.name3);
+		}
+		else
+		{
+			mVideoLatencyStats3.name.clear();
 		}
 		if (mInfoCallback != nullptr)
 		{
@@ -189,7 +193,7 @@ public:
 	void RecordAudioFrameLatency(const frame_metrics& metrics)
 	{
 		CaptureLatency(metrics.m1, mAudioLatencyStats1, metrics.name1);
-		CaptureLatency(metrics.m2, mAudioLatencyStats1, metrics.name2);
+		CaptureLatency(metrics.m2, mAudioLatencyStats2, metrics.name2);
 		if (mInfoCallback != nullptr)
 		{
 			mInfoCallback->ReloadA1(&mVideoLatencyStats1);

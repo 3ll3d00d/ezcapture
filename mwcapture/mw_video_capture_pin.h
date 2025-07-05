@@ -60,13 +60,6 @@ public:
 			streamStopTime);
 		#endif
 	}
-
-	void CaptureComplete()
-	{
-		GetReferenceTime(&mCaptureTime);
-		mFrameCounter++;
-	}
-
 protected:
 	void DoThreadDestroy() override;
 	void StopCapture();
