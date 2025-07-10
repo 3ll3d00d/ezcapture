@@ -168,12 +168,13 @@ public:
 
 	void RecordVideoFrameLatency(const frame_metrics& metrics)
 	{
-		CaptureLatency(metrics.m1, mVideoLatencyStats1, metrics.name1);
-		CaptureLatency(metrics.m2, mVideoLatencyStats2, metrics.name2);
+		const std::string src = "video";
+		CaptureLatency(metrics.m1, mVideoLatencyStats1, metrics.name1, src);
+		CaptureLatency(metrics.m2, mVideoLatencyStats2, metrics.name2, src);
 		const bool has3 = !metrics.name3.empty();
 		if (has3)
 		{
-			CaptureLatency(metrics.m3, mVideoLatencyStats3, metrics.name3);
+			CaptureLatency(metrics.m3, mVideoLatencyStats3, metrics.name3, src);
 		}
 		else
 		{
@@ -183,21 +184,19 @@ public:
 		{
 			mInfoCallback->ReloadV1(&mVideoLatencyStats1);
 			mInfoCallback->ReloadV2(&mVideoLatencyStats2);
-			if (has3)
-			{
-				mInfoCallback->ReloadV3(&mVideoLatencyStats3);
-			}
+			mInfoCallback->ReloadV3(&mVideoLatencyStats3);
 		}
 	}
 
 	void RecordAudioFrameLatency(const frame_metrics& metrics)
 	{
-		CaptureLatency(metrics.m1, mAudioLatencyStats1, metrics.name1);
-		CaptureLatency(metrics.m2, mAudioLatencyStats2, metrics.name2);
+		const std::string src = "audio";
+		CaptureLatency(metrics.m1, mAudioLatencyStats1, metrics.name1, src);
+		CaptureLatency(metrics.m2, mAudioLatencyStats2, metrics.name2, src);
 		if (mInfoCallback != nullptr)
 		{
-			mInfoCallback->ReloadA1(&mVideoLatencyStats1);
-			mInfoCallback->ReloadA2(&mVideoLatencyStats2);
+			mInfoCallback->ReloadA1(&mAudioLatencyStats1);
+			mInfoCallback->ReloadA2(&mAudioLatencyStats2);
 		}
 	}
 
@@ -235,7 +234,7 @@ protected:
 	bool mRefreshRateSwitchEnabled{ true };
 
 private:
-	void CaptureLatency(const metric& metric, latency_stats& lat, const std::string& desc)
+	void CaptureLatency(const metric& metric, latency_stats& lat, const std::string& desc, const std::string& src)
 	{
 		lat.min = metric.min();
 		lat.mean = metric.mean();
@@ -243,7 +242,7 @@ private:
 		lat.name = desc;
 
 		#ifndef NO_QUILL
-		LOG_TRACE_L2(mLogData.logger, "[{}] {} latency stats {:.3f},{:.3f},{:.3f}", mLogData.prefix,
+		LOG_TRACE_L2(mLogData.logger, "[{}] {} {} latency stats {:.3f},{:.3f},{:.3f}", mLogData.prefix,
 			desc,
 			static_cast<double>(lat.min) / 1000.0,
 			lat.mean / 1000.0,

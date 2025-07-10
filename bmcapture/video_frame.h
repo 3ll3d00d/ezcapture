@@ -30,7 +30,7 @@ class video_frame
 {
 public:
 	video_frame(log_data logData, video_format format, int64_t captureTime, int64_t frameTime, int64_t duration,
-		uint64_t index, IDeckLinkVideoFrame* frame) :
+	            uint64_t index, IDeckLinkVideoFrame* frame) :
 		mFormat(std::move(format)),
 		mCaptureTime(captureTime),
 		mFrameTime(frameTime),
@@ -67,7 +67,7 @@ public:
 		{
 			#ifndef NO_QUILL
 			LOG_WARNING(mLogData.logger, "[{}] Unable to fill buffer , can't get pointer to output buffer [{:#08x}]",
-				mLogData.prefix, hr);
+			            mLogData.prefix, hr);
 			#endif
 
 			return S_FALSE;
@@ -115,11 +115,11 @@ public:
 
 private:
 	video_format mFormat{};
-	int64_t mCaptureTime{ 0 };
-	int64_t mFrameTime{ 0 };
-	int64_t mFrameDuration{ 0 };
-	uint64_t mFrameIndex{ 0 };
-	long mLength{ 0 };
+	int64_t mCaptureTime{0};
+	int64_t mFrameTime{0};
+	int64_t mFrameDuration{0};
+	uint64_t mFrameIndex{0};
+	long mLength{0};
 	IDeckLinkVideoFrame* mFrame = nullptr;
 	IDeckLinkVideoBuffer* mBuffer = nullptr;
 	log_data mLogData;

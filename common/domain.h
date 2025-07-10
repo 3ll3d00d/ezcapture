@@ -633,39 +633,41 @@ public:
 
 	boolean recordTo(frame_metrics& metrics) const
 	{
+		/*
+		 * Magewell PRO Video: WAITING, WAIT_COMPLETE, BUFFER_ALLOCATED, BUFFERING, BUFFERED, READING, READ, CONVERTED
+		 * Magewell PRO Audio: WAITING, WAIT_COMPLETE, BUFFERING, READING, READ, BUFFER_ALLOCATED, CONVERTED
+		 * Magewell USB: WAIT_COMPLETE, BUFFERING, READING, READ, CONVERTED
+		 * Decklink: WAIT_COMPLETE, BUFFER_ALLOCATED, READ, CONVERTED
+		 */
+		bool propagate;
 		if (mDeviceType == MW_PRO)
 		{
 			if (mVideo)
 			{
-				metrics.m1.sample(mTs[READ] - mTs[BUFFERING]);
+				propagate = metrics.m1.sample(mTs[READ] - mTs[BUFFERING]);
 				metrics.m2.sample(mTs[CONVERTED] - mTs[READ]);
-
 				metrics.m3.sample(mTs[READ] - mTs[BUFFERED]);
-				metrics.name2 = "Host";
+				metrics.name3 = "Host";
 			}
 			else
 			{
-				metrics.m1.sample(mTs[BUFFER_ALLOCATED] - mTs[BUFFERING]);
+				propagate = metrics.m1.sample(mTs[BUFFER_ALLOCATED] - mTs[BUFFERING]);
 				metrics.m2.sample(mTs[CONVERTED] - mTs[BUFFER_ALLOCATED]);
 			}
 		}
 		else if (mDeviceType == MW_USB_PLUS || mDeviceType == MW_USB_PRO)
 		{
-			metrics.m1.sample(mTs[READ] - mTs[BUFFERING]);
+			propagate = metrics.m1.sample(mTs[READ] - mTs[BUFFERING]);
 			metrics.m2.sample(mTs[CONVERTED] - mTs[READ]);
 		}
 		else
 		{
-			metrics.m1.sample(mTs[READ] - mTs[BUFFERING]);
+			propagate = metrics.m1.sample(mTs[READ] - mTs[WAIT_COMPLETE]);
 			metrics.m2.sample(mTs[CONVERTED] - mTs[READ]);
+			metrics.m3.sample(mTs[BUFFER_ALLOCATED] - mTs[WAIT_COMPLETE]);
+			metrics.name3 = "Handoff";
 		}
-		/*
-		 * Magewell PRO Video: WAITING, WAIT_COMPLETE, BUFFER_ALLOCATED, BUFFERING, BUFFERED, READING, READ, CONVERTED
-		 * Magewell PRO Audio: WAITING, WAIT_COMPLETE, BUFFERING, READING, READ, BUFFER_ALLOCATED, CONVERTED
-		 * Magewell USB: WAIT_COMPLETE, BUFFERING, READING, READ, CONVERTED
-		 * Decklink: 
-		 */
-		return false;
+		return propagate;
 	}
 
 private:

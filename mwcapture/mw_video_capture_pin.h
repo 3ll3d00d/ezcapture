@@ -123,7 +123,6 @@ protected:
 	HNOTIFY mNotify;
 	uint64_t mStatusBits = 0;
 	HANDLE mNotifyEvent;
-	MW_RESULT mLastMwResult;
 	int64_t mCaptureTime;
 	int64_t mLastTempSnapAt{ 0 };
 	captured_frame mCapturedFrame{};

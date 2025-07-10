@@ -86,7 +86,6 @@ magewell_audio_capture_pin::magewell_audio_capture_pin(HRESULT* phr, magewell_ca
 	mNotify(nullptr),
 	mCaptureEvent(nullptr),
 	mNotifyEvent(CreateEvent(nullptr, FALSE, FALSE, nullptr)),
-	mLastMwResult(),
 	mDataBurstBuffer(bitstreamBufferSize)
 // initialise to a reasonable default size that is not wastefully large but also is unlikely to need to be expanded very often
 {
@@ -96,8 +95,8 @@ magewell_audio_capture_pin::magewell_audio_capture_pin(HRESULT* phr, magewell_ca
 	mDataBurstBuffer.assign(bitstreamBufferSize, 0);
 	DWORD dwInputCount = 0;
 	auto hChannel = pParent->GetChannelHandle();
-	mLastMwResult = MWGetAudioInputSourceArray(hChannel, nullptr, &dwInputCount);
-	if (mLastMwResult != MW_SUCCEEDED)
+	auto hr = MWGetAudioInputSourceArray(hChannel, nullptr, &dwInputCount);
+	if (hr != MW_SUCCEEDED)
 	{
 		#ifndef NO_QUILL
 		LOG_ERROR(mLogData.logger, "[{}] MWGetAudioInputSourceArray", mLogData.prefix);
@@ -217,9 +216,7 @@ HRESULT magewell_audio_capture_pin::OnThreadCreate()
 	auto deviceType = mFilter->GetDeviceType();
 	if (deviceType == MW_PRO)
 	{
-		// start capture
-		mLastMwResult = MWStartAudioCapture(hChannel);
-		if (mLastMwResult != MW_SUCCEEDED)
+		if (MWStartAudioCapture(hChannel) != MW_SUCCEEDED)
 		{
 			#ifndef NO_QUILL
 			LOG_ERROR(mLogData.logger, "[{}] magewell_audio_capture_pin::OnThreadCreate Unable to MWStartAudioCapture",
@@ -261,8 +258,8 @@ void magewell_audio_capture_pin::DoThreadDestroy()
 
 HRESULT magewell_audio_capture_pin::LoadSignal(HCHANNEL* hChannel)
 {
-	mLastMwResult = MWGetAudioSignalStatus(*hChannel, &mAudioSignal.signalStatus);
-	if (MW_SUCCEEDED != mLastMwResult)
+	auto hr = MWGetAudioSignalStatus(*hChannel, &mAudioSignal.signalStatus);
+	if (MW_SUCCEEDED != hr)
 	{
 		#ifndef NO_QUILL
 		LOG_ERROR(mLogData.logger, "[{}] LoadSignal MWGetAudioSignalStatus", mLogData.prefix);
@@ -271,8 +268,8 @@ HRESULT magewell_audio_capture_pin::LoadSignal(HCHANNEL* hChannel)
 	}
 
 	MWCAP_INPUT_SPECIFIC_STATUS status;
-	mLastMwResult = MWGetInputSpecificStatus(*hChannel, &status);
-	if (mLastMwResult == MW_SUCCEEDED)
+	hr = MWGetInputSpecificStatus(*hChannel, &status);
+	if (hr == MW_SUCCEEDED)
 	{
 		DWORD tPdwValidFlag = 0;
 		if (!status.bValid)
@@ -504,7 +501,7 @@ HRESULT magewell_audio_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample, R
 			if (proDevice)
 			{
 				mStatusBits = 0;
-				mLastMwResult = MWGetNotifyStatus(hChannel, mNotify, &mStatusBits);
+				auto hr = MWGetNotifyStatus(hChannel, mNotify, &mStatusBits);
 				if (mStatusBits & MWCAP_NOTIFY_AUDIO_SIGNAL_CHANGE)
 				{
 					#ifndef NO_QUILL
@@ -545,8 +542,8 @@ HRESULT magewell_audio_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample, R
 					GetReferenceTime(&now);
 					mFrameTs.snap(now, WAIT_COMPLETE);
 
-					mLastMwResult = MWCaptureAudioFrame(hChannel, &mAudioSignal.frameInfo);
-					if (MW_SUCCEEDED == mLastMwResult)
+					hr = MWCaptureAudioFrame(hChannel, &mAudioSignal.frameInfo);
+					if (MW_SUCCEEDED == hr)
 					{
 						frameCopied = true;
 						mPreviousFrameTime = mCurrentFrameTime;
@@ -575,14 +572,14 @@ HRESULT magewell_audio_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample, R
 							LOG_WARNING(mLogData.logger,
 							            "[{}] Audio frame buffered but capture failed ({}), possible packet corruption after {} bytes",
 							            mLogData.prefix,
-							            static_cast<int>(mLastMwResult), mDataBurstRead);
+							            static_cast<int>(hr), mDataBurstRead);
 							#endif
 						}
 						else
 						{
 							#ifndef NO_QUILL
 							LOG_WARNING(mLogData.logger, "[{}] Audio frame buffered but capture failed ({}), retrying",
-							            mLogData.prefix, static_cast<int>(mLastMwResult));
+							            mLogData.prefix, static_cast<int>(hr));
 							#endif
 						}
 						mFrameTs.reset();

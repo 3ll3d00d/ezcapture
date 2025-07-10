@@ -28,6 +28,8 @@
   ((val) & (0x01 << 1) ? '1' : '0'), \
   ((val) & (0x01 << 0) ? '1' : '0')
 
+constexpr auto to_millis_ratio = 10000.0;
+
 static std::string wstring_to_string(const std::wstring& input)
 {
 	if (input.empty())
@@ -448,8 +450,8 @@ HRESULT CSignalInfoProp::Reload(display_status* payload)
 HRESULT CSignalInfoProp::ReloadV1(latency_stats* payload)
 {
 	WCHAR buffer[256];
-	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / 1000.0,
-	             payload->mean / 1000.0, static_cast<double>(payload->max) / 1000.0);
+	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / to_millis_ratio,
+	             payload->mean / to_millis_ratio, static_cast<double>(payload->max) / to_millis_ratio);
 	SendDlgItemMessage(m_Dlg, IDC_VIDEO_CAP_LAT, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 
 	_snwprintf(buffer, _TRUNCATE, L"%hs", payload->name.c_str());
@@ -460,8 +462,8 @@ HRESULT CSignalInfoProp::ReloadV1(latency_stats* payload)
 HRESULT CSignalInfoProp::ReloadV2(latency_stats* payload)
 {
 	WCHAR buffer[256];
-	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / 1000.0,
-	             payload->mean / 1000.0, static_cast<double>(payload->max) / 1000.0);
+	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / to_millis_ratio,
+	             payload->mean / to_millis_ratio, static_cast<double>(payload->max) / to_millis_ratio);
 	SendDlgItemMessage(m_Dlg, IDC_VIDEO_CONV_LAT, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 
 	_snwprintf(buffer, _TRUNCATE, L"%hs", payload->name.c_str());
@@ -479,8 +481,8 @@ HRESULT CSignalInfoProp::ReloadV3(latency_stats* payload)
 	else
 	{
 		WCHAR buffer[256];
-		_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / 1000.0,
-			payload->mean / 1000.0, static_cast<double>(payload->max) / 1000.0);
+		_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / to_millis_ratio,
+			payload->mean / to_millis_ratio, static_cast<double>(payload->max) / to_millis_ratio);
 		SendDlgItemMessage(m_Dlg, IDC_VIDEO_ALLOC_LAT, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 
 		_snwprintf(buffer, _TRUNCATE, L"%hs", payload->name.c_str());
@@ -495,8 +497,8 @@ HRESULT CSignalInfoProp::ReloadV3(latency_stats* payload)
 HRESULT CSignalInfoProp::ReloadA1(latency_stats* payload)
 {
 	WCHAR buffer[256];
-	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / 1000.0,
-	             payload->mean / 1000.0, static_cast<double>(payload->max) / 1000.0);
+	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / to_millis_ratio,
+	             payload->mean / to_millis_ratio, static_cast<double>(payload->max) / to_millis_ratio);
 	SendDlgItemMessage(m_Dlg, IDC_AUDIO_CAP_LAT, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 
 	_snwprintf(buffer, _TRUNCATE, L"%hs", payload->name.c_str());
@@ -507,8 +509,8 @@ HRESULT CSignalInfoProp::ReloadA1(latency_stats* payload)
 HRESULT CSignalInfoProp::ReloadA2(latency_stats* payload)
 {
 	WCHAR buffer[256];
-	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / 1000.0,
-	             payload->mean / 1000.0, static_cast<double>(payload->max) / 1000.0);
+	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / to_millis_ratio,
+	             payload->mean / to_millis_ratio, static_cast<double>(payload->max) / to_millis_ratio);
 	SendDlgItemMessage(m_Dlg, IDC_AUDIO_ALLOC_LAT, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 
 	_snwprintf(buffer, _TRUNCATE, L"%hs", payload->name.c_str());

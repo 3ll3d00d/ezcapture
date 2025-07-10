@@ -82,7 +82,6 @@ protected:
 	HNOTIFY mNotify;
 	ULONGLONG mStatusBits = 0;
 	HANDLE mNotifyEvent;
-	MW_RESULT mLastMwResult;
 	// pro only
 	HANDLE mCaptureEvent;
 

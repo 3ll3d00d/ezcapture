@@ -14,12 +14,13 @@
  */
 #include "bm_audio_capture_pin.h"
 
- // audio is limited to 48kHz and an audio packet is only delivered with a video frame
- // lowest fps is 23.976 so the max no of samples should be 48000/(24000/1001) = 2002
- // but there can be backlogs so allow for a few frames for safety
+// audio is limited to 48kHz and an audio packet is only delivered with a video frame
+// lowest fps is 23.976 so the max no of samples should be 48000/(24000/1001) = 2002
+// but there can be backlogs so allow for a few frames for safety
 constexpr uint16_t maxSamplesPerFrame = 8192;
 
-blackmagic_audio_capture_pin::blackmagic_audio_capture_pin(HRESULT* phr, blackmagic_capture_filter* pParent, bool pPreview) :
+blackmagic_audio_capture_pin::blackmagic_audio_capture_pin(HRESULT* phr, blackmagic_capture_filter* pParent,
+                                                           bool pPreview) :
 	hdmi_audio_capture_pin(
 		phr,
 		pParent,
@@ -35,7 +36,7 @@ blackmagic_audio_capture_pin::~blackmagic_audio_capture_pin()
 = default;
 
 HRESULT blackmagic_audio_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample, REFERENCE_TIME* pStartTime,
-	REFERENCE_TIME* pEndTime, DWORD dwFlags)
+                                                        REFERENCE_TIME* pEndTime, DWORD dwFlags)
 {
 	auto hasFrame = false;
 	auto retVal = S_FALSE;
@@ -82,7 +83,7 @@ HRESULT blackmagic_audio_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample,
 			{
 				#ifndef NO_QUILL
 				LOG_TRACE_L1(mLogData.logger, "[{}] No output channels in signal, retry after backoff",
-					mLogData.prefix);
+				             mLogData.prefix);
 				#endif
 
 				mSinceLast = 0;
@@ -105,8 +106,8 @@ HRESULT blackmagic_audio_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample,
 				{
 					#ifndef NO_QUILL
 					LOG_WARNING(mLogData.logger,
-						"[{}] AudioFormat changed but not able to reconnect ({:#08x}) retry after backoff",
-						mLogData.prefix, static_cast<unsigned long>(hr));
+					            "[{}] AudioFormat changed but not able to reconnect ({:#08x}) retry after backoff",
+					            mLogData.prefix, static_cast<unsigned long>(hr));
 					#endif
 
 					// TODO communicate that we need to change somehow
@@ -122,13 +123,16 @@ HRESULT blackmagic_audio_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample,
 			if (SUCCEEDED(retVal))
 			{
 				hasFrame = true;
+				int64_t now;
+				mFilter->GetReferenceTime(&now);
+				mFrameTs.snap(now, BUFFER_ALLOCATED);
 			}
 			else
 			{
 				#ifndef NO_QUILL
 				LOG_WARNING(mLogData.logger,
-					"[{}] Audio frame buffered but unable to get delivery buffer, retry after backoff",
-					mLogData.prefix);
+				            "[{}] Audio frame buffered but unable to get delivery buffer, retry after backoff",
+				            mLogData.prefix);
 				#endif
 			}
 		}
@@ -161,6 +165,9 @@ HRESULT blackmagic_audio_capture_pin::FillBuffer(IMediaSample* pms)
 
 		return S_FALSE;
 	}
+	int64_t now;
+	mFilter->GetReferenceTime(&now);
+	mFrameTs.snap(now, READ);
 
 	BYTE* pmsData;
 	pms->GetPointer(&pmsData);
@@ -174,7 +181,7 @@ HRESULT blackmagic_audio_capture_pin::FillBuffer(IMediaSample* pms)
 	{
 		#ifndef NO_QUILL
 		LOG_WARNING(mLogData.logger, "[{}] Audio frame is larger than expected {} vs {}", mLogData.prefix, size,
-			maxSize);
+		            maxSize);
 		#endif
 	}
 	long actualSize = std::min(size, maxSize);
@@ -209,8 +216,7 @@ HRESULT blackmagic_audio_capture_pin::FillBuffer(IMediaSample* pms)
 				_mm256_setr_epi8(
 					0, 1, 2, 3, 6, 7, 4, 5, 8, 9, 10, 11, 14, 15, 12, 13,
 					0, 1, 2, 3, 6, 7, 4, 5, 8, 9, 10, 11, 14, 15, 12, 13
-				)
-				;
+				);
 			for (auto j = 0; j < chunks; j++)
 			{
 				__m256i samples = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(inputSamples + i));
@@ -271,30 +277,32 @@ HRESULT blackmagic_audio_capture_pin::FillBuffer(IMediaSample* pms)
 	mPreviousFrameTime = mCurrentFrameTime;
 	mCurrentFrameTime = endTime;
 
-	REFERENCE_TIME now;
+	mFrameTs.snap(mCurrentFrame->GetCaptureTime(), WAIT_COMPLETE);
 	mFilter->GetReferenceTime(&now);
-	auto capLat = now - mCurrentFrame->GetCaptureTime();
+	mFrameTs.snap(now, CONVERTED);
+	mFrameTs.end();
 	RecordLatency();
 
 	#ifndef NO_QUILL
 	if (!mLoggedLatencyHeader)
 	{
 		LOG_TRACE_L1(mLogData.audioLat,
-			"codec,idx,lat,"
-			"pt,st,et,"
-			"ct,delta,len,"
-			"count,gap");
+		             "idx,waitComplete,bufferedAllocated,"
+		             "read,converted,sysTime,"
+		             "actualInterval,bytes,samples,"
+		             "missedFrames,startTime,endTime");
 		mLoggedLatencyHeader = true;
 	}
+	auto frameInterval = mCurrentFrameTime - mPreviousFrameTime;
 	LOG_TRACE_L1(mLogData.audioLat,
-		"{},{},{},"
-		"{},{},{},"
-		"{},{},{},"
-		"{},{}",
-		codecNames[mAudioFormat.codec], mFrameCounter, capLat,
-		mPreviousFrameTime, startTime, mCurrentFrameTime,
-		now, mCurrentFrameTime - mPreviousFrameTime, mCurrentFrame->GetLength(),
-		sampleCount, gap);
+	             "{},{},{},"
+	             "{},{},{},"
+	             "{},{},{},"
+	             "{},{},{}",
+	             mFrameCounter, mFrameTs.get(WAIT_COMPLETE), mFrameTs.get(BUFFER_ALLOCATED),
+	             mFrameTs.get(READ), mFrameTs.get(CONVERTED), mFrameTs.get(COMPLETE),
+	             frameInterval, mCurrentFrame->GetLength(), sampleCount,
+	             gap, startTime, endTime);
 	#endif
 
 	if (mUpdatedMediaType)
@@ -316,9 +324,9 @@ HRESULT blackmagic_audio_capture_pin::DoChangeMediaType(const CMediaType* pmt, c
 {
 	#ifndef NO_QUILL
 	LOG_WARNING(mLogData.logger, "[{}] Proposing new audio format Fs: {} Bits: {} Channels: {} Codec: {}",
-		mLogData.prefix,
-		newAudioFormat->fs, newAudioFormat->bitDepth, newAudioFormat->outputChannelCount,
-		codecNames[newAudioFormat->codec]);
+	            mLogData.prefix,
+	            newAudioFormat->fs, newAudioFormat->bitDepth, newAudioFormat->outputChannelCount,
+	            codecNames[newAudioFormat->codec]);
 	#endif
 	long newSize = maxSamplesPerFrame * newAudioFormat->bitDepthInBytes * newAudioFormat->outputChannelCount;
 	long oldSize = maxSamplesPerFrame * mAudioFormat.bitDepthInBytes * mAudioFormat.outputChannelCount;
@@ -350,4 +358,3 @@ void blackmagic_audio_capture_pin::DoThreadDestroy()
 
 	mFilter->PinThreadDestroyed();
 }
-

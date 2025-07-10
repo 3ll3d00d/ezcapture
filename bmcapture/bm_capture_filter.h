@@ -34,25 +34,25 @@ EXTERN_C const AMOVIESETUP_PIN sMIPPins[];
 const std::function DeleteString = SysFreeString;
 
 const std::function BSTRToStdString = [](const BSTR dl_str) -> std::string
-	{
-		int wlen = ::SysStringLen(dl_str);
-		int mblen = WideCharToMultiByte(CP_ACP, 0, dl_str, wlen, nullptr, 0, nullptr, nullptr);
+{
+	int wlen = ::SysStringLen(dl_str);
+	int mblen = WideCharToMultiByte(CP_ACP, 0, dl_str, wlen, nullptr, 0, nullptr, nullptr);
 
-		std::string ret_str(mblen, '\0');
-		mblen = WideCharToMultiByte(CP_ACP, 0, dl_str, wlen, ret_str.data(), mblen, nullptr, nullptr);
+	std::string ret_str(mblen, '\0');
+	mblen = WideCharToMultiByte(CP_ACP, 0, dl_str, wlen, ret_str.data(), mblen, nullptr, nullptr);
 
-		return ret_str;
-	};
+	return ret_str;
+};
 
 const std::function StdStringToBSTR = [](const std::string& std_str) -> BSTR
-	{
-		int wlen = MultiByteToWideChar(CP_ACP, 0, std_str.data(), static_cast<int>(std_str.length()), nullptr, 0);
+{
+	int wlen = MultiByteToWideChar(CP_ACP, 0, std_str.data(), static_cast<int>(std_str.length()), nullptr, 0);
 
-		BSTR ret_str = ::SysAllocStringLen(nullptr, wlen);
-		MultiByteToWideChar(CP_ACP, 0, std_str.data(), static_cast<int>(std_str.length()), ret_str, wlen);
+	BSTR ret_str = ::SysAllocStringLen(nullptr, wlen);
+	MultiByteToWideChar(CP_ACP, 0, std_str.data(), static_cast<int>(std_str.length()), ret_str, wlen);
 
-		return ret_str;
-	};
+	return ret_str;
+};
 
 inline bool isInCieRange(double value)
 {
@@ -103,11 +103,11 @@ public:
 	//  IDeckLinkInputCallback
 	//////////////////////////////////////////////////////////////////////////
 	HRESULT STDMETHODCALLTYPE VideoInputFormatChanged(BMDVideoInputFormatChangedEvents notificationEvents,
-		IDeckLinkDisplayMode* newDisplayMode,
-		BMDDetectedVideoInputFormatFlags detectedSignalFlags) override;
+	                                                  IDeckLinkDisplayMode* newDisplayMode,
+	                                                  BMDDetectedVideoInputFormatFlags detectedSignalFlags) override;
 
 	HRESULT STDMETHODCALLTYPE VideoInputFrameArrived(IDeckLinkVideoInputFrame* videoFrame,
-		IDeckLinkAudioInputPacket* audioPacket) override;
+	                                                 IDeckLinkAudioInputPacket* audioPacket) override;
 
 	//////////////////////////////////////////////////////////////////////////
 	//  IDeckLinkNotificationCallback
@@ -149,9 +149,9 @@ public:
 		return mAudioFrame;
 	}
 
-	HRESULT processVideoFrame(IDeckLinkVideoInputFrame* videoFrame);
+	HRESULT processVideoFrame(IDeckLinkVideoInputFrame* videoFrame, const int64_t& frameNotificationTime);
 
-	HRESULT processAudioPacket(IDeckLinkAudioInputPacket* audioPacket, const REFERENCE_TIME& now);
+	HRESULT processAudioPacket(IDeckLinkAudioInputPacket* audioPacket, const int64_t& frameNotificationTime);
 
 protected:
 	static void LoadFormat(video_format* videoFormat, const video_signal* videoSignal);
@@ -173,21 +173,21 @@ private:
 	CCritSec mFrameSec;
 	CCritSec mDeckLinkSec;
 
-	uint8_t mRunningPins{ 0 };
+	uint8_t mRunningPins{0};
 	video_signal mVideoSignal{};
 	video_format mVideoFormat{};
 
-	int64_t mPreviousVideoFrameTime{ invalidFrameTime };
-	int64_t mVideoFrameTime{ 0 };
-	uint64_t mCurrentVideoFrameIndex{ 0 };
+	int64_t mPreviousVideoFrameTime{invalidFrameTime};
+	int64_t mVideoFrameTime{0};
+	uint64_t mCurrentVideoFrameIndex{0};
 	std::shared_ptr<video_frame> mVideoFrame;
 	HANDLE mVideoFrameEvent;
 
 	audio_signal mAudioSignal{};
 	audio_format mAudioFormat{};
-	int64_t mPreviousAudioFrameTime{ invalidFrameTime };
-	int64_t mAudioFrameTime{ 0 };
-	uint64_t mCurrentAudioFrameIndex{ 0 };
+	int64_t mPreviousAudioFrameTime{invalidFrameTime};
+	int64_t mAudioFrameTime{0};
+	uint64_t mCurrentAudioFrameIndex{0};
 	std::shared_ptr<audio_frame> mAudioFrame;
 	HANDLE mAudioFrameEvent;
 

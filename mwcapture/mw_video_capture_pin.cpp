@@ -120,37 +120,35 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 	{
 		if (proDevice)
 		{
-			pin->mLastMwResult = MWGetVideoBufferInfo(hChannel, &pin->mVideoSignal.bufferInfo);
-			if (pin->mLastMwResult != MW_SUCCEEDED)
+			auto hr = MWGetVideoBufferInfo(hChannel, &pin->mVideoSignal.bufferInfo);
+			if (hr != MW_SUCCEEDED)
 			{
 				#ifndef NO_QUILL
 				LOG_TRACE_L1(mLogData.logger, "[{}] Can't get VideoBufferInfo ({})", mLogData.prefix,
-				             static_cast<int>(pin->mLastMwResult));
+				             static_cast<int>(hr));
 				#endif
 
 				continue;
 			}
 
-			pin->mLastMwResult = MWGetVideoFrameInfo(hChannel, pin->mVideoSignal.bufferInfo.iNewestBuffered,
-			                                         &pin->mVideoSignal.frameInfo);
-			if (pin->mLastMwResult != MW_SUCCEEDED)
+			auto bufferedFrameIdx = pin->mHasSignal ? pin->mVideoSignal.bufferInfo.iNewestBuffering : MWCAP_VIDEO_FRAME_ID_NEWEST_BUFFERING;
+			hr = MWGetVideoFrameInfo(hChannel, bufferedFrameIdx, &pin->mVideoSignal.frameInfo);
+			if (hr != MW_SUCCEEDED)
 			{
 				#ifndef NO_QUILL
 				LOG_TRACE_L1(mLogData.logger, "[{}] Can't get VideoFrameInfo ({})", mLogData.prefix,
-				             static_cast<int>(pin->mLastMwResult));
+				             static_cast<int>(hr));
 				#endif
 
 				continue;
 			}
 
-			pin->mFrameTs.snap(pin->mVideoSignal.frameInfo.allFieldStartTimes[0], BUFFERING);
-			pin->mFrameTs.snap(pin->mVideoSignal.frameInfo.allFieldBufferedTimes[0], BUFFERED);
 			pin->GetReferenceTime(&now);
 			pin->mFrameTs.snap(now, READING);
 
 			uint8_t* writeBuffer = pin->mFrameWriterStrategy == STRAIGHT_THROUGH ? pmsData : pin->mCapturedFrame.data;
 
-			pin->mLastMwResult = MWCaptureVideoFrameToVirtualAddressEx(
+			hr = MWCaptureVideoFrameToVirtualAddressEx(
 				hChannel,
 				pin->mHasSignal ? pin->mVideoSignal.bufferInfo.iNewestBuffering : MWCAP_VIDEO_FRAME_ID_NEWEST_BUFFERING,
 				writeBuffer,
@@ -180,13 +178,13 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 				static_cast<MWCAP_VIDEO_QUANTIZATION_RANGE>(pin->mVideoFormat.quantisation),
 				static_cast<MWCAP_VIDEO_SATURATION_RANGE>(pin->mVideoFormat.saturation)
 			);
-			if (pin->mLastMwResult != MW_SUCCEEDED)
+			if (hr != MW_SUCCEEDED)
 			{
 				#ifndef NO_QUILL
 				LOG_WARNING(mLogData.logger,
 				            "[{}] Unexpected failed call to MWCaptureVideoFrameToVirtualAddressEx ({})",
 				            mLogData.prefix,
-				            static_cast<int>(pin->mLastMwResult));
+				            static_cast<int>(hr));
 				#endif
 				break;
 			}
@@ -219,22 +217,35 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 
 				if (skip) continue;
 
-				pin->mLastMwResult = MWGetVideoCaptureStatus(hChannel, &pin->mVideoSignal.captureStatus);
+				hr = MWGetVideoCaptureStatus(hChannel, &pin->mVideoSignal.captureStatus);
 
 				#ifndef NO_QUILL
-				if (pin->mLastMwResult != MW_SUCCEEDED)
+				if (hr != MW_SUCCEEDED)
 				{
 					LOG_TRACE_L1(mLogData.logger, "[{}] MWGetVideoCaptureStatus failed ({})", mLogData.prefix,
-					             static_cast<int>(pin->mLastMwResult));
+					             static_cast<int>(hr));
 				}
 				#endif
 
 				hasFrame = pin->mVideoSignal.captureStatus.bFrameCompleted;
 			}
-			while (pin->mLastMwResult == MW_SUCCEEDED && !hasFrame);
+			while (hr == MW_SUCCEEDED && !hasFrame);
 
 			if (hasFrame)
 			{
+				hr = MWGetVideoFrameInfo(hChannel, bufferedFrameIdx, &pin->mVideoSignal.frameInfo);
+				if (hr != MW_SUCCEEDED)
+				{
+					#ifndef NO_QUILL
+					LOG_TRACE_L1(mLogData.logger, "[{}] Can't get VideoFrameInfo ({})", mLogData.prefix,
+					             static_cast<int>(hr));
+					#endif
+
+					continue;
+				}
+
+				pin->mFrameTs.snap(pin->mVideoSignal.frameInfo.allFieldStartTimes[0], BUFFERING);
+				pin->mFrameTs.snap(pin->mVideoSignal.frameInfo.allFieldBufferedTimes[0], BUFFERED);
 				pin->GetReferenceTime(&now);
 				pin->mFrameTs.snap(now, READ);
 				pin->mFrameCounter++;
@@ -279,7 +290,6 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 	{
 		// in place byteswap so no need for frame conversion buffer
 		if (pin->mVideoFormat.pixelFormat.format == pixel_format::AYUV)
-		// || pin->mVideoFormat.pixelFormat.format == pixel_format::P010)
 		{
 			// endianness is wrong on a per pixel basis
 			uint32_t sampleIdx = 0;
@@ -403,7 +413,7 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 	else
 	{
 		#ifndef NO_QUILL
-		LOG_TRACE_L1(mLogData.logger, "[{}] No frame loaded", mLogData.prefix, static_cast<int>(pin->mLastMwResult));
+		LOG_TRACE_L1(mLogData.logger, "[{}] No frame loaded", mLogData.prefix);
 		#endif
 	}
 	return retVal;
@@ -431,7 +441,6 @@ magewell_video_capture_pin::magewell_video_capture_pin(HRESULT* phr, magewell_ca
 	mNotify(nullptr),
 	mCaptureEvent(nullptr),
 	mNotifyEvent(CreateEvent(nullptr, FALSE, FALSE, nullptr)),
-	mLastMwResult(),
 	mPixelFormatMatrix(proPixelFormats)
 {
 	auto hChannel = mFilter->GetChannelHandle();
@@ -712,9 +721,9 @@ void magewell_video_capture_pin::LoadFormat(video_format* videoFormat, video_sig
 
 HRESULT magewell_video_capture_pin::LoadSignal(HCHANNEL* pChannel)
 {
-	mLastMwResult = MWGetVideoSignalStatus(*pChannel, &mVideoSignal.signalStatus);
+	auto hr = MWGetVideoSignalStatus(*pChannel, &mVideoSignal.signalStatus);
 	auto retVal = S_OK;
-	if (mLastMwResult != MW_SUCCEEDED)
+	if (hr != MW_SUCCEEDED)
 	{
 		#ifndef NO_QUILL
 		LOG_WARNING(mLogData.logger, "[{}] LoadSignal MWGetVideoSignalStatus failed", mLogData.prefix);
@@ -724,8 +733,8 @@ HRESULT magewell_video_capture_pin::LoadSignal(HCHANNEL* pChannel)
 
 		retVal = S_FALSE;
 	}
-	mLastMwResult = MWGetInputSpecificStatus(*pChannel, &mVideoSignal.inputStatus);
-	if (mLastMwResult != MW_SUCCEEDED)
+	hr = MWGetInputSpecificStatus(*pChannel, &mVideoSignal.inputStatus);
+	if (hr != MW_SUCCEEDED)
 	{
 		#ifndef NO_QUILL
 		LOG_ERROR(mLogData.logger, "[{}] LoadSignal MWGetInputSpecificStatus failed", mLogData.prefix);
@@ -980,12 +989,12 @@ HRESULT magewell_video_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample, R
 			if (proDevice)
 			{
 				// wait til we see a BUFFERING notification
-				mLastMwResult = MWGetNotifyStatus(hChannel, mNotify, &mStatusBits);
-				if (mLastMwResult != MW_SUCCEEDED)
+				auto hr = MWGetNotifyStatus(hChannel, mNotify, &mStatusBits);
+				if (hr != MW_SUCCEEDED)
 				{
 					#ifndef NO_QUILL
 					LOG_TRACE_L1(mLogData.logger, "[{}] MWGetNotifyStatus failed {}", mLogData.prefix,
-					             static_cast<int>(mLastMwResult));
+					             static_cast<int>(hr));
 					#endif
 
 					mFrameTs.reset();
@@ -1143,9 +1152,9 @@ HRESULT magewell_video_capture_pin::OnThreadCreate()
 	{
 		// start capture
 		mCaptureEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-		mLastMwResult = MWStartVideoCapture(hChannel, mCaptureEvent);
+		auto hr = MWStartVideoCapture(hChannel, mCaptureEvent);
 		#ifndef NO_QUILL
-		if (mLastMwResult != MW_SUCCEEDED)
+		if (hr != MW_SUCCEEDED)
 		{
 			LOG_ERROR(mLogData.logger, "[{}] Unable to MWStartVideoCapture", mLogData.prefix);
 		}

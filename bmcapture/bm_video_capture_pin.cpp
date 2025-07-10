@@ -15,6 +15,7 @@
 #include "bm_video_capture_pin.h"
 
 using mics = std::chrono::microseconds;
+
 static int64_t get_steady_clock_uptime_mics()
 {
 	auto now = std::chrono::steady_clock::now();
@@ -125,12 +126,18 @@ HRESULT blackmagic_video_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample,
 				#endif
 			}
 
-			if (hasFrame && mFirst)
+			if (hasFrame)
 			{
-				OnChangeMediaType();
-			}
+				int64_t now;
+				mFilter->GetReferenceTime(&now);
+				mFrameTs.snap(now, BUFFER_ALLOCATED);
 
-			if (!hasFrame)
+				if (mFirst)
+				{
+					OnChangeMediaType();
+				}
+			}
+			else
 			{
 				mCurrentFrame.reset();
 				SHORT_BACKOFF;
@@ -143,7 +150,6 @@ HRESULT blackmagic_video_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample,
 HRESULT blackmagic_video_capture_pin::FillBuffer(IMediaSample* pms)
 {
 	auto retVal = S_OK;
-
 	auto endTime = mCurrentFrame->GetFrameTime();
 	auto startTime = endTime - mCurrentFrame->GetFrameDuration();
 	pms->SetTime(&startTime, &endTime);
@@ -158,44 +164,42 @@ HRESULT blackmagic_video_capture_pin::FillBuffer(IMediaSample* pms)
 
 	AppendHdrSideDataIfNecessary(pms, endTime);
 
-	auto now = get_steady_clock_uptime_mics();
-
-	auto t1 = std::chrono::high_resolution_clock::now();
+	int64_t now;
+	mFilter->GetReferenceTime(&now);
+	mFrameTs.snap(now, READ);
 
 	if (mFrameWriter->WriteTo(mCurrentFrame.get(), pms) != S_OK)
 	{
 		return S_FALSE;
 	}
 
-	auto t2 = std::chrono::high_resolution_clock::now();
-	auto convLat = duration_cast<std::chrono::microseconds>(t2 - t1).count();
-	auto capLat = now - mCurrentFrame->GetCaptureTime();
+	mFrameTs.snap(mCurrentFrame->GetCaptureTime(), WAIT_COMPLETE);
+	mFilter->GetReferenceTime(&now);
+	mFrameTs.snap(now, CONVERTED);
+	mFrameTs.end();
 
 	RecordLatency();
 
 	#ifndef NO_QUILL
-	REFERENCE_TIME rt;
-	GetReferenceTime(&rt);
-
 	if (!mLoggedLatencyHeader)
 	{
 		LOG_TRACE_L1(mLogData.videoLat,
-		             "idx,cap_lat,conv_lat,"
-		             "pt,st,et,"
-		             "ct,interval,delta"
-		             "dur,len,gap");
+		             "idx,waitComplete,bufferedAllocated,"
+		             "read,converted,sysTime,"
+		             "actualInterval,expectedInterval,imageSize,"
+		             "missedFrames,startTime,endTime");
 		mLoggedLatencyHeader = true;
 	}
 	auto frameInterval = mCurrentFrameTime - mPreviousFrameTime;
 	LOG_TRACE_L1(mLogData.videoLat,
-	             "{},{:.3f},{:.3f},"
+	             "{},{},{},"
 	             "{},{},{},"
 	             "{},{},{},"
 	             "{},{},{}",
-	             mFrameCounter, static_cast<double>(capLat) / 1000.0, static_cast<double>(convLat) / 1000.0,
-	             mPreviousFrameTime, startTime, endTime,
-	             rt, frameInterval, frameInterval - mCurrentFrame->GetFrameDuration(),
-	             mCurrentFrame->GetFrameDuration(), mCurrentFrame->GetLength(), gap);
+	             mFrameCounter, mFrameTs.get(WAIT_COMPLETE), mFrameTs.get(BUFFER_ALLOCATED),
+	             mFrameTs.get(READ), mFrameTs.get(CONVERTED), mFrameTs.get(COMPLETE),
+	             frameInterval, mCurrentFrame->GetFrameDuration(), mCurrentFrame->GetLength(),
+	             gap, startTime, endTime);
 	#endif
 
 	mCurrentFrame.reset();
