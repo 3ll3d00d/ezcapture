@@ -144,6 +144,14 @@ HRESULT blackmagic_audio_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample,
 
 HRESULT blackmagic_audio_capture_pin::OnThreadCreate()
 {
+	hdmi_audio_capture_pin::OnThreadCreate();
+	bool enabled;
+	mFilter->IsHighThreadPriorityEnabled(&enabled);
+	if (enabled)
+	{
+		BumpThreadPriority();
+	}
+
 	#ifndef NO_QUILL
 	CustomFrontend::preallocate();
 

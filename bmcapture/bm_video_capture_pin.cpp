@@ -215,6 +215,14 @@ HRESULT blackmagic_video_capture_pin::FillBuffer(IMediaSample* pms)
 
 HRESULT blackmagic_video_capture_pin::OnThreadCreate()
 {
+	hdmi_video_capture_pin::OnThreadCreate();
+	bool enabled;
+	mFilter->IsHighThreadPriorityEnabled(&enabled);
+	if (enabled)
+	{
+		BumpThreadPriority();
+	}
+
 	#ifndef NO_QUILL
 	CustomFrontend::preallocate();
 

@@ -496,7 +496,7 @@ blackmagic_capture_filter::blackmagic_capture_filter(LPUNKNOWN punk, HRESULT* ph
 	vp->UpdateFrameWriterStrategy();
 	vp->ResizeMetrics(mVideoFormat.fps);
 
-	if (mDeviceInfo.audioChannelCount > 0)
+	if (mDeviceInfo.audioChannelCount > 0 && mAudioCaptureEnabled)
 	{
 		mAudioSignal.bitDepth = 16;
 		mAudioSignal.channelCount = mDeviceInfo.audioChannelCount;
@@ -867,7 +867,7 @@ HRESULT blackmagic_capture_filter::processVideoFrame(IDeckLinkVideoInputFrame* v
 		else
 		{
 			#ifndef NO_QUILL
-			invalids += invalids.empty() ? ", " : "";
+			invalids += invalids.empty() ? "" : ", ";
 			invalids += to_string(bmdDeckLinkFrameMetadataHDRDisplayPrimariesBlueX);
 			#endif
 		}
@@ -879,7 +879,7 @@ HRESULT blackmagic_capture_filter::processVideoFrame(IDeckLinkVideoInputFrame* v
 		else
 		{
 			#ifndef NO_QUILL
-			invalids += invalids.empty() ? ", " : "";
+			invalids += invalids.empty() ? "" : ", ";
 			invalids += to_string(bmdDeckLinkFrameMetadataHDRDisplayPrimariesBlueY);
 			#endif
 		}
@@ -892,7 +892,7 @@ HRESULT blackmagic_capture_filter::processVideoFrame(IDeckLinkVideoInputFrame* v
 		else
 		{
 			#ifndef NO_QUILL
-			invalids += invalids.empty() ? ", " : "";
+			invalids += invalids.empty() ? "" : ", ";
 			invalids += to_string(bmdDeckLinkFrameMetadataHDRDisplayPrimariesRedX);
 			#endif
 		}
@@ -904,7 +904,7 @@ HRESULT blackmagic_capture_filter::processVideoFrame(IDeckLinkVideoInputFrame* v
 		else
 		{
 			#ifndef NO_QUILL
-			invalids += invalids.empty() ? ", " : "";
+			invalids += invalids.empty() ? "" : ", ";
 			invalids += to_string(bmdDeckLinkFrameMetadataHDRDisplayPrimariesRedY);
 			#endif
 		}
@@ -917,7 +917,7 @@ HRESULT blackmagic_capture_filter::processVideoFrame(IDeckLinkVideoInputFrame* v
 		else
 		{
 			#ifndef NO_QUILL
-			invalids += invalids.empty() ? ", " : "";
+			invalids += invalids.empty() ? "" : ", ";
 			invalids += to_string(bmdDeckLinkFrameMetadataHDRDisplayPrimariesGreenX);
 			#endif
 		}
@@ -929,7 +929,7 @@ HRESULT blackmagic_capture_filter::processVideoFrame(IDeckLinkVideoInputFrame* v
 		else
 		{
 			#ifndef NO_QUILL
-			invalids += invalids.empty() ? ", " : "";
+			invalids += invalids.empty() ? "" : ", ";
 			invalids += to_string(bmdDeckLinkFrameMetadataHDRDisplayPrimariesGreenY);
 			#endif
 		}
@@ -943,7 +943,7 @@ HRESULT blackmagic_capture_filter::processVideoFrame(IDeckLinkVideoInputFrame* v
 		else
 		{
 			#ifndef NO_QUILL
-			invalids += invalids.empty() ? ", " : "";
+			invalids += invalids.empty() ? "" : ", ";
 			invalids += to_string(bmdDeckLinkFrameMetadataHDRWhitePointX);
 			#endif
 		}
@@ -955,7 +955,7 @@ HRESULT blackmagic_capture_filter::processVideoFrame(IDeckLinkVideoInputFrame* v
 		else
 		{
 			#ifndef NO_QUILL
-			invalids += invalids.empty() ? ", " : "";
+			invalids += invalids.empty() ? "" : ", ";
 			invalids += to_string(bmdDeckLinkFrameMetadataHDRWhitePointY);
 			#endif
 		}
@@ -970,7 +970,7 @@ HRESULT blackmagic_capture_filter::processVideoFrame(IDeckLinkVideoInputFrame* v
 		else
 		{
 			#ifndef NO_QUILL
-			invalids += invalids.empty() ? ", " : "";
+			invalids += invalids.empty() ? "" : ", ";
 			invalids += to_string(bmdDeckLinkFrameMetadataHDRMinDisplayMasteringLuminance);
 			#endif
 		}
@@ -983,7 +983,7 @@ HRESULT blackmagic_capture_filter::processVideoFrame(IDeckLinkVideoInputFrame* v
 		else
 		{
 			#ifndef NO_QUILL
-			invalids += invalids.empty() ? ", " : "";
+			invalids += invalids.empty() ? "" : ", ";
 			invalids += to_string(bmdDeckLinkFrameMetadataHDRMaxDisplayMasteringLuminance);
 			#endif
 		}
@@ -997,7 +997,7 @@ HRESULT blackmagic_capture_filter::processVideoFrame(IDeckLinkVideoInputFrame* v
 		else
 		{
 			#ifndef NO_QUILL
-			invalids += invalids.empty() ? ", " : "";
+			invalids += invalids.empty() ? "" : ", ";
 			invalids += to_string(bmdDeckLinkFrameMetadataHDRMaximumContentLightLevel);
 			#endif
 		}
@@ -1068,7 +1068,7 @@ HRESULT blackmagic_capture_filter::processVideoFrame(IDeckLinkVideoInputFrame* v
 }
 
 HRESULT blackmagic_capture_filter::processAudioPacket(IDeckLinkAudioInputPacket* audioPacket,
-                                                      const int64_t& frameNotificationTime)
+                                                      const int64_t& frameNotificationTime, bool hasVideoFrame)
 {
 	void* audioData = nullptr;
 	auto result = audioPacket->GetBytes(&audioData);
@@ -1128,10 +1128,20 @@ HRESULT blackmagic_capture_filter::processAudioPacket(IDeckLinkAudioInputPacket*
 		auto audioByteDepth = audioBitDepth / 8;
 		auto audioFrameLength = audioPacket->GetSampleFrameCount() * mDeviceInfo.audioChannelCount * audioByteDepth;
 
+		#ifndef NO_QUILL
+		auto tsDelta = std::abs(mVideoFrameTime - mAudioFrameTime);
+		if (tsDelta > mVideoFormat.frameInterval)
+		{
+			LOG_INFO(mLogData.logger, "[{}] Audio timestamp has drifted by {} [{} vs {}]", mLogData.prefix, tsDelta,
+			         mVideoFrameTime, mAudioFrameTime);
+		}
+		#endif
+
 		CAutoLock lock(&mFrameSec);
-		mAudioFrame = std::make_shared<audio_frame>(mLogData, frameNotificationTime, mAudioFrameTime, audioData,
-		                                            audioFrameLength,
-		                                            mAudioFormat, mCurrentAudioFrameIndex, audioPacket);
+		mAudioFrame = std::make_shared<audio_frame>(mLogData, frameNotificationTime,
+		                                            hasVideoFrame ? mVideoFrameTime : mAudioFrameTime, audioData,
+		                                            audioFrameLength, mAudioFormat, mCurrentAudioFrameIndex,
+		                                            audioPacket);
 	}
 
 	// signal listeners
@@ -1168,7 +1178,7 @@ HRESULT blackmagic_capture_filter::VideoInputFrameArrived(IDeckLinkVideoInputFra
 
 	if (hasAudio)
 	{
-		auto hr = processAudioPacket(audioPacket, frameArrivalTime);
+		auto hr = processAudioPacket(audioPacket, frameArrivalTime, hasVideo);
 		if (retVal != S_OK)
 		{
 			retVal = hr;

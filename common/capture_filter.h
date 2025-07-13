@@ -41,8 +41,10 @@ inline constexpr auto hdrProfileRegKey = L"hdrProfile";
 inline constexpr auto sdrProfileRegKey = L"sdrProfile";
 inline constexpr auto hdrProfileSwitchEnabledRegKey = L"hdrProfileSwitchEnabled";
 inline constexpr auto refreshRateSwitchEnabledRegKey = L"refreshRateSwitchEnabled";
+inline constexpr auto highThreadPriorityEnabledRegKey = L"highThreadPriorityEnabled";
+inline constexpr auto audioCaptureEnabledRegKey = L"audioCaptureEnabled";
 
- // Non template parts of the filter impl
+// Non template parts of the filter impl
 class capture_filter :
 	public IReferenceClock,
 	public IAMFilterMiscFlags,
@@ -62,9 +64,9 @@ public:
 	//////////////////////////////////////////////////////////////////////////
 	HRESULT GetTime(REFERENCE_TIME* pTime) override;
 	HRESULT AdviseTime(REFERENCE_TIME baseTime, REFERENCE_TIME streamTime, HEVENT hEvent,
-		DWORD_PTR* pdwAdviseCookie) override;
+	                   DWORD_PTR* pdwAdviseCookie) override;
 	HRESULT AdvisePeriodic(REFERENCE_TIME startTime, REFERENCE_TIME periodTime, HSEMAPHORE hSemaphore,
-		DWORD_PTR* pdwAdviseCookie) override;
+	                       DWORD_PTR* pdwAdviseCookie) override;
 	HRESULT Unadvise(DWORD_PTR dwAdviseCookie) override;
 
 	//////////////////////////////////////////////////////////////////////////
@@ -99,10 +101,11 @@ public:
 			mInfoCallback->ReloadV1(&mVideoLatencyStats1);
 			mInfoCallback->ReloadV2(&mVideoLatencyStats2);
 			mInfoCallback->ReloadV3(&mVideoLatencyStats3);
+			mInfoCallback->ReloadVfps(&mVideoMeasuredFps);
 			mInfoCallback->ReloadA1(&mAudioLatencyStats1);
 			mInfoCallback->ReloadA2(&mAudioLatencyStats2);
-			mInfoCallback->ReloadProfiles(mRefreshRateSwitchEnabled, mHdrProfileSwitchEnabled, mHdrProfile,
-				mSdrProfile);
+			mInfoCallback->ReloadControls(mRefreshRateSwitchEnabled, mHdrProfileSwitchEnabled, mHdrProfile,
+			                              mSdrProfile, mHighThreadPriorityEnabled, mAudioCaptureEnabled);
 			return S_OK;
 		}
 		return E_FAIL;
@@ -150,6 +153,24 @@ public:
 
 	STDMETHODIMP SetRefreshRateSwitchEnabled(bool enabled) override;
 
+	STDMETHODIMP IsHighThreadPriorityEnabled(bool* enabled) override
+	{
+		if (!enabled) return E_POINTER;
+		*enabled = mHighThreadPriorityEnabled;
+		return S_OK;
+	}
+
+	STDMETHODIMP SetHighThreadPriorityEnabled(bool enabled) override;
+
+	STDMETHODIMP IsAudioCaptureEnabled(bool* enabled) override
+	{
+		if (!enabled) return E_POINTER;
+		*enabled = mAudioCaptureEnabled;
+		return S_OK;
+	}
+
+	STDMETHODIMP SetAudioCaptureEnabled(bool enabled) override;
+
 	DWORD GetMCProfileId(bool hdr)
 	{
 		return hdr ? mHdrProfile : mSdrProfile;
@@ -171,20 +192,29 @@ public:
 		const std::string src = "video";
 		CaptureLatency(metrics.m1, mVideoLatencyStats1, metrics.name1, src);
 		CaptureLatency(metrics.m2, mVideoLatencyStats2, metrics.name2, src);
-		const bool has3 = !metrics.name3.empty();
-		if (has3)
-		{
-			CaptureLatency(metrics.m3, mVideoLatencyStats3, metrics.name3, src);
-		}
-		else
+		mVideoMeasuredFps = metrics.actualFrameRate;
+
+		#ifndef NO_QUILL
+		LOG_TRACE_L2(mLogData.logger, "[{}] Measured fps {:.3f} Hz ({},{},{},{})", mLogData.prefix,
+		             mVideoMeasuredFps, metrics.startTs, metrics.endTs, metrics.endTs - metrics.startTs,
+		             metrics.m1.capacity()-1);
+		#endif
+
+		if (metrics.name3.empty())
 		{
 			mVideoLatencyStats3.name.clear();
 		}
+		else
+		{
+			CaptureLatency(metrics.m3, mVideoLatencyStats3, metrics.name3, src);
+		}
+
 		if (mInfoCallback != nullptr)
 		{
 			mInfoCallback->ReloadV1(&mVideoLatencyStats1);
 			mInfoCallback->ReloadV2(&mVideoLatencyStats2);
 			mInfoCallback->ReloadV3(&mVideoLatencyStats3);
+			mInfoCallback->ReloadVfps(&mVideoMeasuredFps);
 		}
 	}
 
@@ -202,7 +232,7 @@ public:
 
 protected:
 	capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID clsid, const std::string& pLogPrefix,
-		std::wstring pRegKeyBase);
+	               std::wstring pRegKeyBase);
 
 	~capture_filter() override
 	{
@@ -224,14 +254,17 @@ protected:
 	latency_stats mVideoLatencyStats3{};
 	latency_stats mAudioLatencyStats1{};
 	latency_stats mAudioLatencyStats2{};
+	double mVideoMeasuredFps{0.0};
 	hdr_status mHdrStatus{};
 	ISignalInfoCB* mInfoCallback = nullptr;
 	std::set<DWORD> mRefreshRates{};
 	std::wstring mRegKeyBase{};
-	DWORD mHdrProfile{ 0 };
-	DWORD mSdrProfile{ 0 };
-	bool mHdrProfileSwitchEnabled{ false };
-	bool mRefreshRateSwitchEnabled{ true };
+	DWORD mHdrProfile{0};
+	DWORD mSdrProfile{0};
+	bool mHdrProfileSwitchEnabled{false};
+	bool mRefreshRateSwitchEnabled{true};
+	bool mHighThreadPriorityEnabled{true};
+	bool mAudioCaptureEnabled{true};
 
 private:
 	void CaptureLatency(const metric& metric, latency_stats& lat, const std::string& desc, const std::string& src)
@@ -243,10 +276,8 @@ private:
 
 		#ifndef NO_QUILL
 		LOG_TRACE_L2(mLogData.logger, "[{}] {} {} latency stats {:.3f},{:.3f},{:.3f}", mLogData.prefix,
-			desc,
-			static_cast<double>(lat.min) / 1000.0,
-			lat.mean / 1000.0,
-			static_cast<double>(lat.max) / 1000.0);
+		             desc, src, static_cast<double>(lat.min) / 10000.0, lat.mean / 10000.0,
+		             static_cast<double>(lat.max) / 10000.0);
 		#endif
 	}
 };
@@ -262,7 +293,7 @@ public:
 
 protected:
 	hdmi_capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID clsid, const std::string& logPrefix,
-		const std::wstring& regKeyBase) :
+	                    const std::wstring& regKeyBase) :
 		capture_filter(pName, punk, phr, clsid, logPrefix, regKeyBase)
 	{
 	}

@@ -151,7 +151,7 @@ public:
 
 	HRESULT processVideoFrame(IDeckLinkVideoInputFrame* videoFrame, const int64_t& frameNotificationTime);
 
-	HRESULT processAudioPacket(IDeckLinkAudioInputPacket* audioPacket, const int64_t& frameNotificationTime);
+	HRESULT processAudioPacket(IDeckLinkAudioInputPacket* audioPacket, const int64_t& frameNotificationTime, bool hasVideoFrame);
 
 protected:
 	static void LoadFormat(video_format* videoFormat, const video_signal* videoSignal);

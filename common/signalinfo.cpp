@@ -137,7 +137,13 @@ HRESULT CSignalInfoProp::OnApplyChanges()
 	bool switchRate = static_cast<bool>(SendDlgItemMessage(m_Dlg, IDC_SWITCH_REFRESH_RATE, BM_GETCHECK, 0, 0));
 	auto hr4 = mSignalInfo->SetRefreshRateSwitchEnabled(switchRate);
 
-	return hr1 == S_OK && hr2 == S_OK && hr3 == S_OK && hr4 == S_OK ? S_OK : E_FAIL;
+	bool highPrio = static_cast<bool>(SendDlgItemMessage(m_Dlg, IDC_ENABLE_HIGH_PRIORITY, BM_GETCHECK, 0, 0));
+	auto hr5 = mSignalInfo->SetHighThreadPriorityEnabled(highPrio);
+
+	bool enableAudio = static_cast<bool>(SendDlgItemMessage(m_Dlg, IDC_ENABLE_AUDIO, BM_GETCHECK, 0, 0));
+	auto hr6 = mSignalInfo->SetAudioCaptureEnabled(enableAudio);
+
+	return hr1 == S_OK && hr2 == S_OK && hr3 == S_OK && hr4 == S_OK && hr5 == S_OK && hr6 == S_OK ? S_OK : E_FAIL;
 }
 
 INT_PTR CSignalInfoProp::OnReceiveMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -166,6 +172,32 @@ INT_PTR CSignalInfoProp::OnReceiveMessage(HWND hwnd, UINT uMsg, WPARAM wParam, L
 
 			EnableWindow(GetDlgItem(m_Dlg, IDC_MC_HDR_PROFILE), bFlag);
 			EnableWindow(GetDlgItem(m_Dlg, IDC_MC_SDR_PROFILE), bFlag);
+			if (bFlag != existing)
+			{
+				SetDirty();
+				return TRUE;
+			}
+			return FALSE;
+		}
+		if (LOWORD(wParam) == IDC_ENABLE_HIGH_PRIORITY && HIWORD(wParam) == BN_CLICKED)
+		{
+			bool bFlag = static_cast<bool>(SendDlgItemMessage(m_Dlg, LOWORD(wParam), BM_GETCHECK, 0, 0));
+			bool existing;
+			mSignalInfo->IsHighThreadPriorityEnabled(&existing);
+
+			if (bFlag != existing)
+			{
+				SetDirty();
+				return TRUE;
+			}
+			return FALSE;
+		}
+		if (LOWORD(wParam) == IDC_ENABLE_AUDIO && HIWORD(wParam) == BN_CLICKED)
+		{
+			bool bFlag = static_cast<bool>(SendDlgItemMessage(m_Dlg, LOWORD(wParam), BM_GETCHECK, 0, 0));
+			bool existing;
+			mSignalInfo->IsAudioCaptureEnabled(&existing);
+
 			if (bFlag != existing)
 			{
 				SetDirty();
@@ -494,6 +526,15 @@ HRESULT CSignalInfoProp::ReloadV3(latency_stats* payload)
 	return S_OK;
 }
 
+HRESULT CSignalInfoProp::ReloadVfps(double* payload)
+{
+	WCHAR buffer[256];
+	_snwprintf_s(buffer, _TRUNCATE, L"%.3f Hz", *payload);
+	SendDlgItemMessage(m_Dlg, IDC_VIDEO_FPS, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+
+	return S_OK;
+}
+
 HRESULT CSignalInfoProp::ReloadA1(latency_stats* payload)
 {
 	WCHAR buffer[256];
@@ -518,8 +559,8 @@ HRESULT CSignalInfoProp::ReloadA2(latency_stats* payload)
 	return S_OK;
 }
 
-HRESULT CSignalInfoProp::ReloadProfiles(const bool& rateEnabled, const bool& profileEnabled, const DWORD& hdr,
-                                        const DWORD& sdr)
+HRESULT CSignalInfoProp::ReloadControls(const bool& rateEnabled, const bool& profileEnabled, const DWORD& hdr,
+                                        const DWORD& sdr, const bool& highThreadPrio, const bool& audioCapture)
 {
 	WCHAR buffer[8];
 
@@ -535,6 +576,8 @@ HRESULT CSignalInfoProp::ReloadProfiles(const bool& rateEnabled, const bool& pro
 
 	SendDlgItemMessage(m_Dlg, IDC_SWITCH_MC_PROFILES, BM_SETCHECK, profileEnabled, 0);
 	SendDlgItemMessage(m_Dlg, IDC_SWITCH_REFRESH_RATE, BM_SETCHECK, rateEnabled, 0);
+	SendDlgItemMessage(m_Dlg, IDC_ENABLE_HIGH_PRIORITY, BM_SETCHECK, highThreadPrio, 0);
+	SendDlgItemMessage(m_Dlg, IDC_ENABLE_AUDIO, BM_SETCHECK, audioCapture, 0);
 
 	return S_OK;
 }

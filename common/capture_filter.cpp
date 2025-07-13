@@ -69,26 +69,6 @@ capture_filter::capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSI
 			                                     "%H:%M:%S.%Qns",
 			                                     quill::Timezone::GmtTime
 		                                     });
-	auto audioLatencySink = CustomFrontend::create_or_get_sink<quill::RotatingFileSink>(
-		(std::filesystem::temp_directory_path() / std::format("{}_audio_{}.csv", pLogPrefix, epochSeconds)).string(),
-		[]()
-		{
-			quill::RotatingFileSinkConfig cfg;
-			cfg.set_max_backup_files(3);
-			cfg.set_rotation_time_daily("00:00");
-			cfg.set_rotation_naming_scheme(quill::RotatingFileSinkConfig::RotationNamingScheme::Date);
-			cfg.set_filename_append_option(quill::FilenameAppendOption::None);
-			return cfg;
-		}(),
-		quill::FileEventNotifier{});
-	mLogData.audioLat =
-		CustomFrontend::create_or_get_logger(std::string{audioLatencyLoggerName},
-		                                     std::move(audioLatencySink),
-		                                     quill::PatternFormatterOptions{
-			                                     "%(time),%(message)",
-			                                     "%H:%M:%S.%Qns",
-			                                     quill::Timezone::GmtTime
-		                                     });
 	auto videoLatencySink = CustomFrontend::create_or_get_sink<quill::RotatingFileSink>(
 		(std::filesystem::temp_directory_path() / std::format("{}_video_{}.csv", pLogPrefix, epochSeconds)).string(),
 		[]()
@@ -112,7 +92,6 @@ capture_filter::capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSI
 
 	// printing absolutely everything we may ever log
 	mLogData.logger->set_log_level(MIN_LOG_LEVEL);
-	mLogData.audioLat->set_log_level(MIN_LOG_LEVEL);
 	mLogData.videoLat->set_log_level(MIN_LOG_LEVEL);
 	#endif
 
@@ -142,11 +121,47 @@ capture_filter::capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSI
 		{
 			mRefreshRateSwitchEnabled = res.GetValue() == 1;
 		}
+		if (auto res = key.TryGetDwordValue(highThreadPriorityEnabledRegKey))
+		{
+			mHighThreadPriorityEnabled = res.GetValue() == 1;
+		}
+		if (auto res = key.TryGetDwordValue(audioCaptureEnabledRegKey))
+		{
+			mAudioCaptureEnabled = res.GetValue() == 1;
+		}
 		#ifndef NO_QUILL
 		LOG_INFO(mLogData.logger,
-		         "[{}] Loaded properties from registry [hdrProfile:{}, sdrProfile: {}, profileSwitch: {}, rateSwitch: {}]",
-		         mLogData.prefix, mHdrProfile, mSdrProfile, mHdrProfileSwitchEnabled, mRefreshRateSwitchEnabled);
+		         "[{}] Loaded properties from registry [hdrProfile:{}, sdrProfile: {}, profileSwitch: {}, rateSwitch: {}, highPriority: {}, audio: {}]",
+		         mLogData.prefix, mHdrProfile, mSdrProfile, mHdrProfileSwitchEnabled, mRefreshRateSwitchEnabled,
+		         mHighThreadPriorityEnabled, mAudioCaptureEnabled);
 		#endif
+
+		if (mAudioCaptureEnabled)
+		{
+			#ifndef NO_QUILL
+			auto audioLatencySink = CustomFrontend::create_or_get_sink<quill::RotatingFileSink>(
+				(std::filesystem::temp_directory_path() / std::format("{}_audio_{}.csv", pLogPrefix, epochSeconds)).string(),
+				[]()
+				{
+					quill::RotatingFileSinkConfig cfg;
+					cfg.set_max_backup_files(3);
+					cfg.set_rotation_time_daily("00:00");
+					cfg.set_rotation_naming_scheme(quill::RotatingFileSinkConfig::RotationNamingScheme::Date);
+					cfg.set_filename_append_option(quill::FilenameAppendOption::None);
+					return cfg;
+				}(),
+					quill::FileEventNotifier{});
+			mLogData.audioLat =
+				CustomFrontend::create_or_get_logger(std::string{ audioLatencyLoggerName },
+					std::move(audioLatencySink),
+					quill::PatternFormatterOptions{
+						"%(time),%(message)",
+						"%H:%M:%S.%Qns",
+						quill::Timezone::GmtTime
+					});
+			mLogData.audioLat->set_log_level(MIN_LOG_LEVEL);
+			#endif
+		}
 	}
 }
 
@@ -261,7 +276,7 @@ STDMETHODIMP capture_filter::Run(REFERENCE_TIME tStart)
 	{
 		auto stream = dynamic_cast<runtime_aware*>(m_paStreams[i]);
 		stream->SetStartTime(rt, hrt);
-		auto s1 = dynamic_cast<CBaseStreamControl*>(m_paStreams[i]);
+		const auto s1 = dynamic_cast<CBaseStreamControl*>(m_paStreams[i]);
 		s1->NotifyFilterState(State_Running, tStart);
 	}
 	return CBaseFilter::Run(tStart);
@@ -271,7 +286,7 @@ STDMETHODIMP capture_filter::Pause()
 {
 	for (auto i = 0; i < m_iPins; i++)
 	{
-		auto s1 = dynamic_cast<CBaseStreamControl*>(m_paStreams[i]);
+		const auto s1 = dynamic_cast<CBaseStreamControl*>(m_paStreams[i]);
 		s1->NotifyFilterState(State_Paused);
 	}
 	return CBaseFilter::Pause();
@@ -300,7 +315,7 @@ HRESULT capture_filter::SetHDRProfile(DWORD profile)
 {
 	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
 	{
-		if (auto res = key.TrySetDwordValue(hdrProfileRegKey, profile))
+		if (const auto res = key.TrySetDwordValue(hdrProfileRegKey, profile))
 		{
 			if (res)
 			{
@@ -316,7 +331,7 @@ HRESULT capture_filter::SetSDRProfile(DWORD profile)
 {
 	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
 	{
-		if (auto res = key.TrySetDwordValue(sdrProfileRegKey, profile))
+		if (const auto res = key.TrySetDwordValue(sdrProfileRegKey, profile))
 		{
 			if (res)
 			{
@@ -332,7 +347,7 @@ HRESULT capture_filter::SetHdrProfileSwitchEnabled(bool enabled)
 {
 	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
 	{
-		if (auto res = key.TrySetDwordValue(hdrProfileSwitchEnabledRegKey, enabled ? 1 : 0))
+		if (const auto res = key.TrySetDwordValue(hdrProfileSwitchEnabledRegKey, enabled ? 1 : 0))
 		{
 			if (res)
 			{
@@ -348,11 +363,43 @@ HRESULT capture_filter::SetRefreshRateSwitchEnabled(bool enabled)
 {
 	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
 	{
-		if (auto res = key.TrySetDwordValue(refreshRateSwitchEnabledRegKey, enabled ? 1 : 0))
+		if (const auto res = key.TrySetDwordValue(refreshRateSwitchEnabledRegKey, enabled ? 1 : 0))
 		{
 			if (res)
 			{
 				mRefreshRateSwitchEnabled = enabled;
+				return S_OK;
+			}
+		}
+	}
+	return E_FAIL;
+}
+
+HRESULT capture_filter::SetHighThreadPriorityEnabled(bool enabled)
+{
+	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
+	{
+		if (const auto res = key.TrySetDwordValue(highThreadPriorityEnabledRegKey, enabled ? 1 : 0))
+		{
+			if (res)
+			{
+				mHighThreadPriorityEnabled = enabled;
+				return S_OK;
+			}
+		}
+	}
+	return E_FAIL;
+}
+
+HRESULT capture_filter::SetAudioCaptureEnabled(bool enabled)
+{
+	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
+	{
+		if (const auto res = key.TrySetDwordValue(audioCaptureEnabledRegKey, enabled ? 1 : 0))
+		{
+			if (res)
+			{
+				mAudioCaptureEnabled = enabled;
 				return S_OK;
 			}
 		}

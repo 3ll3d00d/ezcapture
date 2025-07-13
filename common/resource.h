@@ -120,6 +120,10 @@
 #define IDC_VIDEO_ALLOC_LAT             1116
 #define IDC_AUDIO_ALLOC_LAT_LABEL       1117
 #define IDC_AUDIO_ALLOC_LAT             1118
+#define IDC_ENABLE_AUDIO                1119
+#define IDC_ENABLE_HIGH_PRIORITY        1120
+#define IDC_VIDEO_FPS                   1121
+#define IDC_VIDEO_FPS_LABEL             1122
 
 // Next default values for new objects
 // 
@@ -127,7 +131,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        103
 #define _APS_NEXT_COMMAND_VALUE         40001
-#define _APS_NEXT_CONTROL_VALUE         1119
+#define _APS_NEXT_CONTROL_VALUE         1122
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

@@ -51,9 +51,11 @@ interface __declspec(uuid("4D6B8852-06A6-4997-BC07-3507BB77F748")) ISignalInfoCB
 	STDMETHOD(ReloadV1)(latency_stats* payload) = 0;
 	STDMETHOD(ReloadV2)(latency_stats* payload) = 0;
 	STDMETHOD(ReloadV3)(latency_stats* payload) = 0;
+	STDMETHOD(ReloadVfps)(double* payload) = 0;
 	STDMETHOD(ReloadA1)(latency_stats* payload) = 0;
 	STDMETHOD(ReloadA2)(latency_stats* payload) = 0;
-	STDMETHOD(ReloadProfiles)(const bool& rateEnabled, const bool& profileEnabled, const DWORD& hdr, const DWORD & sdr) = 0;
+	STDMETHOD(ReloadControls)(const bool& rateEnabled, const bool& profileEnabled, const DWORD& hdr, const DWORD& sdr,
+	                          const bool& highThreadPrio, const bool& audioCapture) = 0;
 };
 
 interface __declspec(uuid("6A505550-28B2-4668-BC2C-461E75A63BC4")) ISignalInfo : IUnknown
@@ -68,6 +70,10 @@ interface __declspec(uuid("6A505550-28B2-4668-BC2C-461E75A63BC4")) ISignalInfo :
 	STDMETHOD(SetHdrProfileSwitchEnabled)(bool enabled) = 0;
 	STDMETHOD(IsRefreshRateSwitchEnabled)(bool* enabled) = 0;
 	STDMETHOD(SetRefreshRateSwitchEnabled)(bool enabled) = 0;
+	STDMETHOD(IsHighThreadPriorityEnabled)(bool* enabled) = 0;
+	STDMETHOD(SetHighThreadPriorityEnabled)(bool enabled) = 0;
+	STDMETHOD(IsAudioCaptureEnabled)(bool* enabled) = 0;
+	STDMETHOD(SetAudioCaptureEnabled)(bool enabled) = 0;
 };
 
 class CSignalInfoProp :
@@ -97,9 +103,11 @@ public:
 	HRESULT ReloadV1(latency_stats* payload) override;
 	HRESULT ReloadV2(latency_stats* payload) override;
 	HRESULT ReloadV3(latency_stats* payload) override;
+	HRESULT ReloadVfps(double* payload) override;
 	HRESULT ReloadA1(latency_stats* payload) override;
 	HRESULT ReloadA2(latency_stats* payload) override;
-	HRESULT ReloadProfiles(const bool& rateEnabled, const bool& profileEnabled, const DWORD& hdr, const DWORD& sdr) override;
+	HRESULT ReloadControls(const bool& rateEnabled, const bool& profileEnabled, const DWORD& hdr,
+	                       const DWORD& sdr, const bool& highThreadPrio, const bool& audioCapture) override;
 
 private:
 	void SetDirty()

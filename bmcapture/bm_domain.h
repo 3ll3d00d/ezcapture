@@ -74,7 +74,7 @@ class audio_frame
 {
 public:
 	audio_frame(log_data logData, int64_t captureTime, int64_t frameTime, void* data, long len, audio_format fmt,
-	           uint64_t frameIndex, IDeckLinkAudioInputPacket* packet) :
+	            uint64_t frameIndex, IDeckLinkAudioInputPacket* packet) :
 		mCaptureTime(captureTime),
 		mFrameTime(frameTime),
 		mData(data),

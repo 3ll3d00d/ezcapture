@@ -70,6 +70,16 @@ public:
 		return mSnappedMax;
 	}
 
+	uint16_t capacity() const
+	{
+		return mCapacity;
+	}
+
+	uint16_t size() const
+	{
+		return mSize;
+	}
+
 private:
 	uint16_t mSize;
 	uint16_t mCapacity;

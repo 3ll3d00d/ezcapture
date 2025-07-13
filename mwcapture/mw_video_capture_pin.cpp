@@ -131,7 +131,9 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 				continue;
 			}
 
-			auto bufferedFrameIdx = pin->mHasSignal ? pin->mVideoSignal.bufferInfo.iNewestBuffering : MWCAP_VIDEO_FRAME_ID_NEWEST_BUFFERING;
+			BYTE bufferedFrameIdx = pin->mHasSignal
+				                        ? pin->mVideoSignal.bufferInfo.iNewestBuffering
+				                        : MWCAP_VIDEO_FRAME_ID_NEWEST_BUFFERING;
 			hr = MWGetVideoFrameInfo(hChannel, bufferedFrameIdx, &pin->mVideoSignal.frameInfo);
 			if (hr != MW_SUCCEEDED)
 			{
@@ -195,8 +197,7 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 				if (skip)
 				{
 					#ifndef NO_QUILL
-					LOG_TRACE_L1(mLogData.logger, "[{}] Unexpected capture event ({:#08x})", mLogData.prefix,
-					             static_cast<unsigned long>(dwRet));
+					LOG_TRACE_L1(mLogData.logger, "[{}] Unexpected capture event ({:#08x})", mLogData.prefix, dwRet);
 					#endif
 
 					if (dwRet == STATUS_TIMEOUT)
@@ -1132,6 +1133,14 @@ HRESULT magewell_video_capture_pin::FillBuffer(IMediaSample* pms)
 
 HRESULT magewell_video_capture_pin::OnThreadCreate()
 {
+	hdmi_video_capture_pin::OnThreadCreate();
+	bool enabled;
+	mFilter->IsHighThreadPriorityEnabled(&enabled);
+	if (enabled)
+	{
+		BumpThreadPriority();
+	}
+
 	#ifndef NO_QUILL
 	CustomFrontend::preallocate();
 

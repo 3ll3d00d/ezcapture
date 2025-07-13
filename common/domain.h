@@ -559,6 +559,9 @@ typedef std::map<pixel_format, std::pair<pixel_format, frame_writer_strategy>> p
 
 struct frame_metrics
 {
+	int64_t startTs{0};
+	int64_t endTs{0};
+	double actualFrameRate;
 	metric m1;
 	std::string name1{"Capture"};
 	metric m2;
@@ -566,11 +569,35 @@ struct frame_metrics
 	metric m3;
 	std::string name3{};
 
-	void resize(uint16_t sz)
+	void start(int64_t ts)
 	{
-		m1.resize(sz);
-		m2.resize(sz);
-		m3.resize(sz);
+		startTs = ts;
+	}
+
+	void end(int64_t ts)
+	{
+		endTs = ts;
+		actualFrameRate = 10000000.0 / (static_cast<double>(ts - startTs) / (m1.capacity() - 1));
+	}
+
+	void refreshRate(double rate)
+	{
+		// aim for metrics to update approx once every 1500ms
+		auto newSize = std::lrint(rate * 3 / 2);
+		if (std::in_range<uint16_t>(newSize))
+		{
+			const uint16_t sz = static_cast<uint16_t>(newSize);
+			m1.resize(sz);
+			m2.resize(sz);
+			m3.resize(sz);
+		}
+		else
+		{
+			const auto sz = std::numeric_limits<uint16_t>::max();
+			m1.resize(sz);
+			m2.resize(sz);
+			m3.resize(sz);
+		}
 	}
 };
 
@@ -666,6 +693,14 @@ public:
 			metrics.m2.sample(mTs[CONVERTED] - mTs[READ]);
 			metrics.m3.sample(mTs[BUFFER_ALLOCATED] - mTs[WAIT_COMPLETE]);
 			metrics.name3 = "Handoff";
+		}
+		if (metrics.m1.size() == 1)
+		{
+			metrics.start(mTs[COMPLETE]);
+		}
+		else if (propagate)
+		{
+			metrics.end(mTs[COMPLETE]);
 		}
 		return propagate;
 	}

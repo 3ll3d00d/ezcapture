@@ -29,7 +29,6 @@
 #include "runtime_aware.h"
 
 #include <dvdmedia.h>
-#include <cmath>
 #include <optional>
 
 inline bool diff(double x, double y)
@@ -215,10 +214,6 @@ public:
 	HRESULT DoBufferProcessingLoop() override;
 
 	//////////////////////////////////////////////////////////////////////////
-	//  CBaseStreamControl
-	//////////////////////////////////////////////////////////////////////////
-
-	//////////////////////////////////////////////////////////////////////////
 	//  IKsPropertySet
 	//////////////////////////////////////////////////////////////////////////
 	HRESULT STDMETHODCALLTYPE Set(REFGUID guidPropSet, DWORD dwID, void* pInstanceData, DWORD cbInstanceData,
@@ -243,13 +238,9 @@ public:
 	HRESULT GetMaxStreamOffset(REFERENCE_TIME* prtMaxOffset) override { return E_NOTIMPL; }
 	HRESULT SetMaxStreamOffset(REFERENCE_TIME rtMaxOffset) override { return E_NOTIMPL; }
 
-	void ResizeMetrics(double expectedRefreshRatePerSecond)
+	void ResizeMetrics(double pRefreshRate)
 	{
-		// aim for metrics to update approx once every 1500ms
-		auto newSize = std::lrint(expectedRefreshRatePerSecond * 3 / 2);
-		mConversionLatency.resize(newSize);
-		mCaptureLatency.resize(newSize);
-		mAllocatorLatency.resize(newSize);
+		mFrameMetrics.refreshRate(pRefreshRate);
 	}
 
 protected:
@@ -260,6 +251,7 @@ protected:
 	virtual bool ProposeBuffers(ALLOCATOR_PROPERTIES* pProperties) = 0;
 	HRESULT RenegotiateMediaType(const CMediaType* pmt, long newSize, boolean renegotiateOnQueryAccept);
 	HRESULT HandleStreamStateChange(IMediaSample* pms);
+	HRESULT BumpThreadPriority();
 
 	log_data mLogData{};
 	CCritSec mCaptureCritSec;
@@ -277,10 +269,6 @@ protected:
 	LONGLONG mCurrentFrameTime{0};
 	// measurements
 	bool mLoggedLatencyHeader{false};
-	metric mCaptureLatency{};
-	metric mConversionLatency{};
-	metric mAllocatorLatency{};
-
 	frame_metrics mFrameMetrics{};
 };
 

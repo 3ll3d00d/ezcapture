@@ -204,6 +204,24 @@ HRESULT capture_pin::DoBufferProcessingLoop(void)
 	return S_FALSE;
 }
 
+HRESULT capture_pin::BumpThreadPriority()
+{
+	if (!SetThreadPriority(m_hThread, THREAD_PRIORITY_TIME_CRITICAL))
+	{
+		#ifndef NO_QUILL
+		LOG_ERROR(mLogData.logger, "[{}] Failed to set thread priority [{:#08x}]", mLogData.prefix, GetLastError());
+		#endif
+		return E_FAIL;
+	}
+	else
+	{
+		#ifndef NO_QUILL
+		LOG_INFO(mLogData.logger, "[{}] Set thread priority to TIME_CRITICAL", mLogData.prefix);
+		#endif
+		return S_OK;
+	}
+}
+
 HRESULT capture_pin::OnThreadDestroy()
 {
 	#ifndef NO_QUILL

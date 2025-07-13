@@ -219,8 +219,11 @@ magewell_capture_filter::magewell_capture_filter(LPUNKNOWN punk, HRESULT* phr) :
 	vp = new magewell_video_capture_pin(phr, this, true);
 	vp->UpdateFrameWriterStrategy();
 
-	new magewell_audio_capture_pin(phr, this, false);
-	new magewell_audio_capture_pin(phr, this, true);
+	if (mAudioCaptureEnabled)
+	{
+		new magewell_audio_capture_pin(phr, this, false);
+		new magewell_audio_capture_pin(phr, this, true);
+	}
 }
 
 magewell_capture_filter::~magewell_capture_filter()
