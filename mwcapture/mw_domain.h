@@ -297,12 +297,15 @@ struct video_sample_buffer
 	uint8_t* data;
 	int width;
 	int height;
+	uint64_t length;
 
 	int GetWidth() const { return width; }
 
 	int GetHeight() const { return height; }
 
 	uint64_t GetFrameIndex() const { return index; }
+
+	uint64_t GetLength() const { return length; }
 
 	void Start(void** buffer) const
 	{

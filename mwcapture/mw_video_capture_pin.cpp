@@ -257,7 +257,8 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 						.index = pin->mFrameCounter,
 						.data = pin->mCapturedFrame.data,
 						.width = pin->mVideoFormat.cx,
-						.height = pin->mVideoFormat.cy
+						.height = pin->mVideoFormat.cy,
+						.length = pin->mVideoFormat.imageSize
 					};
 					pin->mFrameWriter->WriteTo(&buffer, pms);
 				}
@@ -265,8 +266,11 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 		}
 		else
 		{
-			pin->mFrameTs.snap(pin->mCapturedFrame.ts, READ);
+			pin->GetReferenceTime(&now);
+			pin->mFrameTs.snap(now, READ);
 			pin->mFrameCounter++;
+
+			// TODO verify the captured data is the right size
 
 			CAutoLock lck(&pin->mCaptureCritSec);
 
@@ -280,7 +284,8 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 					.index = pin->mFrameCounter,
 					.data = pin->mCapturedFrame.data,
 					.width = pin->mVideoFormat.cx,
-					.height = pin->mVideoFormat.cy
+					.height = pin->mVideoFormat.cy,
+					.length = pin->mCapturedFrame.length
 				};
 				pin->mFrameWriter->WriteTo(&buffer, pms);
 			}
@@ -864,13 +869,25 @@ void magewell_video_capture_pin::CaptureFrame(BYTE* pbFrame, int cbFrame, UINT64
 {
 	magewell_video_capture_pin* pin = static_cast<magewell_video_capture_pin*>(pParam);
 
+	if (cbFrame == 0)
+	{
+		#ifndef NO_QUILL
+		LOG_TRACE_L2(pin->mLogData.logger, "[{}] Ignoring zero length frame at {}", pin->mLogData.prefix, u64TimeStamp);
+		#endif
+
+		return;
+	}
+
 	CAutoLock lck(&pin->mCaptureCritSec);
 
 	memcpy(pin->mCapturedFrame.data, pbFrame, cbFrame);
 	pin->mCapturedFrame.length = cbFrame;
-	pin->mCapturedFrame.ts = u64TimeStamp;
 
-	pin->mFrameTs.snap(u64TimeStamp, BUFFERING);
+	// u64TimeStamp is time since capture started so have to add the StreamStartTime for compatibility
+	auto ts = u64TimeStamp + pin->mStreamStartTime;
+	pin->mCapturedFrame.ts = ts;
+	pin->mFrameTs.snap(ts, BUFFERING);
+
 	int64_t now;
 	pin->GetReferenceTime(&now);
 	pin->mFrameTs.snap(now, READING);
@@ -880,6 +897,12 @@ void magewell_video_capture_pin::CaptureFrame(BYTE* pbFrame, int cbFrame, UINT64
 		auto err = GetLastError();
 		#ifndef NO_QUILL
 		LOG_ERROR(pin->mLogData.logger, "[{}] Failed to notify on frame {:#08x}", pin->mLogData.prefix, err);
+		#endif
+	}
+	else
+	{
+		#ifndef NO_QUILL
+		LOG_TRACE_L3(pin->mLogData.logger, "[{}] Notifying frame at {}", pin->mLogData.prefix, ts);
 		#endif
 	}
 }

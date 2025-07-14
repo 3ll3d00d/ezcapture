@@ -339,15 +339,40 @@ HRESULT magewell_audio_capture_pin::LoadSignal(HCHANNEL* hChannel)
 void magewell_audio_capture_pin::CaptureFrame(const BYTE* pbFrame, int cbFrame, UINT64 u64TimeStamp, void* pParam)
 {
 	magewell_audio_capture_pin* pin = static_cast<magewell_audio_capture_pin*>(pParam);
+
+	if (cbFrame == 0)
+	{
+		#ifndef NO_QUILL
+		LOG_TRACE_L2(pin->mLogData.logger, "[{}] Ignoring zero length frame at {}", pin->mLogData.prefix, u64TimeStamp);
+		#endif
+
+		return;
+	}
+
 	CAutoLock lck(&pin->mCaptureCritSec);
 	memcpy(pin->mCapturedFrame.data, pbFrame, cbFrame);
 	pin->mCapturedFrame.length = cbFrame;
-	pin->mCapturedFrame.ts = u64TimeStamp;
+
+	// u64TimeStamp is time since capture started so have to add the StreamStartTime for compatibility
+	auto ts = u64TimeStamp + pin->mStreamStartTime;
+	pin->mCapturedFrame.ts = ts;
+	pin->mFrameTs.snap(ts, BUFFERING);
+
+	int64_t now;
+	pin->GetReferenceTime(&now);
+	pin->mFrameTs.snap(now, READING);
+
 	if (!SetEvent(pin->mNotifyEvent))
 	{
 		auto err = GetLastError();
 		#ifndef NO_QUILL
 		LOG_ERROR(pin->mLogData.logger, "[{}] Failed to notify on frame {:#08x}", pin->mLogData.prefix, err);
+		#endif
+	}
+	else
+	{
+		#ifndef NO_QUILL
+		LOG_TRACE_L3(pin->mLogData.logger, "[{}] Notifying frame at {}", pin->mLogData.prefix, ts);
 		#endif
 	}
 }
@@ -600,9 +625,9 @@ HRESULT magewell_audio_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample, R
 				CAutoLock lck(&mCaptureCritSec);
 
 				frameCopied = true;
+
 				mPreviousFrameTime = mCurrentFrameTime;
-				GetReferenceTime(&now);
-				mFrameTs.snap(now, BUFFERING);
+				mCurrentFrameTime = mFrameTs.get(BUFFERING);
 
 				#ifndef NO_QUILL
 				LOG_TRACE_L3(mLogData.logger, "[{}] Audio frame buffered and captured at {}", mLogData.prefix,
