@@ -32,6 +32,14 @@ magewell_audio_capture_pin::audio_capture::audio_capture(magewell_audio_capture_
 	pin(pin),
 	mLogData(pin->mLogData)
 {
+	#ifndef NO_QUILL
+	int64_t now;
+	pin->GetReferenceTime(&now);
+
+	LOG_INFO(mLogData.logger, "[{}] MWCreateAudioCapture {} Hz {} bits {} channels at {}", mLogData.prefix,
+		pin->mAudioFormat.fs, pin->mAudioFormat.bitDepth, pin->mAudioFormat.inputChannelCount, now);
+	#endif
+
 	mEvent = MWCreateAudioCapture(hChannel, MWCAP_AUDIO_CAPTURE_NODE_EMBEDDED_CAPTURE, pin->mAudioFormat.fs,
 	                              pin->mAudioFormat.bitDepth, pin->mAudioFormat.inputChannelCount, CaptureFrame, pin);
 	if (mEvent == nullptr)
@@ -372,7 +380,8 @@ void magewell_audio_capture_pin::CaptureFrame(const BYTE* pbFrame, int cbFrame, 
 	else
 	{
 		#ifndef NO_QUILL
-		LOG_TRACE_L3(pin->mLogData.logger, "[{}] Notifying frame at {}", pin->mLogData.prefix, ts);
+		LOG_TRACE_L3(pin->mLogData.logger, "[{}] Notifying frame at {} (sz: {}, ts: {}/{})", pin->mLogData.prefix, ts,
+		             cbFrame, u64TimeStamp, pin->mFrameTs.get(READING));
 		#endif
 	}
 }

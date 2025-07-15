@@ -106,11 +106,11 @@ protected:
 	};
 
 	// USB only
-	class VideoCapture
+	class video_capture
 	{
 	public:
-		VideoCapture(magewell_video_capture_pin* pin, HCHANNEL hChannel);
-		~VideoCapture();
+		video_capture(magewell_video_capture_pin* pin, HCHANNEL hChannel);
+		~video_capture();
 
 	private:
 		magewell_video_capture_pin* pin;
@@ -134,7 +134,7 @@ protected:
 	usb_capture_formats mUsbCaptureFormats{};
 	bool mHasHdrInfoFrame{ false };
 	// USB only
-	std::unique_ptr<VideoCapture> mVideoCapture;
+	std::unique_ptr<video_capture> mVideoCapture;
 };
 
 #endif

@@ -22,10 +22,18 @@
 #include "straight_through.h"
 #include <memory>
 
-magewell_video_capture_pin::VideoCapture::VideoCapture(magewell_video_capture_pin* pin, HCHANNEL hChannel) :
+magewell_video_capture_pin::video_capture::video_capture(magewell_video_capture_pin* pin, HCHANNEL hChannel) :
 	pin(pin),
 	mLogData(pin->mLogData)
 {
+	#ifndef NO_QUILL
+	int64_t now;
+	pin->GetReferenceTime(&now);
+	LOG_INFO(mLogData.logger, "[{}] MWCreateVideoCapture [{}x{} '{}' {}] at {}", mLogData.prefix,
+	         pin->mVideoFormat.cx, pin->mVideoFormat.cy, pin->mSignalledFormat.name,
+	         pin->mVideoFormat.frameInterval, now);
+	#endif
+
 	mEvent = MWCreateVideoCapture(hChannel, pin->mVideoFormat.cx, pin->mVideoFormat.cy,
 	                              pin->mSignalledFormat.fourcc, pin->mVideoFormat.frameInterval, CaptureFrame,
 	                              pin);
@@ -36,16 +44,10 @@ magewell_video_capture_pin::VideoCapture::VideoCapture(magewell_video_capture_pi
 		          pin->mVideoFormat.cx, pin->mVideoFormat.cy, pin->mSignalledFormat.name,
 		          pin->mVideoFormat.frameInterval);
 	}
-	else
-	{
-		LOG_INFO(mLogData.logger, "[{}] MWCreateVideoCapture succeeded [{}x{} '{}' {}]", mLogData.prefix,
-		         pin->mVideoFormat.cx, pin->mVideoFormat.cy, pin->mSignalledFormat.name,
-		         pin->mVideoFormat.frameInterval);
-	}
 	#endif
 }
 
-magewell_video_capture_pin::VideoCapture::~VideoCapture()
+magewell_video_capture_pin::video_capture::~video_capture()
 {
 	if (mEvent != nullptr)
 	{
@@ -870,7 +872,7 @@ void magewell_video_capture_pin::OnFrameWriterStrategyUpdated()
 
 	if (resetVideoCapture)
 	{
-		mVideoCapture = std::make_unique<VideoCapture>(this, mFilter->GetChannelHandle());
+		mVideoCapture = std::make_unique<video_capture>(this, mFilter->GetChannelHandle());
 	}
 }
 
@@ -918,7 +920,8 @@ void magewell_video_capture_pin::CaptureFrame(BYTE* pbFrame, int cbFrame, UINT64
 	else
 	{
 		#ifndef NO_QUILL
-		LOG_TRACE_L3(pin->mLogData.logger, "[{}] Notifying frame at {} with len {}", pin->mLogData.prefix, ts, cbFrame);
+		LOG_TRACE_L3(pin->mLogData.logger, "[{}] Notifying frame at {} (sz: {}, ts: {}/{})", pin->mLogData.prefix, ts,
+		             cbFrame, u64TimeStamp, pin->mFrameTs.get(READING));
 		#endif
 	}
 }
@@ -1241,7 +1244,7 @@ HRESULT magewell_video_capture_pin::OnThreadCreate()
 	else
 	{
 		if (mVideoCapture) mVideoCapture.reset();
-		mVideoCapture = std::make_unique<VideoCapture>(this, mFilter->GetChannelHandle());
+		mVideoCapture = std::make_unique<video_capture>(this, mFilter->GetChannelHandle());
 	}
 	return NOERROR;
 }
