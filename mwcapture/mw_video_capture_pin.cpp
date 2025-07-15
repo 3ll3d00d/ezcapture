@@ -50,10 +50,6 @@ magewell_video_capture_pin::VideoCapture::~VideoCapture()
 	if (mEvent != nullptr)
 	{
 		#ifndef NO_QUILL
-		LOG_TRACE_L3(mLogData.logger, "[{}] ~VideoCapture", mLogData.prefix);
-		#endif
-
-		#ifndef NO_QUILL
 		LOG_TRACE_L3(mLogData.logger, "[{}] Ready to MWDestoryVideoCapture", mLogData.prefix);
 		#endif
 
@@ -267,16 +263,25 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 		else
 		{
 			pin->GetReferenceTime(&now);
-			pin->mFrameTs.snap(now, READ);
-			pin->mFrameCounter++;
-
-			// TODO verify the captured data is the right size
 
 			CAutoLock lck(&pin->mCaptureCritSec);
 
-			if (pin->mFrameWriterStrategy == STRAIGHT_THROUGH)
+			auto pmsLen = pms->GetSize();
+			if (pmsLen < pin->mCapturedFrame.length)
+			{
+				#ifndef NO_QUILL
+				LOG_TRACE_L1(mLogData.logger,
+				             "[{}] MediaSample size too small, assume frame signal format change ({} vs {})",
+				             mLogData.prefix, pmsLen, pin->mCapturedFrame.length);
+				#endif
+				BACKOFF;
+			}
+			else if (pin->mFrameWriterStrategy == STRAIGHT_THROUGH)
 			{
 				memcpy(pmsData, pin->mCapturedFrame.data, pin->mCapturedFrame.length);
+				hasFrame = true;
+				pin->mFrameTs.snap(now, READ);
+				pin->mFrameCounter++;
 			}
 			else
 			{
@@ -288,8 +293,10 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 					.length = pin->mCapturedFrame.length
 				};
 				pin->mFrameWriter->WriteTo(&buffer, pms);
+				hasFrame = true;
+				pin->mFrameTs.snap(now, READ);
+				pin->mFrameCounter++;
 			}
-			hasFrame = true;
 		}
 	}
 	if (hasFrame)
@@ -843,13 +850,22 @@ void magewell_video_capture_pin::OnFrameWriterStrategyUpdated()
 	// has to happen after signalledFormat has been updated
 	auto resetVideoCapture = mFilter->GetDeviceType() != MW_PRO && !mFirst;
 	if (resetVideoCapture && mVideoCapture)
+	{
 		mVideoCapture.reset();
+	}
 
 	if (mVideoFormat.imageSize > mVideoFormat.imageSize)
 	{
+		#ifndef NO_QUILL
+		LOG_TRACE_L2(mLogData.logger, "[{}] Resetting capturedFrame.data to accommodate new image size",
+		             mLogData.prefix, mVideoFormat.imageSize);
+		#endif
+
 		CAutoLock lck(&mCaptureCritSec);
 		delete mCapturedFrame.data;
 		mCapturedFrame.data = new uint8_t[mVideoFormat.imageSize];
+		mCapturedFrame.length = 0;
+		mCapturedFrame.ts = 0;
 	}
 
 	if (resetVideoCapture)
@@ -902,7 +918,7 @@ void magewell_video_capture_pin::CaptureFrame(BYTE* pbFrame, int cbFrame, UINT64
 	else
 	{
 		#ifndef NO_QUILL
-		LOG_TRACE_L3(pin->mLogData.logger, "[{}] Notifying frame at {}", pin->mLogData.prefix, ts);
+		LOG_TRACE_L3(pin->mLogData.logger, "[{}] Notifying frame at {} with len {}", pin->mLogData.prefix, ts, cbFrame);
 		#endif
 	}
 }
@@ -971,22 +987,22 @@ HRESULT magewell_video_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample, R
 		video_format newVideoFormat;
 		LoadFormat(&newVideoFormat, &mVideoSignal, &mUsbCaptureFormats);
 
-		auto shouldResize = newVideoFormat.frameInterval != mVideoFormat.frameInterval;
+		auto shouldResizeMetrics = newVideoFormat.frameInterval != mVideoFormat.frameInterval;
 
-		hr = OnVideoSignal(newVideoFormat);
+		auto onSignalResult = OnVideoSignal(newVideoFormat);
 
-		if (hr != S_RECONNECTION_UNNECESSARY || (hadSignal && !mHasSignal))
+		if (onSignalResult != S_RECONNECTION_UNNECESSARY || (hadSignal && !mHasSignal))
 		{
 			mFilter->OnVideoSignalLoaded(&mVideoSignal);
 		}
 
-		if (FAILED(hr))
+		if (FAILED(onSignalResult))
 		{
 			BACKOFF;
 			continue;
 		}
 
-		if (shouldResize)
+		if (shouldResizeMetrics)
 		{
 			ResizeMetrics(mVideoFormat.fps);
 		}
@@ -1064,8 +1080,20 @@ HRESULT magewell_video_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample, R
 			}
 			else
 			{
-				// new frame is the only type of notification
-				hasFrame = true;
+				// new frame is the only type of notification but only handle if frame length fits
+				CAutoLock lck(&mCaptureCritSec);
+				if (mVideoFormat.imageSize < mCapturedFrame.length)
+				{
+					#ifndef NO_QUILL
+					LOG_TRACE_L1(mLogData.logger,
+					             "[{}] Discarding frame larger than expected format size (vf: {}, cap: {}, reconnected: {:#08x})",
+					             mLogData.prefix, mVideoFormat.imageSize, mCapturedFrame.length, onSignalResult);
+					#endif
+				}
+				else
+				{
+					hasFrame = true;
+				}
 			}
 
 			if (hasFrame)
@@ -1129,7 +1157,7 @@ HRESULT magewell_video_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample, R
 			{
 				#ifndef NO_QUILL
 				LOG_WARNING(mLogData.logger, "[{}] Wait for frame unexpected response ({:#08x})", mLogData.prefix,
-				            static_cast<unsigned long>(dwRet));
+				            dwRet);
 				#endif
 			}
 		}
