@@ -886,11 +886,14 @@ void magewell_video_capture_pin::OnChangeMediaType()
 void magewell_video_capture_pin::CaptureFrame(BYTE* pbFrame, int cbFrame, UINT64 u64TimeStamp, void* pParam)
 {
 	magewell_video_capture_pin* pin = static_cast<magewell_video_capture_pin*>(pParam);
+	// u64TimeStamp for audio and video come from different underlying hardware sources so ignore it
+	int64_t now;
+	pin->GetReferenceTime(&now);
 
 	if (cbFrame == 0)
 	{
 		#ifndef NO_QUILL
-		LOG_TRACE_L2(pin->mLogData.logger, "[{}] Ignoring zero length frame at {}", pin->mLogData.prefix, u64TimeStamp);
+		LOG_TRACE_L2(pin->mLogData.logger, "[{}] Ignoring zero length frame at {}", pin->mLogData.prefix, now);
 		#endif
 
 		return;
@@ -901,14 +904,7 @@ void magewell_video_capture_pin::CaptureFrame(BYTE* pbFrame, int cbFrame, UINT64
 	memcpy(pin->mCapturedFrame.data, pbFrame, cbFrame);
 	pin->mCapturedFrame.length = cbFrame;
 
-	// u64TimeStamp is time since capture started so have to add the StreamStartTime for compatibility
-	auto ts = u64TimeStamp + pin->mStreamStartTime;
-	pin->mCapturedFrame.ts = ts;
-	pin->mFrameTs.snap(ts, BUFFERING);
-
-	int64_t now;
-	pin->GetReferenceTime(&now);
-	pin->mFrameTs.snap(now, READING);
+	pin->mFrameTs.snap(now, BUFFERING);
 
 	if (!SetEvent(pin->mNotifyEvent))
 	{
@@ -920,8 +916,8 @@ void magewell_video_capture_pin::CaptureFrame(BYTE* pbFrame, int cbFrame, UINT64
 	else
 	{
 		#ifndef NO_QUILL
-		LOG_TRACE_L3(pin->mLogData.logger, "[{}] Notifying frame at {} (sz: {}, ts: {}/{})", pin->mLogData.prefix, ts,
-		             cbFrame, u64TimeStamp, pin->mFrameTs.get(READING));
+		LOG_TRACE_L3(pin->mLogData.logger, "[{}] Notifying frame at {} (sz: {}, u64: {})",
+		             pin->mLogData.prefix, pin->mFrameTs.get(BUFFERING), cbFrame, u64TimeStamp);
 		#endif
 	}
 }

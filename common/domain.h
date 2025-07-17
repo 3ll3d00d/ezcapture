@@ -393,7 +393,7 @@ struct video_input_status
 	std::string inColourFormat;
 	std::string inQuantisation;
 	std::string inSaturation;
-	double inFps;
+	double inFps{0.0};
 	uint64_t inFrameDuration{0};
 	int inBitDepth{0};
 	std::string inPixelLayout;
@@ -409,7 +409,7 @@ struct video_output_status
 	std::string outColourFormat;
 	std::string outQuantisation;
 	std::string outSaturation;
-	double outFps;
+	double outFps{0.0};
 	int outBitDepth{0};
 	std::string outSubsampling;
 	std::string outPixelStructure;
@@ -663,7 +663,7 @@ public:
 		/*
 		 * Magewell PRO Video: WAITING, WAIT_COMPLETE, BUFFER_ALLOCATED, BUFFERING, BUFFERED, READING, READ, CONVERTED
 		 * Magewell PRO Audio: WAITING, WAIT_COMPLETE, BUFFERING, READING, READ, BUFFER_ALLOCATED, CONVERTED
-		 * Magewell USB: WAIT_COMPLETE, BUFFERING, READING, READ, CONVERTED
+		 * Magewell USB: WAIT_COMPLETE, BUFFERING, READ, CONVERTED
 		 * Decklink: WAIT_COMPLETE, BUFFER_ALLOCATED, READ, CONVERTED
 		 */
 		bool propagate;

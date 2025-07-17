@@ -37,7 +37,7 @@ magewell_audio_capture_pin::audio_capture::audio_capture(magewell_audio_capture_
 	pin->GetReferenceTime(&now);
 
 	LOG_INFO(mLogData.logger, "[{}] MWCreateAudioCapture {} Hz {} bits {} channels at {}", mLogData.prefix,
-		pin->mAudioFormat.fs, pin->mAudioFormat.bitDepth, pin->mAudioFormat.inputChannelCount, now);
+	         pin->mAudioFormat.fs, pin->mAudioFormat.bitDepth, pin->mAudioFormat.inputChannelCount, now);
 	#endif
 
 	mEvent = MWCreateAudioCapture(hChannel, MWCAP_AUDIO_CAPTURE_NODE_EMBEDDED_CAPTURE, pin->mAudioFormat.fs,
@@ -348,10 +348,14 @@ void magewell_audio_capture_pin::CaptureFrame(const BYTE* pbFrame, int cbFrame, 
 {
 	magewell_audio_capture_pin* pin = static_cast<magewell_audio_capture_pin*>(pParam);
 
+	// u64TimeStamp for audio and video come from different underlying hardware sources so ignore it
+	int64_t now;
+	pin->GetReferenceTime(&now);
+
 	if (cbFrame == 0)
 	{
 		#ifndef NO_QUILL
-		LOG_TRACE_L2(pin->mLogData.logger, "[{}] Ignoring zero length frame at {}", pin->mLogData.prefix, u64TimeStamp);
+		LOG_TRACE_L2(pin->mLogData.logger, "[{}] Ignoring zero length frame at {}", pin->mLogData.prefix, now);
 		#endif
 
 		return;
@@ -361,14 +365,7 @@ void magewell_audio_capture_pin::CaptureFrame(const BYTE* pbFrame, int cbFrame, 
 	memcpy(pin->mCapturedFrame.data, pbFrame, cbFrame);
 	pin->mCapturedFrame.length = cbFrame;
 
-	// u64TimeStamp is time since capture started so have to add the StreamStartTime for compatibility
-	auto ts = u64TimeStamp + pin->mStreamStartTime;
-	pin->mCapturedFrame.ts = ts;
-	pin->mFrameTs.snap(ts, BUFFERING);
-
-	int64_t now;
-	pin->GetReferenceTime(&now);
-	pin->mFrameTs.snap(now, READING);
+	pin->mFrameTs.snap(now, BUFFERING);
 
 	if (!SetEvent(pin->mNotifyEvent))
 	{
@@ -380,8 +377,8 @@ void magewell_audio_capture_pin::CaptureFrame(const BYTE* pbFrame, int cbFrame, 
 	else
 	{
 		#ifndef NO_QUILL
-		LOG_TRACE_L3(pin->mLogData.logger, "[{}] Notifying frame at {} (sz: {}, ts: {}/{})", pin->mLogData.prefix, ts,
-		             cbFrame, u64TimeStamp, pin->mFrameTs.get(READING));
+		LOG_TRACE_L3(pin->mLogData.logger, "[{}] Notifying frame at {} (sz: {}, u64: {})",
+		             pin->mLogData.prefix, pin->mFrameTs.get(BUFFERING), cbFrame, u64TimeStamp);
 		#endif
 	}
 }
@@ -394,12 +391,12 @@ HRESULT magewell_audio_capture_pin::DoChangeMediaType(const CMediaType* pmt, con
 	            newAudioFormat->fs, newAudioFormat->bitDepth, newAudioFormat->outputChannelCount,
 	            codecNames[newAudioFormat->codec]);
 	#endif
-	long newSize = MWCAP_AUDIO_SAMPLES_PER_FRAME * newAudioFormat->bitDepthInBytes * newAudioFormat->outputChannelCount;
+	long newSize = GetSamplesPerFrame() * newAudioFormat->bitDepthInBytes * newAudioFormat->outputChannelCount;
 	if (newAudioFormat->codec != PCM)
 	{
 		newSize = newAudioFormat->dataBurstSize;
 	}
-	long oldSize = MWCAP_AUDIO_SAMPLES_PER_FRAME * mAudioFormat.bitDepthInBytes * mAudioFormat.outputChannelCount;
+	long oldSize = GetSamplesPerFrame() * mAudioFormat.bitDepthInBytes * mAudioFormat.outputChannelCount;
 	if (mAudioFormat.codec != PCM)
 	{
 		oldSize = mAudioFormat.dataBurstSize;
@@ -530,11 +527,6 @@ HRESULT magewell_audio_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample, R
 
 		if (dwRet == WAIT_OBJECT_0)
 		{
-			// TODO magewell SDK bug means audio is always reported as PCM, until fixed allow 6 frames of audio to pass through before declaring it definitely PCM
-			// 12 frames is 7680 bytes of 2 channel audio & 30720 of 8 channel which should be more than enough to be sure
-			mBitstreamDetectionWindowLength = std::lround(
-				bitstreamDetectionWindowSecs / (static_cast<double>(MWCAP_AUDIO_SAMPLES_PER_FRAME) / newAudioFormat.
-					fs));
 			if (mDetectedCodec != PCM)
 			{
 				newAudioFormat.codec = mDetectedCodec;
@@ -542,6 +534,12 @@ HRESULT magewell_audio_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample, R
 
 			if (proDevice)
 			{
+				// TODO magewell SDK bug means audio is always reported as PCM, until fixed allow 6 frames of audio to pass through before declaring it definitely PCM
+				// 12 frames is 7680 bytes of 2 channel audio & 30720 of 8 channel which should be more than enough to be sure
+				mBitstreamDetectionWindowLength = std::lround(
+					bitstreamDetectionWindowSecs / (static_cast<double>(MWCAP_AUDIO_SAMPLES_PER_FRAME) / newAudioFormat.
+						fs));
+
 				mStatusBits = 0;
 				auto hr = MWGetNotifyStatus(hChannel, mNotify, &mStatusBits);
 				if (mStatusBits & MWCAP_NOTIFY_AUDIO_SIGNAL_CHANGE)
@@ -647,6 +645,7 @@ HRESULT magewell_audio_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample, R
 				mFrameTs.snap(now, READING);
 
 				memcpy(mFrameBuffer, mCapturedFrame.data, mCapturedFrame.length);
+				mFrameBufferLen = mCapturedFrame.length;
 
 				GetReferenceTime(&now);
 				mFrameTs.snap(now, READ);
@@ -670,7 +669,8 @@ HRESULT magewell_audio_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample, R
 
 			codec* detectedCodec = &newAudioFormat.codec;
 			const auto mightBeBitstream = newAudioFormat.fs >= 48000 && mSinceLast < mBitstreamDetectionWindowLength;
-			const auto examineBitstream = newAudioFormat.codec != PCM || mightBeBitstream || mDataBurstSize > 0;
+			const auto examineBitstream = proDevice && (newAudioFormat.codec != PCM || mightBeBitstream ||
+				mDataBurstSize > 0);
 			if (examineBitstream)
 			{
 				#ifndef NO_QUILL
@@ -753,8 +753,7 @@ HRESULT magewell_audio_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample, R
 			{
 				mSinceLast++;
 			}
-			int probeTrigger = std::lround(mBitstreamDetectionWindowLength * bitstreamDetectionRetryAfter);
-			if (mSinceLast >= probeTrigger)
+			if (proDevice && mSinceLast >= std::lround(mBitstreamDetectionWindowLength * bitstreamDetectionRetryAfter))
 			{
 				#ifndef NO_QUILL
 				LOG_TRACE_L1(mLogData.logger, "[{}] Triggering bitstream probe after {} frames", mLogData.prefix,
@@ -863,10 +862,18 @@ HRESULT magewell_audio_capture_pin::FillBuffer(IMediaSample* pms)
 			pmsData[i] = mDataBurstBuffer[i];
 		}
 		pms->SetActualDataLength(mDataBurstPayloadSize);
-		samplesCaptured++;
+		// TODO this is wrong but possibly has no impact
+		samplesCaptured = MWCAP_AUDIO_SAMPLES_PER_FRAME;
 		bytesCaptured = mDataBurstPayloadSize;
 		mDataBurstPayloadSize = 0;
 		ResizeMetrics(mCompressedAudioRefreshRate);
+	}
+	else if (mFilter->GetDeviceType() != MW_PRO)
+	{
+		samplesCaptured = mFrameBufferLen / (mAudioFormat.inputChannelCount * mAudioFormat.bitDepthInBytes);
+		ResizeMetrics(static_cast<double>(mAudioFormat.fs) / samplesCaptured);
+		memcpy(pmsData, mFrameBuffer, mFrameBufferLen);
+		bytesCaptured = mFrameBufferLen;
 	}
 	else
 	{
@@ -996,39 +1003,65 @@ HRESULT magewell_audio_capture_pin::FillBuffer(IMediaSample* pms)
 	mFrameTs.snap(now, CONVERTED);
 
 	auto endTime = mCurrentFrameTime;
-	auto startTime = endTime - static_cast<long>(mAudioFormat.sampleInterval * MWCAP_AUDIO_SAMPLES_PER_FRAME);
+	auto startTime = endTime - static_cast<long>(mAudioFormat.sampleInterval * samplesCaptured);
 
 	mFrameTs.end();
 
 	RecordLatency();
 
 	#ifndef NO_QUILL
+	bool isPro = mFilter->GetDeviceType() == MW_PRO;
 	if (!mLoggedLatencyHeader)
 	{
 		mLoggedLatencyHeader = true;
-		LOG_TRACE_L1(mLogData.audioLat,
-		             "codec,since,idx,"
-		             "waiting,waitComplete,bufferAllocated,"
-		             "buffering,buffered,reading,"
-		             "read,converted,sysTime,"
-		             "bytes,samples,startTime,"
-		             "endTime");
+		if (isPro)
+		{
+			LOG_TRACE_L1(mLogData.audioLat,
+			             "codec,since,idx,"
+			             "waiting,waitComplete,bufferAllocated,"
+			             "buffering,buffered,reading,"
+			             "read,converted,sysTime,"
+			             "bytes,samples,startTime,"
+			             "endTime");
+		}
+		else
+		{
+			LOG_TRACE_L1(mLogData.audioLat,
+			             "codec,since,idx,"
+			             "buffering,reading,read,"
+			             "converted,sysTime,bytes,"
+			             "samples,startTime,endTime");
+		}
 	}
 	auto ts = mFrameTs;
-	LOG_TRACE_L1(mLogData.audioLat,
-	             "{},{},{},"
-	             "{},{},{},"
-	             "{},{},{},"
-	             "{},{},{},"
-	             "{},{},{},"
-	             "{}",
-	             codecNames[mAudioFormat.codec], mSinceCodecChange, mFrameCounter,
-	             ts.get(WAITING), ts.get(WAIT_COMPLETE), ts.get(BUFFER_ALLOCATED),
-	             ts.get(BUFFERING), ts.get(BUFFERED), ts.get(READING),
-	             ts.get(READ), ts.get(CONVERTED), ts.get(COMPLETE),
-	             bytesCaptured, samplesCaptured, startTime,
-	             endTime);
-
+	if (isPro)
+	{
+		LOG_TRACE_L1(mLogData.audioLat,
+		             "{},{},{},"
+		             "{},{},{},"
+		             "{},{},{},"
+		             "{},{},{},"
+		             "{},{},{},"
+		             "{}",
+		             codecNames[mAudioFormat.codec], mSinceCodecChange, mFrameCounter,
+		             ts.get(WAITING), ts.get(WAIT_COMPLETE), ts.get(BUFFER_ALLOCATED),
+		             ts.get(BUFFERING), ts.get(BUFFERED), ts.get(READING),
+		             ts.get(READ), ts.get(CONVERTED), ts.get(COMPLETE),
+		             bytesCaptured, samplesCaptured, startTime,
+		             endTime);
+	}
+	else
+	{
+		LOG_TRACE_L1(mLogData.audioLat,
+		             "{},{},{},"
+		             "{},{},{},"
+		             "{},{},{},"
+		             "{},{},{},",
+		             codecNames[mAudioFormat.codec], mSinceCodecChange, mFrameCounter,
+		             ts.get(BUFFERING), ts.get(READING), ts.get(READ),
+		             ts.get(CONVERTED), ts.get(COMPLETE), bytesCaptured,
+		             samplesCaptured, startTime, endTime);
+	}
 	LOG_TRACE_L1(mLogData.logger, "[{}] Captured frame {}", mLogData.prefix, mFrameCounter);
 	#endif
 
@@ -1070,7 +1103,7 @@ bool magewell_audio_capture_pin::ProposeBuffers(ALLOCATOR_PROPERTIES* pPropertie
 {
 	if (mAudioFormat.codec == PCM)
 	{
-		pProperties->cbBuffer = MWCAP_AUDIO_SAMPLES_PER_FRAME * mAudioFormat.bitDepthInBytes * mAudioFormat.
+		pProperties->cbBuffer = GetSamplesPerFrame() * mAudioFormat.bitDepthInBytes * mAudioFormat.
 			outputChannelCount;
 	}
 	else

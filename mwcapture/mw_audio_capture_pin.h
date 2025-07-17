@@ -24,9 +24,9 @@
 #include "mw_capture_filter.h"
 #include "audio_capture_pin.h"
 
- /**
-  * An audio stream flowing from the capture device to an output pin.
-  */
+/**
+ * An audio stream flowing from the capture device to an output pin.
+ */
 class magewell_audio_capture_pin final :
 	public hdmi_audio_capture_pin<magewell_capture_filter>
 {
@@ -42,7 +42,7 @@ public:
 	//  CBaseOutputPin
 	//////////////////////////////////////////////////////////////////////////
 	HRESULT GetDeliveryBuffer(__deref_out IMediaSample** ppSample, __in_opt REFERENCE_TIME* pStartTime,
-		__in_opt REFERENCE_TIME* pEndTime, DWORD dwFlags) override;
+	                          __in_opt REFERENCE_TIME* pEndTime, DWORD dwFlags) override;
 
 	//////////////////////////////////////////////////////////////////////////
 	//  CSourceStream
@@ -60,7 +60,7 @@ public:
 
 		#ifndef NO_QUILL
 		LOG_WARNING(mLogData.logger, "[{}] MagewellAudioCapturePin::SetStopTime at {}", mLogData.prefix,
-			streamStopTime);
+		            streamStopTime);
 		#endif
 	}
 
@@ -77,30 +77,42 @@ protected:
 		HANDLE mEvent;
 	};
 
+	int GetSamplesPerFrame() const
+	{
+		if (mFilter->GetDeviceType() == MW_PRO)
+		{
+			return MWCAP_AUDIO_SAMPLES_PER_FRAME;
+		}
+		return usbAudioSamplesPerFrame;
+	}
+
 	// Common - temp 
-	int64_t mCaptureTime{ 0 };
+	int64_t mCaptureTime{0};
 	HNOTIFY mNotify;
 	ULONGLONG mStatusBits = 0;
 	HANDLE mNotifyEvent;
+
 	// pro only
 	HANDLE mCaptureEvent;
 
-	double minus_10db{ pow(10.0, -10.0 / 20.0) };
+	double minus_10db{pow(10.0, -10.0 / 20.0)};
 	audio_signal mAudioSignal{};
 	BYTE mFrameBuffer[maxFrameLengthInBytes];
+	// usb only
+	uint64_t mFrameBufferLen{0}; // reportedly always be 480 samples (so 1920 bytes)
 	// IEC61937 processing
-	uint32_t mBitstreamDetectionWindowLength{ 0 };
-	uint8_t mPaPbBytesRead{ 0 };
+	uint32_t mBitstreamDetectionWindowLength{std::numeric_limits<uint32_t>::max()};
+	uint8_t mPaPbBytesRead{0};
 	BYTE mPcPdBuffer[4];
-	uint8_t mPcPdBytesRead{ 0 };
-	uint16_t mDataBurstFrameCount{ 0 };
-	uint16_t mDataBurstRead{ 0 };
-	uint16_t mDataBurstSize{ 0 };
-	uint16_t mDataBurstPayloadSize{ 0 };
-	uint32_t mBytesSincePaPb{ 0 };
-	double mCompressedAudioRefreshRate{ 0.0 };
-	uint64_t mSinceCodecChange{ 0 };
-	bool mPacketMayBeCorrupt{ false };
+	uint8_t mPcPdBytesRead{0};
+	uint16_t mDataBurstFrameCount{0};
+	uint16_t mDataBurstRead{0};
+	uint16_t mDataBurstSize{0};
+	uint16_t mDataBurstPayloadSize{0};
+	uint32_t mBytesSincePaPb{0};
+	double mCompressedAudioRefreshRate{0.0};
+	uint64_t mSinceCodecChange{0};
+	bool mPacketMayBeCorrupt{false};
 	BYTE mCompressedBuffer[maxFrameLengthInBytes];
 	std::vector<BYTE> mDataBurstBuffer; // variable size
 	std::unique_ptr<audio_capture> mAudioCapture;
@@ -117,8 +129,8 @@ protected:
 	FILE* mEncodedOutFile;
 	#endif
 	// TODO remove after SDK bug is fixed
-	codec mDetectedCodec{ PCM };
-	bool mProbeOnTimer{ false };
+	codec mDetectedCodec{PCM};
+	bool mProbeOnTimer{false};
 
 	static void CaptureFrame(const BYTE* pbFrame, int cbFrame, UINT64 u64TimeStamp, void* pParam);
 

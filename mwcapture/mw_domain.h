@@ -239,6 +239,7 @@ enum IEC61937DataType : uint8_t
 
 constexpr int maxBitDepthInBytes = sizeof(DWORD);
 constexpr int maxFrameLengthInBytes = MWCAP_AUDIO_SAMPLES_PER_FRAME * MWCAP_AUDIO_MAX_NUM_CHANNELS * maxBitDepthInBytes;
+constexpr int usbAudioSamplesPerFrame = 480;
 
 EXTERN_C const GUID CLSID_MWCAPTURE_FILTER;
 
