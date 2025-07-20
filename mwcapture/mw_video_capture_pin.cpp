@@ -29,9 +29,9 @@ magewell_video_capture_pin::video_capture::video_capture(magewell_video_capture_
 	#ifndef NO_QUILL
 	int64_t now;
 	pin->GetReferenceTime(&now);
-	LOG_INFO(mLogData.logger, "[{}] MWCreateVideoCapture [{}x{} '{}' {}] at {}", mLogData.prefix,
+	LOG_INFO(mLogData.logger, "[{}] MWCreateVideoCapture [{}x{} '{}' {}] at {} (sessionID: {})", mLogData.prefix,
 	         pin->mVideoFormat.cx, pin->mVideoFormat.cy, pin->mSignalledFormat.name,
-	         pin->mVideoFormat.frameInterval, now);
+	         pin->mVideoFormat.frameInterval, now, pin->mCaptureSessionId);
 	#endif
 
 	mEvent = MWCreateVideoCapture(hChannel, pin->mVideoFormat.cx, pin->mVideoFormat.cy,
@@ -49,6 +49,10 @@ magewell_video_capture_pin::video_capture::video_capture(magewell_video_capture_
 
 magewell_video_capture_pin::video_capture::~video_capture()
 {
+	#ifndef NO_QUILL
+	LOG_INFO(mLogData.logger, "[{}] Closing capture sessionID {}", mLogData.prefix, pin->mCaptureSessionId);
+	#endif
+
 	if (mEvent != nullptr)
 	{
 		#ifndef NO_QUILL
@@ -853,25 +857,14 @@ void magewell_video_capture_pin::OnFrameWriterStrategyUpdated()
 	auto resetVideoCapture = mFilter->GetDeviceType() != MW_PRO && !mFirst;
 	if (resetVideoCapture && mVideoCapture)
 	{
-		mVideoCapture.reset();
-	}
-
-	if (mVideoFormat.imageSize > mVideoFormat.imageSize)
-	{
-		#ifndef NO_QUILL
-		LOG_TRACE_L2(mLogData.logger, "[{}] Resetting capturedFrame.data to accommodate new image size",
-		             mLogData.prefix, mVideoFormat.imageSize);
-		#endif
-
 		CAutoLock lck(&mCaptureCritSec);
-		delete mCapturedFrame.data;
-		mCapturedFrame.data = new uint8_t[mVideoFormat.imageSize];
-		mCapturedFrame.length = 0;
-		mCapturedFrame.ts = 0;
+		mVideoCapture.reset();
+		mCapturedFrame.reset(mVideoFormat.imageSize);
 	}
 
 	if (resetVideoCapture)
 	{
+		mCaptureSessionId++;
 		mVideoCapture = std::make_unique<video_capture>(this, mFilter->GetChannelHandle());
 	}
 }
@@ -1239,7 +1232,14 @@ HRESULT magewell_video_capture_pin::OnThreadCreate()
 	}
 	else
 	{
-		if (mVideoCapture) mVideoCapture.reset();
+		CAutoLock lck(&mCaptureCritSec);
+
+		if (mVideoCapture)
+		{
+			mVideoCapture.reset();
+		}
+		mCapturedFrame.reset(mVideoFormat.imageSize);
+		mCaptureSessionId++;
 		mVideoCapture = std::make_unique<video_capture>(this, mFilter->GetChannelHandle());
 	}
 	return NOERROR;

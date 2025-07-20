@@ -290,6 +290,14 @@ struct captured_frame
 	uint8_t* data;
 	uint64_t length;
 	uint64_t ts;
+
+	void reset(uint64_t newSize)
+	{
+		delete data;
+		data = new uint8_t[newSize];
+		length = 0LL;
+		ts = 0LL;
+	}
 };
 
 struct video_sample_buffer

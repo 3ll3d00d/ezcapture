@@ -25,9 +25,9 @@
 #include "video_capture_pin.h"
 #include <memory>
 
- /**
-  * A video stream flowing from the capture device to an output pin.
-  */
+/**
+ * A video stream flowing from the capture device to an output pin.
+ */
 class magewell_video_capture_pin final :
 	public hdmi_video_capture_pin<magewell_capture_filter, video_sample_buffer>
 {
@@ -39,7 +39,7 @@ public:
 	//  CBaseOutputPin
 	//////////////////////////////////////////////////////////////////////////
 	HRESULT GetDeliveryBuffer(__deref_out IMediaSample** ppSample, __in_opt REFERENCE_TIME* pStartTime,
-		__in_opt REFERENCE_TIME* pEndTime, DWORD dwFlags) override;
+	                          __in_opt REFERENCE_TIME* pEndTime, DWORD dwFlags) override;
 
 	//////////////////////////////////////////////////////////////////////////
 	//  CSourceStream
@@ -57,9 +57,10 @@ public:
 
 		#ifndef NO_QUILL
 		LOG_WARNING(mLogData.logger, "[{}] MagewellVideoCapturePin::SetStopTime at {}", mLogData.prefix,
-			streamStopTime);
+		            streamStopTime);
 		#endif
 	}
+
 protected:
 	void DoThreadDestroy() override;
 	void StopCapture();
@@ -86,7 +87,8 @@ protected:
 	class video_frame_grabber
 	{
 	public:
-		video_frame_grabber(magewell_video_capture_pin* pin, HCHANNEL hChannel, device_type deviceType, IMediaSample* pms);
+		video_frame_grabber(magewell_video_capture_pin* pin, HCHANNEL hChannel, device_type deviceType,
+		                    IMediaSample* pms);
 		~video_frame_grabber();
 
 		video_frame_grabber(video_frame_grabber const&) = delete;
@@ -123,8 +125,7 @@ protected:
 	HNOTIFY mNotify;
 	uint64_t mStatusBits = 0;
 	HANDLE mNotifyEvent;
-	int64_t mCaptureTime;
-	int64_t mLastTempSnapAt{ 0 };
+	int64_t mLastTempSnapAt{0};
 	captured_frame mCapturedFrame{};
 
 	// pro only
@@ -132,8 +133,9 @@ protected:
 
 	video_signal mVideoSignal{};
 	usb_capture_formats mUsbCaptureFormats{};
-	bool mHasHdrInfoFrame{ false };
+	bool mHasHdrInfoFrame{false};
 	// USB only
+	uint16_t mCaptureSessionId{0};
 	std::unique_ptr<video_capture> mVideoCapture;
 };
 
