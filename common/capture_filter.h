@@ -237,6 +237,10 @@ protected:
 	~capture_filter() override
 	{
 		#ifndef NO_QUILL
+		LOG_INFO(mLogData.logger, "[{}] Shutting down logging system", mLogData.prefix);
+		quill::Frontend::remove_logger(mLogData.logger);
+		quill::Frontend::remove_logger(mLogData.audioLat);
+		quill::Frontend::remove_logger(mLogData.videoLat);
 		quill::Backend::stop();
 		#endif
 	}
