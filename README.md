@@ -1,4 +1,4 @@
-# mwcapture
+# ezcapture
 
 A Direct Show filter that can capture audio and video from the following devices
 
