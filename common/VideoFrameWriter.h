@@ -24,6 +24,10 @@
 #include <intsafe.h>
 #include <strmif.h>
 #include <dvdmedia.h>
+
+// from the DirectShow base classes (mtype.h, which cannot be included here as
+// it requires WAVEFORMATEX and this header is used with WIN32_LEAN_AND_MEAN)
+void WINAPI DeleteMediaType(__inout_opt AM_MEDIA_TYPE* pmt);
 #include "domain.h"
 #include "logging.h"
 
@@ -78,6 +82,7 @@ protected:
 				auto header = reinterpret_cast<VIDEOINFOHEADER2*>(mt->pbFormat);
 				int paddedWidth = header->bmiHeader.biWidth;
 				mPixelsToPad = std::max(paddedWidth - expectedWidth, 0);
+				DeleteMediaType(mt);
 
 				#ifndef NO_QUILL
 				if (mPixelsToPad > 0)
