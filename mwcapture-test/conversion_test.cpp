@@ -402,10 +402,7 @@ TEST(V210_P210, MatchesReferenceWithPadding)
 	runV210Case(720, 32, 8);
 }
 
-// widths that are not a multiple of 12 leave the last few pixels of every
-// line unconverted (e.g. 8 px/line at 1280); enabled when the per-line tail
-// is handled
-TEST(V210_P210, DISABLED_NonMultipleOf12Width)
+TEST(V210_P210, NonMultipleOf12Width)
 {
 	for (const int width : {1280, 2048})
 	{

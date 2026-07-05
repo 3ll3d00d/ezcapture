@@ -240,7 +240,13 @@ namespace conversion
 	inline bool v210_to_p210(const uint8_t* src, int srcStride, uint8_t* dstY, uint8_t* dstUV, int width, int height,
 	                         int pixelsToPad)
 	{
-		const int groupsPerLine = width / 12;
+		// round up so a width that is not a multiple of 12 still converts its
+		// final partial group; the source row is always long enough to load a
+		// full 32 byte group (rows are aligned to 48 pixels / 128 bytes) and a
+		// mid-line overspill lands at the start of the next row which is
+		// overwritten immediately afterwards, so only the last line needs the
+		// clamped store below
+		const int groupsPerLine = (width + 11) / 12;
 		const int effectiveWidth = width + pixelsToPad;
 
 		const __m256i mask_s0_s2 = _mm256_set1_epi32(0x3FF003FF);
@@ -335,23 +341,23 @@ namespace conversion
 	inline bool v210_to_p210(const uint8_t* src, int srcStride, uint8_t* dstY, uint8_t* dstUV, int width, int height,
 	                         int pixelsToPad)
 	{
-		// Each group of 16 bytes contains 6 pixels (YUVYUV)
-		const int groupsPerLine = width / 6;
+		// Each group of 4 dwords (16 bytes) contains 6 pixels; round up so a
+		// width that is not a multiple of 6 converts its final partial group
+		// (source rows are padded to 48 pixels so the read is always in bounds)
+		const int groupsPerLine = (width + 5) / 6;
 		auto effectiveWidth = width + pixelsToPad;
 
 		for (int y = 0; y < height; y++)
 		{
-			const uint32_t* srcLine = reinterpret_cast<const uint32_t*>(src + y * srcStride);
+			const uint32_t* srcLine = reinterpret_cast<const uint32_t*>(src + static_cast<ptrdiff_t>(y) * srcStride);
 			uint16_t* dstLineY = reinterpret_cast<uint16_t*>(dstY + y * effectiveWidth * 2);
 			uint16_t* dstLineUV = reinterpret_cast<uint16_t*>(dstUV + y * effectiveWidth * 2);
 			for (int g = 0; g < groupsPerLine; ++g)
 			{
-				// Load 4 dwords (16 bytes = 128 bits)
-				__m128i v = _mm_loadu_si128(reinterpret_cast<const __m128i*>(srcLine));
+				const uint32_t* p = srcLine;
 
 				// Unpack 12 16 bit samples to a 10 bit value manually
-				alignas(32) uint16_t samples[12];
-				const uint32_t* p = reinterpret_cast<const uint32_t*>(&v);
+				uint16_t samples[12];
 
 				// reorder each 32bit block from
 				// V0 Y0 U0
@@ -376,21 +382,13 @@ namespace conversion
 				samples[10] = (p[3] >> 10) & 0x3FF; // V4
 				samples[11] = (p[3] >> 20) & 0x3FF; // Y5
 
-				// shift to 16bit and store Y plane
-				dstLineY[0] = samples[1] << 6; // Y0
-				dstLineY[1] = samples[3] << 6; // Y1
-				dstLineY[2] = samples[5] << 6; // Y2
-				dstLineY[3] = samples[7] << 6; // Y3
-				dstLineY[4] = samples[9] << 6; // Y4
-				dstLineY[5] = samples[11] << 6; // Y5
-
-				// shift to 16bit and store UV plane
-				dstLineUV[0] = samples[0] << 6; // U0
-				dstLineUV[1] = samples[2] << 6; // V0
-				dstLineUV[2] = samples[4] << 6; // U2
-				dstLineUV[3] = samples[6] << 6; // V2
-				dstLineUV[4] = samples[8] << 6; // U4
-				dstLineUV[5] = samples[10] << 6; // V4
+				// shift to 16bit and store, clamped to the pixels the row has left
+				const int n = std::min(6, width - g * 6);
+				for (int i = 0; i < n; ++i)
+				{
+					dstLineY[i] = samples[i * 2 + 1] << 6; // Y0..Y5
+					dstLineUV[i] = samples[i * 2] << 6; // U0 V0 U2 V2 U4 V4
+				}
 
 				// shift the pointer to the next group
 				dstLineY += 6;
