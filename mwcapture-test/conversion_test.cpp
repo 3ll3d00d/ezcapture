@@ -366,12 +366,8 @@ TEST(YUV2_YV16, MatchesReference)
 // ---------------------------------------------------------------------------
 // Y210 -> P210
 // ---------------------------------------------------------------------------
-// DISABLED: the AVX2 kernel advances the destination pointers by 16 uint16_t
-// per 8-pixel pass (32 bytes written as 16), interleaving garbage into both
-// planes and overrunning them; the scalar kernel never advances its row
-// pointer. Enabled by the fix commit.
 
-TEST(Y210_P210, DISABLED_MatchesReference)
+TEST(Y210_P210, MatchesReference)
 {
 	for (const int width : {64, 720, 1280, 1920, 3840})
 	{
@@ -379,12 +375,12 @@ TEST(Y210_P210, DISABLED_MatchesReference)
 	}
 }
 
-TEST(Y210_P210, DISABLED_MatchesReferenceWithPadding)
+TEST(Y210_P210, MatchesReferenceWithPadding)
 {
 	runY210Case(720, 32, 8, 720 * 4);
 }
 
-TEST(Y210_P210, DISABLED_MatchesReferenceWithPaddedSourceStride)
+TEST(Y210_P210, MatchesReferenceWithPaddedSourceStride)
 {
 	runY210Case(720, 32, 0, 720 * 4 + 64);
 }

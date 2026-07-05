@@ -60,8 +60,8 @@ public:
 		uint8_t* yPlane = outSpan.subspan(0, planeSize).data();
 		uint8_t* uvPlane = outSpan.subspan(planeSize, planeSize).data();
 
-		auto alignedWidth = (width + 47) / 48 * 48;
-		auto srcStride = alignedWidth * 8 / 3;
+		// Y210 stores 2 pixels in 4 16-bit LE words (Y0 U Y1 V), i.e. 4 bytes per pixel
+		auto srcStride = width * 4;
 
 		#ifndef NO_QUILL
 		const quill::StopWatchTsc swt;
