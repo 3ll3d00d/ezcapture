@@ -16,6 +16,7 @@
 #define Y210_P210_HEADER
 
 #include "VideoFrameWriter.h"
+#include "conversion_kernels.h"
 #include <span>
 
 #ifndef NO_QUILL
@@ -66,7 +67,7 @@ public:
 		const quill::StopWatchTsc swt;
 		#endif
 
-		this->convert(sourceData, srcStride, yPlane, uvPlane, width, height, this->mPixelsToPad);
+		conversion::y210_to_p210(sourceData, srcStride, yPlane, uvPlane, width, height, this->mPixelsToPad);
 
 		#ifndef NO_QUILL
 		auto execTime = swt.elapsed_as<std::chrono::microseconds>().count() / 1000.0;
@@ -78,67 +79,5 @@ public:
 
 		return S_OK;
 	}
-
-private:
-	// same as yuy2 but each individual value occupies 16 bits
-	#ifdef __AVX2__
-	bool convert(const uint8_t* src, int srcStride, uint8_t* dstY, uint8_t* dstUV, int width, int height, int pixelsToPad)
-	{
-		const __m256i shuffle_1 = _mm256_setr_epi8(
-			2, 3, 6, 7, 10, 11, 14, 15, 0, 1, 4, 5, 8, 9, 12, 13,
-			2, 3, 6, 7, 10, 11, 14, 15, 0, 1, 4, 5, 8, 9, 12, 13
-		);
-		const __m256i permute = _mm256_setr_epi32(0, 1, 4, 5, 2, 3, 6, 7);
-		const int yWidth = width + pixelsToPad;
-		const int uvWidth = yWidth / 2;
-		const int effectiveWidth = width + pixelsToPad;
-
-		for (int lineNo = 0; lineNo < height; ++lineNo)
-		{
-			const uint32_t* srcLine = reinterpret_cast<const uint32_t*>(src + lineNo * srcStride);
-			uint16_t* dstLineY = reinterpret_cast<uint16_t*>(dstY + lineNo * effectiveWidth * 2);
-			uint16_t* dstLineUV = reinterpret_cast<uint16_t*>(dstUV + lineNo * effectiveWidth * 2);
-
-			for (int x = 0; x < width; x += 8) // 32 bits per pixel in 256 bit chunks = 8 pixels per pass
-			{
-				__m256i pixels = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src));
-				__m256i shuffled = _mm256_shuffle_epi8(pixels, shuffle_1);
-				__m256i permuted = _mm256_permutevar8x32_epi32(shuffled, permute);
-				_mm256_storeu2_m128i(reinterpret_cast<__m128i*>(dstLineY), reinterpret_cast<__m128i*>(dstLineUV), permuted);
-				// 32 bytes read
-				dstLineUV += 16;
-				dstLineY += 16;
-				src += 32; 
-			}
-		}
-		return true;
-	}
-	#else
-	bool convert(const uint8_t* src, int srcStride, uint8_t* dstY, uint8_t* dstUV, int width, int height,
-	             int pixelsToPad)
-	{
-		auto effectiveWidth = width + pixelsToPad;
-
-		for (int y = 0; y < height; y++)
-		{
-			const uint16_t* srcLine = reinterpret_cast<const uint16_t*>(src + y * srcStride);
-			uint16_t* dstLineY = reinterpret_cast<uint16_t*>(dstY + y * effectiveWidth * 2);
-			uint16_t* dstLineUV = reinterpret_cast<uint16_t*>(dstUV + y * effectiveWidth * 2);
-
-			for (int x = 0; x < width; x += 2) // 2 pixels per pass
-			{
-				dstLineY[0] = srcLine[0];
-				dstLineY[1] = srcLine[2];
-				dstLineUV[0] = srcLine[1];
-				dstLineUV[1] = srcLine[3];
-
-				dstLineY += 2;
-				dstLineUV += 2;
-				src += 4;
-			}
-		}
-		return true;
-	}
-	#endif
 };
 #endif
