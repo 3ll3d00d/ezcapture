@@ -1,6 +1,6 @@
 find_package(GTest CONFIG REQUIRED)
 
-add_executable(mwcapture-test test.cpp)
+add_executable(mwcapture-test test.cpp conversion_test.cpp)
 
 # mwcapture is a MODULE (.ax COM filter, no import lib to link against);
 # test.cpp only needs its header-only mw_domain.h (included via a relative
