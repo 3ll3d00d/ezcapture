@@ -482,10 +482,10 @@ namespace conversion
 			// scalar tail for widths that are not a multiple of 4
 			for (size_t x = blocks * 4; x < width; ++x)
 			{
-				const auto v = _byteswap_ulong(*srcPixelBE++);
-				dstPix[0] = (v & 0x3FF00000) >> 14;
-				dstPix[1] = (v & 0xFFC00) >> 4;
-				dstPix[2] = (v & 0x3FF) << 6;
+				const uint32_t v = _byteswap_ulong(*srcPixelBE++);
+				dstPix[0] = static_cast<uint16_t>((v & 0x3FF00000) >> 14);
+				dstPix[1] = static_cast<uint16_t>((v & 0xFFC00) >> 4);
+				dstPix[2] = static_cast<uint16_t>((v & 0x3FF) << 6);
 				dstPix += 3;
 			}
 			dstPix += dstPadding;
@@ -564,10 +564,10 @@ namespace conversion
 			// scalar tail for widths that are not a multiple of 4
 			for (size_t x = blocks * 4; x < width; ++x)
 			{
-				const auto v = *srcPixel++;
-				dstPix[0] = (v & 0x3FF) << 6;
-				dstPix[1] = (v & 0xFFC00) >> 4;
-				dstPix[2] = (v & 0x3FF00000) >> 14;
+				const uint32_t v = *srcPixel++;
+				dstPix[0] = static_cast<uint16_t>((v & 0x3FF) << 6);
+				dstPix[1] = static_cast<uint16_t>((v & 0xFFC00) >> 4);
+				dstPix[2] = static_cast<uint16_t>((v & 0x3FF00000) >> 14);
 				dstPix += 3;
 			}
 			dstPix += dstPadding;
