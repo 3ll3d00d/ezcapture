@@ -28,13 +28,20 @@
 
 namespace conversion
 {
+	// packed 8-bit 4:2:2 (2 pixels in 4 bytes) to planar YV16. TY0/TU/TY1/TV
+	// are the byte offsets of each component within a 4 byte group, e.g.
+	// UYVY = <1, 0, 3, 2> and YUY2 = <0, 1, 2, 3>.
 	#ifdef __AVX2__
-	inline bool uyvy_to_yv16(const uint8_t* src, uint8_t* yPlane, uint8_t* uPlane, uint8_t* vPlane, int width,
-	                         int height, int pixelsToPad)
+	template <int TY0, int TU, int TY1, int TV>
+	inline bool packed422_to_yv16(const uint8_t* src, uint8_t* yPlane, uint8_t* uPlane, uint8_t* vPlane, int width,
+	                              int height, int pixelsToPad)
 	{
+		// gathers each component within a lane: 4 bytes of V then U then 8 of Y
 		const __m256i shuffle_1 = _mm256_setr_epi8(
-			2, 6, 10, 14, 0, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15,
-			2, 6, 10, 14, 0, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15
+			TV, TV + 4, TV + 8, TV + 12, TU, TU + 4, TU + 8, TU + 12,
+			TY0, TY1, TY0 + 4, TY1 + 4, TY0 + 8, TY1 + 8, TY0 + 12, TY1 + 12,
+			TV, TV + 4, TV + 8, TV + 12, TU, TU + 4, TU + 8, TU + 12,
+			TY0, TY1, TY0 + 4, TY1 + 4, TY0 + 8, TY1 + 8, TY0 + 12, TY1 + 12
 		);
 		const __m256i permute = _mm256_setr_epi32(0, 4, 1, 5, 2, 3, 6, 7);
 		const int yWidth = width + pixelsToPad;
@@ -42,52 +49,46 @@ namespace conversion
 		const int vectorWidth = width & ~15; // pixels converted 16 per pass
 		for (int y = 0; y < height; ++y)
 		{
-			uint64_t* y_out = reinterpret_cast<uint64_t*>(yPlane + (y * yWidth));
-			uint64_t* u_out = reinterpret_cast<uint64_t*>(uPlane + (y * uvWidth));
-			uint64_t* v_out = reinterpret_cast<uint64_t*>(vPlane + (y * uvWidth));
+			uint8_t* y_out = yPlane + (y * yWidth);
+			uint8_t* u_out = uPlane + (y * uvWidth);
+			uint8_t* v_out = vPlane + (y * uvWidth);
 			for (int x = 0; x < vectorWidth; x += 16) // 16 bits per pixel in 256 bit chunks = 16 pixels per pass
 			{
 				__m256i pixels = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src));
 				__m256i shuffled = _mm256_shuffle_epi8(pixels, shuffle_1);
+				// [V x8 | U x8 | Y x16], written straight from the registers
 				__m256i permuted = _mm256_permutevar8x32_epi32(shuffled, permute);
-				const uint64_t* vals = reinterpret_cast<const uint64_t*>(&permuted);
 
-				v_out[0] = vals[0]; // 8 bytes each of UV
-				v_out++;
-				u_out[0] = vals[1];
-				u_out++;
+				const __m128i vu = _mm256_castsi256_si128(permuted);
+				_mm_storel_epi64(reinterpret_cast<__m128i*>(v_out), vu);
+				_mm_storeh_pd(reinterpret_cast<double*>(u_out), _mm_castsi128_pd(vu));
+				_mm_storeu_si128(reinterpret_cast<__m128i*>(y_out), _mm256_extracti128_si256(permuted, 1));
 
-				y_out[0] = vals[2]; // 16 bytes of Y
-				y_out[1] = vals[3];
-				y_out += 2;
-
+				v_out += 8;
+				u_out += 8;
+				y_out += 16;
 				src += 32; // 32 bytes read
 			}
 			// scalar tail for widths that are not a multiple of 16
-			if (vectorWidth < width)
+			for (int x = vectorWidth; x < width; x += 2)
 			{
-				uint8_t* yTail = yPlane + (y * yWidth) + vectorWidth;
-				uint8_t* uTail = uPlane + (y * uvWidth) + vectorWidth / 2;
-				uint8_t* vTail = vPlane + (y * uvWidth) + vectorWidth / 2;
-				for (int x = vectorWidth; x < width; x += 2)
-				{
-					uTail[0] = src[0];
-					yTail[0] = src[1];
-					vTail[0] = src[2];
-					yTail[1] = src[3];
+				y_out[0] = src[TY0];
+				y_out[1] = src[TY1];
+				u_out[0] = src[TU];
+				v_out[0] = src[TV];
 
-					yTail += 2;
-					uTail++;
-					vTail++;
-					src += 4;
-				}
+				y_out += 2;
+				u_out++;
+				v_out++;
+				src += 4;
 			}
 		}
 		return true;
 	}
 	#else
-	inline bool uyvy_to_yv16(const uint8_t* src, uint8_t* yPlane, uint8_t* uPlane, uint8_t* vPlane, int width,
-	                         int height, int pixelsToPad)
+	template <int TY0, int TU, int TY1, int TV>
+	inline bool packed422_to_yv16(const uint8_t* src, uint8_t* yPlane, uint8_t* uPlane, uint8_t* vPlane, int width,
+	                              int height, int pixelsToPad)
 	{
 		for (int y = 0; y < height; ++y)
 		{
@@ -98,10 +99,10 @@ namespace conversion
 
 			for (int x = 0; x < width; x += 2) // 2 pixels per pass
 			{
-				uOut[0] = src[0];
-				yOut[0] = src[1];
-				vOut[0] = src[2];
-				yOut[1] = src[3];
+				yOut[0] = src[TY0];
+				uOut[0] = src[TU];
+				yOut[1] = src[TY1];
+				vOut[0] = src[TV];
 
 				yOut += 2;
 				uOut++;
@@ -113,90 +114,17 @@ namespace conversion
 	}
 	#endif
 
-	#ifdef __AVX2__
+	inline bool uyvy_to_yv16(const uint8_t* src, uint8_t* yPlane, uint8_t* uPlane, uint8_t* vPlane, int width,
+	                         int height, int pixelsToPad)
+	{
+		return packed422_to_yv16<1, 0, 3, 2>(src, yPlane, uPlane, vPlane, width, height, pixelsToPad);
+	}
+
 	inline bool yuy2_to_yv16(const uint8_t* src, uint8_t* yPlane, uint8_t* uPlane, uint8_t* vPlane, int width,
 	                         int height, int pixelsToPad)
 	{
-		const __m256i shuffle_1 = _mm256_setr_epi8(
-			3, 7, 11, 15, 1, 5, 9, 13, 0, 2, 4, 6, 8, 10, 12, 14,
-			3, 7, 11, 15, 1, 5, 9, 13, 0, 2, 4, 6, 8, 10, 12, 14
-		);
-		const __m256i permute = _mm256_setr_epi32(0, 4, 1, 5, 2, 3, 6, 7);
-		const int yWidth = width + pixelsToPad;
-		const int uvWidth = yWidth / 2;
-		const int vectorWidth = width & ~15; // pixels converted 16 per pass
-		for (int y = 0; y < height; ++y)
-		{
-			uint64_t* y_out = reinterpret_cast<uint64_t*>(yPlane + (y * yWidth));
-			uint64_t* u_out = reinterpret_cast<uint64_t*>(uPlane + (y * uvWidth));
-			uint64_t* v_out = reinterpret_cast<uint64_t*>(vPlane + (y * uvWidth));
-			for (int x = 0; x < vectorWidth; x += 16) // 16 bits per pixel in 256 bit chunks = 16 pixels per pass
-			{
-				__m256i pixels = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src));
-				__m256i shuffled = _mm256_shuffle_epi8(pixels, shuffle_1);
-				__m256i permuted = _mm256_permutevar8x32_epi32(shuffled, permute);
-				const uint64_t* vals = reinterpret_cast<const uint64_t*>(&permuted);
-
-				v_out[0] = vals[0]; // 8 bytes each of UV
-				v_out++;
-				u_out[0] = vals[1];
-				u_out++;
-
-				y_out[0] = vals[2]; // 16 bytes of Y
-				y_out[1] = vals[3];
-				y_out += 2;
-
-				src += 32; // 32 bytes read
-			}
-			// scalar tail for widths that are not a multiple of 16
-			if (vectorWidth < width)
-			{
-				uint8_t* yTail = yPlane + (y * yWidth) + vectorWidth;
-				uint8_t* uTail = uPlane + (y * uvWidth) + vectorWidth / 2;
-				uint8_t* vTail = vPlane + (y * uvWidth) + vectorWidth / 2;
-				for (int x = vectorWidth; x < width; x += 2)
-				{
-					yTail[0] = src[0];
-					uTail[0] = src[1];
-					yTail[1] = src[2];
-					vTail[0] = src[3];
-
-					yTail += 2;
-					uTail++;
-					vTail++;
-					src += 4;
-				}
-			}
-		}
-		return true;
+		return packed422_to_yv16<0, 1, 2, 3>(src, yPlane, uPlane, vPlane, width, height, pixelsToPad);
 	}
-	#else
-	inline bool yuy2_to_yv16(const uint8_t* src, uint8_t* yPlane, uint8_t* uPlane, uint8_t* vPlane, int width,
-	                         int height, int pixelsToPad)
-	{
-		for (int y = 0; y < height; ++y)
-		{
-			auto offset = (y * (width + pixelsToPad));
-			uint8_t* yOut = yPlane + offset;
-			uint8_t* uOut = uPlane + offset / 2;
-			uint8_t* vOut = vPlane + offset / 2;
-
-			for (int x = 0; x < width; x += 2) // 2 pixels per pass
-			{
-				yOut[0] = src[0];
-				uOut[0] = src[1];
-				yOut[1] = src[2];
-				vOut[0] = src[3];
-
-				yOut += 2;
-				uOut++;
-				vOut++;
-				src += 4;
-			}
-		}
-		return true;
-	}
-	#endif
 
 	// fourcc 2VUY has the same byte layout as UYVY (U0 Y0 V0 Y1)
 	inline bool yuv2_to_yv16(const uint8_t* src, uint8_t* yPlane, uint8_t* uPlane, uint8_t* vPlane, int width,
