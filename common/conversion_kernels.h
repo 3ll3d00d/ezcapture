@@ -183,9 +183,9 @@ namespace conversion
 
 			for (int x = 0; x < width; x += 2) // 2 pixels per pass
 			{
-				yOut[1] = src[0];
+				yOut[0] = src[0];
 				uOut[0] = src[1];
-				yOut[0] = src[2];
+				yOut[1] = src[2];
 				vOut[0] = src[3];
 
 				yOut += 2;
