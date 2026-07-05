@@ -236,7 +236,7 @@ namespace conversion
 	// y plane  : Y0 Y1 Y2 Y3 Y4 Y5
 	// uv plane : U0 V0 U2 V2 U4 V4
 	// each line of video is aligned on a 128 byte boundary & 6 pixels fit into 16 bytes so 48 pixels fit in 128 bytes
-	#ifdef __AVX__
+	#ifdef __AVX2__
 	inline bool v210_to_p210(const uint8_t* src, int srcStride, uint8_t* dstY, uint8_t* dstUV, int width, int height,
 	                         int pixelsToPad)
 	{
