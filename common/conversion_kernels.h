@@ -39,12 +39,13 @@ namespace conversion
 		const __m256i permute = _mm256_setr_epi32(0, 4, 1, 5, 2, 3, 6, 7);
 		const int yWidth = width + pixelsToPad;
 		const int uvWidth = yWidth / 2;
+		const int vectorWidth = width & ~15; // pixels converted 16 per pass
 		for (int y = 0; y < height; ++y)
 		{
 			uint64_t* y_out = reinterpret_cast<uint64_t*>(yPlane + (y * yWidth));
 			uint64_t* u_out = reinterpret_cast<uint64_t*>(uPlane + (y * uvWidth));
 			uint64_t* v_out = reinterpret_cast<uint64_t*>(vPlane + (y * uvWidth));
-			for (int x = 0; x < width; x += 16) // 16 bits per pixel in 256 bit chunks = 16 pixels per pass
+			for (int x = 0; x < vectorWidth; x += 16) // 16 bits per pixel in 256 bit chunks = 16 pixels per pass
 			{
 				__m256i pixels = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src));
 				__m256i shuffled = _mm256_shuffle_epi8(pixels, shuffle_1);
@@ -61,6 +62,25 @@ namespace conversion
 				y_out += 2;
 
 				src += 32; // 32 bytes read
+			}
+			// scalar tail for widths that are not a multiple of 16
+			if (vectorWidth < width)
+			{
+				uint8_t* yTail = yPlane + (y * yWidth) + vectorWidth;
+				uint8_t* uTail = uPlane + (y * uvWidth) + vectorWidth / 2;
+				uint8_t* vTail = vPlane + (y * uvWidth) + vectorWidth / 2;
+				for (int x = vectorWidth; x < width; x += 2)
+				{
+					uTail[0] = src[0];
+					yTail[0] = src[1];
+					vTail[0] = src[2];
+					yTail[1] = src[3];
+
+					yTail += 2;
+					uTail++;
+					vTail++;
+					src += 4;
+				}
 			}
 		}
 		return true;
@@ -104,12 +124,13 @@ namespace conversion
 		const __m256i permute = _mm256_setr_epi32(0, 4, 1, 5, 2, 3, 6, 7);
 		const int yWidth = width + pixelsToPad;
 		const int uvWidth = yWidth / 2;
+		const int vectorWidth = width & ~15; // pixels converted 16 per pass
 		for (int y = 0; y < height; ++y)
 		{
 			uint64_t* y_out = reinterpret_cast<uint64_t*>(yPlane + (y * yWidth));
 			uint64_t* u_out = reinterpret_cast<uint64_t*>(uPlane + (y * uvWidth));
 			uint64_t* v_out = reinterpret_cast<uint64_t*>(vPlane + (y * uvWidth));
-			for (int x = 0; x < width; x += 16) // 16 bits per pixel in 256 bit chunks = 16 pixels per pass
+			for (int x = 0; x < vectorWidth; x += 16) // 16 bits per pixel in 256 bit chunks = 16 pixels per pass
 			{
 				__m256i pixels = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src));
 				__m256i shuffled = _mm256_shuffle_epi8(pixels, shuffle_1);
@@ -126,6 +147,25 @@ namespace conversion
 				y_out += 2;
 
 				src += 32; // 32 bytes read
+			}
+			// scalar tail for widths that are not a multiple of 16
+			if (vectorWidth < width)
+			{
+				uint8_t* yTail = yPlane + (y * yWidth) + vectorWidth;
+				uint8_t* uTail = uPlane + (y * uvWidth) + vectorWidth / 2;
+				uint8_t* vTail = vPlane + (y * uvWidth) + vectorWidth / 2;
+				for (int x = vectorWidth; x < width; x += 2)
+				{
+					yTail[0] = src[0];
+					uTail[0] = src[1];
+					yTail[1] = src[2];
+					vTail[0] = src[3];
+
+					yTail += 2;
+					uTail++;
+					vTail++;
+					src += 4;
+				}
 			}
 		}
 		return true;

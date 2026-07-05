@@ -329,9 +329,7 @@ TEST(UYVY_YV16, MatchesReferenceWithPadding)
 	runYv16Case(720, 32, 8, 1, 0, 3, 2, conversion::uyvy_to_yv16);
 }
 
-// widths that are not a multiple of 16 overrun each row in the AVX2 kernel;
-// enabled when tail handling is added
-TEST(UYVY_YV16, DISABLED_NonMultipleOf16Width)
+TEST(UYVY_YV16, NonMultipleOf16Width)
 {
 	runYv16Case(1366, 32, 0, 1, 0, 3, 2, conversion::uyvy_to_yv16);
 }
@@ -349,7 +347,7 @@ TEST(YUY2_YV16, MatchesReferenceWithPadding)
 	runYv16Case(720, 32, 8, 0, 1, 2, 3, conversion::yuy2_to_yv16);
 }
 
-TEST(YUY2_YV16, DISABLED_NonMultipleOf16Width)
+TEST(YUY2_YV16, NonMultipleOf16Width)
 {
 	runYv16Case(1366, 32, 0, 0, 1, 2, 3, conversion::yuy2_to_yv16);
 }
