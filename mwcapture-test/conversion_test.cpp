@@ -425,9 +425,7 @@ TEST(R210_RGB48, MatchesReferenceWithPadding)
 	runRgb48Case(720, 32, 8, true, conversion::r210_to_rgb48);
 }
 
-// widths that are not a multiple of 4 leave the last pixels of every line
-// unconverted in the AVX2 kernel; enabled when tail handling is added
-TEST(R210_RGB48, DISABLED_NonMultipleOf4Width)
+TEST(R210_RGB48, NonMultipleOf4Width)
 {
 	runRgb48Case(1366, 32, 0, true, conversion::r210_to_rgb48);
 }
@@ -445,7 +443,7 @@ TEST(BGR10_RGB48, MatchesReferenceWithPadding)
 	runRgb48Case(720, 32, 8, false, conversion::bgr10_to_rgb48);
 }
 
-TEST(BGR10_RGB48, DISABLED_NonMultipleOf4Width)
+TEST(BGR10_RGB48, NonMultipleOf4Width)
 {
 	runRgb48Case(1366, 32, 0, false, conversion::bgr10_to_rgb48);
 }

@@ -479,6 +479,15 @@ namespace conversion
 				dstPix += 12;
 				srcPixelBE += 4;
 			}
+			// scalar tail for widths that are not a multiple of 4
+			for (size_t x = blocks * 4; x < width; ++x)
+			{
+				const auto v = _byteswap_ulong(*srcPixelBE++);
+				dstPix[0] = (v & 0x3FF00000) >> 14;
+				dstPix[1] = (v & 0xFFC00) >> 4;
+				dstPix[2] = (v & 0x3FF) << 6;
+				dstPix += 3;
+			}
 			dstPix += dstPadding;
 			srcRow += srcStride;
 		}
@@ -551,6 +560,15 @@ namespace conversion
 				dstPix[11] = (p[3] & 0x3FF00000) >> 14;
 				dstPix += 12;
 				srcPixel += 4;
+			}
+			// scalar tail for widths that are not a multiple of 4
+			for (size_t x = blocks * 4; x < width; ++x)
+			{
+				const auto v = *srcPixel++;
+				dstPix[0] = (v & 0x3FF) << 6;
+				dstPix[1] = (v & 0xFFC00) >> 4;
+				dstPix[2] = (v & 0x3FF00000) >> 14;
+				dstPix += 3;
 			}
 			dstPix += dstPadding;
 			srcRow += srcStride;
