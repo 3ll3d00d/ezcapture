@@ -143,6 +143,7 @@ namespace conversion
 		);
 		const __m256i permute = _mm256_setr_epi32(0, 1, 4, 5, 2, 3, 6, 7);
 		const int effectiveWidth = width + pixelsToPad;
+		const int wideWidth = width & ~15; // pixels converted 16 per pass
 
 		for (int lineNo = 0; lineNo < height; ++lineNo)
 		{
@@ -150,17 +151,28 @@ namespace conversion
 			uint16_t* dstLineY = reinterpret_cast<uint16_t*>(dstY + lineNo * effectiveWidth * 2);
 			uint16_t* dstLineUV = reinterpret_cast<uint16_t*>(dstUV + lineNo * effectiveWidth * 2);
 
-			for (int x = 0; x < width; x += 8) // 32 bits per pixel in 256 bit chunks = 8 pixels per pass
+			int x = 0;
+			// combine 2 loads per pass so each plane gets one full-width store
+			for (; x < wideWidth; x += 16)
+			{
+				__m256i a = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(srcLine));
+				__m256i b = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(srcLine + 32));
+				// per register: low lane = 8 UV samples, high lane = 8 Y samples
+				a = _mm256_permutevar8x32_epi32(_mm256_shuffle_epi8(a, shuffle_1), permute);
+				b = _mm256_permutevar8x32_epi32(_mm256_shuffle_epi8(b, shuffle_1), permute);
+				_mm256_storeu_si256(reinterpret_cast<__m256i*>(dstLineY), _mm256_permute2x128_si256(a, b, 0x31));
+				_mm256_storeu_si256(reinterpret_cast<__m256i*>(dstLineUV), _mm256_permute2x128_si256(a, b, 0x20));
+				dstLineUV += 16;
+				dstLineY += 16;
+				srcLine += 64; // 64 bytes read
+			}
+			if (x < width) // one more pass of 8 pixels for widths that are a multiple of 8 only
 			{
 				__m256i pixels = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(srcLine));
 				__m256i shuffled = _mm256_shuffle_epi8(pixels, shuffle_1);
 				__m256i permuted = _mm256_permutevar8x32_epi32(shuffled, permute);
-				// low lane = 8 UV samples, high lane = 8 Y samples, 16 bytes to each plane
 				_mm256_storeu2_m128i(reinterpret_cast<__m128i*>(dstLineY), reinterpret_cast<__m128i*>(dstLineUV),
 				                     permuted);
-				dstLineUV += 8;
-				dstLineY += 8;
-				srcLine += 32; // 32 bytes read
 			}
 		}
 		return true;

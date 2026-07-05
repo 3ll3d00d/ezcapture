@@ -367,7 +367,8 @@ TEST(YUV2_YV16, MatchesReference)
 
 TEST(Y210_P210, MatchesReference)
 {
-	for (const int width : {64, 720, 1280, 1920, 3840})
+	// 1288 = 8 mod 16 to cover the half-vector remainder pass
+	for (const int width : {64, 720, 1280, 1288, 1920, 3840})
 	{
 		runY210Case(width, 32, 0, width * 4);
 	}
