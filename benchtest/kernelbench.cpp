@@ -134,6 +134,54 @@ int main(int argc, char* argv[])
 			conversion::y210_to_p210(srcs[i].data(), srcStride, y.data(), uv.data(), width, height, pad);
 		});
 	}
+	#ifdef __AVX2__
+	else if (fmt == "y210nt")
+	{
+		// experimental non-temporal store variant of y210_to_p210 to gauge
+		// whether streaming stores are worth productionising; requires the
+		// destination planes and row stride to be 32-byte aligned
+		const int srcStride = width * 4;
+		const size_t planeSize = static_cast<size_t>(width + pad) * height * 2;
+		for (int i = 0; i < SRC_ROTATION; ++i)
+			srcs.push_back(randomBuffer(static_cast<size_t>(srcStride) * height, 7u + i));
+		std::vector<uint8_t> planes(planeSize * 2 + 32);
+		uint8_t* yPlane = planes.data() + (32 - reinterpret_cast<uintptr_t>(planes.data()) % 32) % 32;
+		uint8_t* uvPlane = yPlane + planeSize;
+		if (width % 16 != 0 || (width + pad) % 16 != 0)
+		{
+			fprintf(stderr, "y210nt requires width %% 16 == 0\n");
+			return 1;
+		}
+		result = run(frames, [&](int i)
+		{
+			const __m256i shuffle_1 = _mm256_setr_epi8(
+				2, 3, 6, 7, 10, 11, 14, 15, 0, 1, 4, 5, 8, 9, 12, 13,
+				2, 3, 6, 7, 10, 11, 14, 15, 0, 1, 4, 5, 8, 9, 12, 13
+			);
+			const __m256i permute = _mm256_setr_epi32(0, 1, 4, 5, 2, 3, 6, 7);
+			const int effectiveWidth = width + pad;
+			for (int lineNo = 0; lineNo < height; ++lineNo)
+			{
+				const uint8_t* srcLine = srcs[i].data() + static_cast<ptrdiff_t>(lineNo) * srcStride;
+				uint16_t* dstLineY = reinterpret_cast<uint16_t*>(yPlane + lineNo * effectiveWidth * 2);
+				uint16_t* dstLineUV = reinterpret_cast<uint16_t*>(uvPlane + lineNo * effectiveWidth * 2);
+				for (int x = 0; x < width; x += 16)
+				{
+					__m256i a = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(srcLine));
+					__m256i b = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(srcLine + 32));
+					a = _mm256_permutevar8x32_epi32(_mm256_shuffle_epi8(a, shuffle_1), permute);
+					b = _mm256_permutevar8x32_epi32(_mm256_shuffle_epi8(b, shuffle_1), permute);
+					_mm256_stream_si256(reinterpret_cast<__m256i*>(dstLineY), _mm256_permute2x128_si256(a, b, 0x31));
+					_mm256_stream_si256(reinterpret_cast<__m256i*>(dstLineUV), _mm256_permute2x128_si256(a, b, 0x20));
+					dstLineUV += 16;
+					dstLineY += 16;
+					srcLine += 64;
+				}
+			}
+			_mm_sfence();
+		});
+	}
+	#endif
 	else if (fmt == "r210" || fmt == "bgr10")
 	{
 		const size_t srcStride = (static_cast<size_t>(width) * 4 + 255) / 256 * 256;
