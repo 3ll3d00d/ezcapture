@@ -532,7 +532,7 @@ namespace conversion
 
 			for (size_t x = 0; x < width; ++x)
 			{
-				const auto srcPixel = _byteswap_ulong(srcPixelLE[x]);
+				const auto srcPixel = srcPixelLE[x];
 
 				const uint16_t red_16 = (srcPixel & 0x3FF) << 6;
 				const uint16_t green_16 = (srcPixel & 0xFFC00) >> 4;

@@ -436,9 +436,6 @@ TEST(R210_RGB48, DISABLED_NonMultipleOf4Width)
 
 TEST(BGR10_RGB48, MatchesReference)
 {
-	#ifndef __AVX2__
-	GTEST_SKIP() << "scalar bgr10_to_rgb48 byteswaps little-endian input (r210 copy/paste); fixed in a later commit";
-	#endif
 	for (const int width : {64, 720, 1280, 1920, 3840})
 	{
 		runRgb48Case(width, 32, 0, false, conversion::bgr10_to_rgb48);
@@ -447,9 +444,6 @@ TEST(BGR10_RGB48, MatchesReference)
 
 TEST(BGR10_RGB48, MatchesReferenceWithPadding)
 {
-	#ifndef __AVX2__
-	GTEST_SKIP() << "scalar bgr10_to_rgb48 byteswaps little-endian input (r210 copy/paste); fixed in a later commit";
-	#endif
 	runRgb48Case(720, 32, 8, false, conversion::bgr10_to_rgb48);
 }
 
