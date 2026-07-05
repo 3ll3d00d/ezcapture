@@ -441,9 +441,45 @@ namespace conversion
 	#endif
 
 	#ifdef __AVX2__
+	// shared by r210_to_rgb48 and bgr10_to_rgb48: convert a block of 4 pixels
+	// held as dwords of [c2 (bits 20-29) | c1 (10-19) | c0 (0-9)] into 12
+	// 16-bit output words [a0 c1_0 b0 a1 c1_1 b1 | a2 c1_2 b2 a3 c1_3 b3]
+	// where the caller's splitMask picks whether c0 or c2 comes first
+	inline __m256i rgb48_pack_4px(const __m128i block, const __m256i splitMask)
+	{
+		const __m256i mask_c0_c2 = _mm256_set1_epi32(0x3FF003FF);
+		const __m256i shift_c0_c2 = _mm256_set1_epi32(0x00040040);
+		const __m256i mask_c1 = _mm256_set1_epi32(0x000FFC00);
+		const __m256i shift_c1 = _mm256_setr_epi8(
+			-1, -1, 0, 1, -1, -1, -1, -1, 4, 5, -1, -1, -1, -1, -1, -1,
+			-1, -1, 0, 1, -1, -1, -1, -1, 4, 5, -1, -1, -1, -1, -1, -1
+		);
+		// distribute pixels 0-1 to the lower lane and 2-3 to the upper lane
+		constexpr int lane_cross = 0b11011000;
+
+		const __m256i pixels = _mm256_castsi128_si256(block);
+		// extract & align each 10-bit component to a 16 bit value; c0 lands in
+		// the low word of each dword (multiplied by 64 = << 6) and c2 in the
+		// high word (multiplied by 4, i.e. << 6 relative to its bit 20 origin)
+		const __m256i c0_c2 = _mm256_mullo_epi16(_mm256_and_si256(pixels, mask_c0_c2), shift_c0_c2);
+		const __m256i c1 = _mm256_srli_epi32(_mm256_and_si256(pixels, mask_c1), 4);
+		// move 2 pixels into each 128 bit lane then pack 6 valid words into
+		// the low 12 bytes of each lane
+		const __m256i c0_c2_split = _mm256_permute4x64_epi64(c0_c2, lane_cross);
+		const __m256i c1_split = _mm256_permute4x64_epi64(c1, lane_cross);
+		const __m256i c0_c2_align = _mm256_shuffle_epi8(c0_c2_split, splitMask);
+		const __m256i c1_align = _mm256_shuffle_epi8(c1_split, shift_c1);
+		return _mm256_blend_epi16(c0_c2_align, c1_align, 0b11010010);
+	}
+
 	inline bool r210_to_rgb48(const uint8_t* src, uint16_t* dst, size_t width, size_t height, int pixelsToPad)
 	{
-		__m128i pixelEndianSwap = _mm_set_epi8(12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3);
+		const __m128i pixelEndianSwap = _mm_set_epi8(12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3);
+		// r210 (once byteswapped) carries R in bits 20-29 so R (c2) comes first
+		const __m256i splitRedBlue = _mm256_setr_epi8(
+			2, 3, -1, -1, 0, 1, 6, 7, -1, -1, 4, 5, -1, -1, -1, -1,
+			2, 3, -1, -1, 0, 1, 6, 7, -1, -1, 4, 5, -1, -1, -1, -1
+		);
 
 		// Each row starts on 256-byte boundary
 		size_t srcStride = (width * 4 + 255) / 256 * 256;
@@ -456,31 +492,34 @@ namespace conversion
 		{
 			const uint32_t* srcPixelBE = reinterpret_cast<const uint32_t*>(srcRow);
 
-			for (size_t x = 0; x < blocks; ++x)
+			// each block stores 2x16 bytes covering 12 valid words; the 4
+			// trailing bytes are overwritten by the next block (or the scalar
+			// tail / row padding / next row), so only the very last block of
+			// the frame has to be clamped to avoid running past the buffer
+			const size_t vecBlocks = blocks - (y == height - 1 && blocks > 0 ? 1 : 0);
+			size_t x = 0;
+			for (; x < vecBlocks; ++x)
 			{
-				// xmm is physically the lower lane of ymm so we can treat this as a ymm register going forward
-				__m128i pixelBlockBE = _mm_loadu_si128(reinterpret_cast<const __m128i*>(srcPixelBE));
-				// swap to produce 10bit BGR
-				__m128i pixelBlockLE = _mm_shuffle_epi8(pixelBlockBE, pixelEndianSwap);
-				const uint32_t* p = reinterpret_cast<const uint32_t*>(&pixelBlockLE);
-
-				dstPix[0] = (p[0] & 0x3FF00000) >> 14;
-				dstPix[1] = (p[0] & 0xFFC00) >> 4;
-				dstPix[2] = (p[0] & 0x3FF) << 6;
-				dstPix[3] = (p[1] & 0x3FF00000) >> 14;
-				dstPix[4] = (p[1] & 0xFFC00) >> 4;
-				dstPix[5] = (p[1] & 0x3FF) << 6;
-				dstPix[6] = (p[2] & 0x3FF00000) >> 14;
-				dstPix[7] = (p[2] & 0xFFC00) >> 4;
-				dstPix[8] = (p[2] & 0x3FF) << 6;
-				dstPix[9] = (p[3] & 0x3FF00000) >> 14;
-				dstPix[10] = (p[3] & 0xFFC00) >> 4;
-				dstPix[11] = (p[3] & 0x3FF) << 6;
+				const __m128i blockBE = _mm_loadu_si128(reinterpret_cast<const __m128i*>(srcPixelBE));
+				const __m256i rgb = rgb48_pack_4px(_mm_shuffle_epi8(blockBE, pixelEndianSwap), splitRedBlue);
+				_mm_storeu_si128(reinterpret_cast<__m128i*>(dstPix), _mm256_castsi256_si128(rgb));
+				_mm_storeu_si128(reinterpret_cast<__m128i*>(dstPix + 6), _mm256_extracti128_si256(rgb, 1));
+				dstPix += 12;
+				srcPixelBE += 4;
+			}
+			if (x < blocks)
+			{
+				const __m128i blockBE = _mm_loadu_si128(reinterpret_cast<const __m128i*>(srcPixelBE));
+				const __m256i rgb = rgb48_pack_4px(_mm_shuffle_epi8(blockBE, pixelEndianSwap), splitRedBlue);
+				alignas(32) uint16_t tmp[16];
+				_mm_storeu_si128(reinterpret_cast<__m128i*>(tmp), _mm256_castsi256_si128(rgb));
+				_mm_storeu_si128(reinterpret_cast<__m128i*>(tmp + 6), _mm256_extracti128_si256(rgb, 1));
+				std::memcpy(dstPix, tmp, 24);
 				dstPix += 12;
 				srcPixelBE += 4;
 			}
 			// scalar tail for widths that are not a multiple of 4
-			for (size_t x = blocks * 4; x < width; ++x)
+			for (size_t t = blocks * 4; t < width; ++t)
 			{
 				const uint32_t v = _byteswap_ulong(*srcPixelBE++);
 				dstPix[0] = static_cast<uint16_t>((v & 0x3FF00000) >> 14);
@@ -529,6 +568,13 @@ namespace conversion
 	#ifdef __AVX2__
 	inline bool bgr10_to_rgb48(const uint8_t* src, uint16_t* dst, size_t width, size_t height, int pixelsToPad)
 	{
+		// little-endian input with the first output component in bits 0-9, so
+		// c0 comes first (cf splitRedBlue in r210_to_rgb48)
+		const __m256i splitMask = _mm256_setr_epi8(
+			0, 1, -1, -1, 2, 3, 4, 5, -1, -1, 6, 7, -1, -1, -1, -1,
+			0, 1, -1, -1, 2, 3, 4, 5, -1, -1, 6, 7, -1, -1, -1, -1
+		);
+
 		// Each row starts on 256-byte boundary
 		size_t srcStride = (width * 4 + 255) / 256 * 256;
 		const uint8_t* srcRow = src;
@@ -540,29 +586,31 @@ namespace conversion
 		{
 			const uint32_t* srcPixel = reinterpret_cast<const uint32_t*>(srcRow);
 
-			for (size_t x = 0; x < blocks; ++x)
+			// see r210_to_rgb48 for the store overlap / final block clamping
+			const size_t vecBlocks = blocks - (y == height - 1 && blocks > 0 ? 1 : 0);
+			size_t x = 0;
+			for (; x < vecBlocks; ++x)
 			{
-				// xmm is physically the lower lane of ymm so we can treat this as a ymm register going forward
-				__m128i pixelBlockLE = _mm_loadu_si128(reinterpret_cast<const __m128i*>(srcPixel));
-				const uint32_t* p = reinterpret_cast<const uint32_t*>(&pixelBlockLE);
-
-				dstPix[0] = (p[0] & 0x3FF) << 6;
-				dstPix[1] = (p[0] & 0xFFC00) >> 4;
-				dstPix[2] = (p[0] & 0x3FF00000) >> 14;
-				dstPix[3] = (p[1] & 0x3FF) << 6;
-				dstPix[4] = (p[1] & 0xFFC00) >> 4;
-				dstPix[5] = (p[1] & 0x3FF00000) >> 14;
-				dstPix[6] = (p[2] & 0x3FF) << 6;
-				dstPix[7] = (p[2] & 0xFFC00) >> 4;
-				dstPix[8] = (p[2] & 0x3FF00000) >> 14;
-				dstPix[9] = (p[3] & 0x3FF) << 6;
-				dstPix[10] = (p[3] & 0xFFC00) >> 4;
-				dstPix[11] = (p[3] & 0x3FF00000) >> 14;
+				const __m128i block = _mm_loadu_si128(reinterpret_cast<const __m128i*>(srcPixel));
+				const __m256i rgb = rgb48_pack_4px(block, splitMask);
+				_mm_storeu_si128(reinterpret_cast<__m128i*>(dstPix), _mm256_castsi256_si128(rgb));
+				_mm_storeu_si128(reinterpret_cast<__m128i*>(dstPix + 6), _mm256_extracti128_si256(rgb, 1));
+				dstPix += 12;
+				srcPixel += 4;
+			}
+			if (x < blocks)
+			{
+				const __m128i block = _mm_loadu_si128(reinterpret_cast<const __m128i*>(srcPixel));
+				const __m256i rgb = rgb48_pack_4px(block, splitMask);
+				alignas(32) uint16_t tmp[16];
+				_mm_storeu_si128(reinterpret_cast<__m128i*>(tmp), _mm256_castsi256_si128(rgb));
+				_mm_storeu_si128(reinterpret_cast<__m128i*>(tmp + 6), _mm256_extracti128_si256(rgb, 1));
+				std::memcpy(dstPix, tmp, 24);
 				dstPix += 12;
 				srcPixel += 4;
 			}
 			// scalar tail for widths that are not a multiple of 4
-			for (size_t x = blocks * 4; x < width; ++x)
+			for (size_t t = blocks * 4; t < width; ++t)
 			{
 				const uint32_t v = *srcPixel++;
 				dstPix[0] = static_cast<uint16_t>((v & 0x3FF) << 6);
