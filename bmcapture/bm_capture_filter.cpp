@@ -1391,6 +1391,7 @@ void blackmagic_capture_filter::OnDeviceUpdated()
 	mDeviceStatus.linkSpeed = mDeviceInfo.linkSpeed;
 	mDeviceStatus.linkWidth = mDeviceInfo.linkWidth;
 	mDeviceStatus.temperature = mDeviceInfo.temperature;
+	mDeviceStatus.bandwidth = pcieCaptureBandwidth(mDeviceInfo.linkSpeed, mDeviceInfo.linkWidth);
 
 	#ifndef NO_LOGGING
 	if (prev != mDeviceStatus.deviceDesc)

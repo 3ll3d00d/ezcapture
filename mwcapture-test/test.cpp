@@ -144,6 +144,67 @@ TEST(PIX, ManyFallbacks)
 	}
 }
 
+TEST(Bandwidth, MatchesMagewellRatings)
+{
+	EXPECT_DOUBLE_EQ(pcieCaptureBandwidth(2, 4), 1600e6);
+	EXPECT_DOUBLE_EQ(pcieCaptureBandwidth(1, 4), 800e6);
+	EXPECT_DOUBLE_EQ(pcieCaptureBandwidth(2, 2), 800e6);
+	EXPECT_DOUBLE_EQ(pcieCaptureBandwidth(0, 4), 0.0);
+	EXPECT_DOUBLE_EQ(pcieCaptureBandwidth(2, -1), 0.0);
+}
+
+TEST(Bandwidth, KeepsFormatsThatFit)
+{
+	const auto gen2x4 = pcieCaptureBandwidth(2, 4);
+	EXPECT_EQ(fitToBandwidth(P210, 3840, 2160, 23.976, gen2x4), P210);
+	EXPECT_EQ(fitToBandwidth(P210, 3840, 2160, 30.0, gen2x4), P210);
+	EXPECT_EQ(fitToBandwidth(P010, 3840, 2160, 59.94, gen2x4), P010);
+	EXPECT_EQ(fitToBandwidth(BGR24, 3840, 2160, 60.0, gen2x4), BGR24);
+	EXPECT_EQ(fitToBandwidth(P210, 1920, 1080, 60.0, gen2x4), P210);
+}
+
+TEST(Bandwidth, GivesUpChromaBeforeBitDepth)
+{
+	const auto gen2x4 = pcieCaptureBandwidth(2, 4);
+	EXPECT_EQ(fitToBandwidth(P210, 3840, 2160, 59.94, gen2x4), P010);
+	EXPECT_EQ(fitToBandwidth(P210, 3840, 2160, 50.0, gen2x4), P010);
+	EXPECT_EQ(fitToBandwidth(BGR10, 3840, 2160, 60.0, gen2x4), P010);
+	EXPECT_EQ(fitToBandwidth(AYUV, 3840, 2160, 60.0, gen2x4), BGR24);
+}
+
+TEST(Bandwidth, SlowLinks)
+{
+	const auto gen2x2 = pcieCaptureBandwidth(2, 2);
+	EXPECT_EQ(fitToBandwidth(BGR24, 3840, 2160, 60.0, gen2x2), NV12);
+	EXPECT_EQ(fitToBandwidth(AYUV, 3840, 2160, 30.0, gen2x2), BGR24);
+	// 10-bit never drops to 8-bit, the closest fit is used even though it does not fit
+	EXPECT_EQ(fitToBandwidth(P210, 3840, 2160, 60.0, gen2x2), P010);
+	EXPECT_EQ(fitToBandwidth(P010, 3840, 2160, 60.0, gen2x2), P010);
+}
+
+TEST(Bandwidth, UsbEstimates)
+{
+	EXPECT_DOUBLE_EQ(usbCaptureBandwidth(3), 400e6);
+	EXPECT_NEAR(usbCaptureBandwidth(4), 970e6, 1e6);
+	EXPECT_DOUBLE_EQ(usbCaptureBandwidth(2), 40e6);
+	EXPECT_DOUBLE_EQ(usbCaptureBandwidth(1), 0.0);
+}
+
+TEST(Bandwidth, UsesTheRealFrameSize)
+{
+	// 4:2:0 and packed formats are not a whole number of bytes per pixel
+	EXPECT_DOUBLE_EQ(captureBytesPerSecond(NV12, 3840, 2160, 60.0), 3840.0 * 2160 * 1.5 * 60);
+	EXPECT_DOUBLE_EQ(captureBytesPerSecond(P210, 3840, 2160, 60.0), 3840.0 * 2160 * 4 * 60);
+	EXPECT_DOUBLE_EQ(captureBytesPerSecond(V210, 3840, 2160, 60.0), 10240.0 * 2160 * 60);
+	EXPECT_DOUBLE_EQ(captureBytesPerSecond(R12B, 3840, 2160, 60.0), 3840.0 * 4.5 * 2160 * 60);
+}
+
+TEST(Bandwidth, UnknownLinkOrRateChangesNothing)
+{
+	EXPECT_EQ(fitToBandwidth(P210, 3840, 2160, 60.0, 0.0), P210);
+	EXPECT_EQ(fitToBandwidth(P210, 3840, 2160, 0.0, 1600e6), P210);
+}
+
 int main(int argc, char** argv)
 {
 	testing::InitGoogleTest(&argc, argv);
