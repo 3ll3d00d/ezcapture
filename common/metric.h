@@ -38,6 +38,7 @@ public:
 
 	bool sample(uint64_t sample)
 	{
+		mLast = sample;
 		if (sample <= 0) return false;
 		mMin = std::min(sample, mMin);
 		mMax = std::max(sample, mMax);
@@ -70,6 +71,12 @@ public:
 		return mSnappedMax;
 	}
 
+	// the most recent sample, 0 if it was rejected
+	uint64_t last() const
+	{
+		return mLast;
+	}
+
 	uint16_t capacity() const
 	{
 		return mCapacity;
@@ -86,6 +93,7 @@ private:
 	uint64_t mMin{std::numeric_limits<uint64_t>::max()};
 	uint64_t mMax{0};
 	uint64_t mSum{0};
+	uint64_t mLast{0};
 	uint64_t mSnappedMin{0};
 	uint64_t mSnappedMax{0};
 	double mSnappedMean{0.0};

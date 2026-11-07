@@ -4,6 +4,13 @@
   "dependencies": [
     "quill",
     "winreg",
-    "gtest"
+    "gtest",
+    {
+      "name": "prometheus-cpp",
+      "default-features": false,
+      "features": [
+        "pull"
+      ]
+    }
   ]
 }

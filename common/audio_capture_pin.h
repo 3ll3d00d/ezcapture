@@ -85,7 +85,9 @@ protected:
 
 	void RecordLatency()
 	{
-		if (mFrameTs.recordTo(mFrameMetrics))
+		const bool windowComplete = mFrameTs.recordTo(mFrameMetrics);
+		mFilter->OnAudioFrameMeasured(mFrameMetrics);
+		if (windowComplete)
 		{
 			mFilter->RecordAudioFrameLatency(mFrameMetrics);
 		}

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-# Dependencies (quill, gtest, winreg) come from vcpkg manifest mode. The presets
+# Dependencies (quill, prometheus-cpp, gtest, winreg) come from vcpkg manifest mode. The presets
 # set the toolchain, but IDE profiles that bypass CMakePresets.json (e.g.
 # CLion's default "Debug" profile) would otherwise fail at find_package(quill).
 # Must be set before project(). Prefer C:/vcpkg to match CMakePresets.json;
@@ -13,8 +13,10 @@ if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
         endif()
     endforeach()
 endif()
+# static libs + dynamic CRT (/MD) so dependencies (prometheus-cpp, civetweb) are linked into the
+# .ax files rather than shipped as DLLs; must match VcpkgTriplet in the vcxproj files.
 if(NOT DEFINED VCPKG_TARGET_TRIPLET)
-    set(VCPKG_TARGET_TRIPLET x64-windows CACHE STRING "")
+    set(VCPKG_TARGET_TRIPLET x64-windows-static-md CACHE STRING "")
 endif()
 
 project(ezcapture LANGUAGES CXX C)
@@ -51,7 +53,8 @@ endforeach()
 # The original MSBuild solution had 5 named configs: Debug / Release /
 # ReleaseNoArch / ReleaseTrace / ReleaseTraceNoArch. Auditing every vcxproj
 # showed Release vs *NoArch* differ ONLY in the AVX2 codegen flag, and
-# Release vs *Trace* differ ONLY in NO_QUILL vs CAPTURE_NAME_SUFFIX=1. So
+# Release vs *Trace* differ ONLY in NO_LOGGING vs CAPTURE_NAME_SUFFIX=1.
+# (NO_LOGGING was NO_QUILL; quill is now always linked for the Prometheus metrics.) So
 # those two axes become independent options laid over normal Debug/Release
 # build types instead of 5 separate named configurations.
 # ---------------------------------------------------------------------------

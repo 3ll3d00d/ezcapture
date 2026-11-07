@@ -31,7 +31,7 @@ HRESULT capture_pin::HandleStreamStateChange(IMediaSample* pms)
 	{
 		if (mLastSampleDiscarded)
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_TRACE_L1(mLogData.logger, "[{}] Recovery after sample discard, setting discontinuity", mLogData.prefix);
 			#endif
 
@@ -42,7 +42,7 @@ HRESULT capture_pin::HandleStreamStateChange(IMediaSample* pms)
 	}
 	else
 	{
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_TRACE_L1(mLogData.logger, "[{}] Entering stream discard", mLogData.prefix);
 		#endif
 
@@ -53,7 +53,7 @@ HRESULT capture_pin::HandleStreamStateChange(IMediaSample* pms)
 
 HRESULT capture_pin::OnThreadStartPlay()
 {
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	REFERENCE_TIME rt;
 	GetReferenceTime(&rt);
 
@@ -100,7 +100,7 @@ STDMETHODIMP capture_pin::NonDelegatingQueryInterface(REFIID riid, void** ppv)
 // and with better error handling to avoid visible freezes with no option but to restart
 HRESULT capture_pin::DoBufferProcessingLoop(void)
 {
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	LOG_INFO(mLogData.logger, "[{}] Entering DoBufferProcessingLoop", mLogData.prefix);
 	#endif
 
@@ -120,7 +120,7 @@ HRESULT capture_pin::DoBufferProcessingLoop(void)
 			HRESULT hrBuf = GetDeliveryBuffer(&pSample, nullptr, nullptr, 0);
 			if (FAILED(hrBuf) || hrBuf == S_FALSE)
 			{
-				#ifndef NO_QUILL
+				#ifndef NO_LOGGING
 				LOG_WARNING(mLogData.logger, "[{}] Failed to GetDeliveryBuffer ({:#08x}), retrying", mLogData.prefix,
 				            static_cast<unsigned long>(hrBuf));
 				#endif
@@ -139,7 +139,7 @@ HRESULT capture_pin::DoBufferProcessingLoop(void)
 
 				if (hr != S_OK)
 				{
-					#ifndef NO_QUILL
+					#ifndef NO_LOGGING
 					LOG_WARNING(mLogData.logger,
 					            "[{}] Failed to deliver sample downstream ({:#08x}), process loop will exit",
 					            mLogData.prefix, static_cast<unsigned long>(hr));
@@ -150,14 +150,14 @@ HRESULT capture_pin::DoBufferProcessingLoop(void)
 			}
 			else if (hr == S_FALSE)
 			{
-				#ifndef NO_QUILL
+				#ifndef NO_LOGGING
 				LOG_WARNING(mLogData.logger, "[{}] Buffer not filled, retrying", mLogData.prefix);
 				#endif
 				pSample->Release();
 			}
 			else
 			{
-				#ifndef NO_QUILL
+				#ifndef NO_LOGGING
 				LOG_WARNING(mLogData.logger, "[{}] FillBuffer failed ({:#08x}), sending EOS and EC_ERRORABORT",
 				            mLogData.prefix, static_cast<unsigned long>(hr));
 				#endif
@@ -175,7 +175,7 @@ HRESULT capture_pin::DoBufferProcessingLoop(void)
 
 		if (com == CMD_RUN || com == CMD_PAUSE)
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_INFO(mLogData.logger, "[{}] DoBufferProcessingLoop Replying to CMD {}", mLogData.prefix,
 			         static_cast<int>(com));
 			#endif
@@ -183,7 +183,7 @@ HRESULT capture_pin::DoBufferProcessingLoop(void)
 		}
 		else if (com != CMD_STOP)
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_ERROR(mLogData.logger, "[{}] DoBufferProcessingLoop Replying to UNEXPECTED CMD {}", mLogData.prefix,
 			          static_cast<int>(com));
 			#endif
@@ -191,14 +191,14 @@ HRESULT capture_pin::DoBufferProcessingLoop(void)
 		}
 		else
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_INFO(mLogData.logger, "[{}] DoBufferProcessingLoop CMD_STOP will exit", mLogData.prefix);
 			#endif
 		}
 	}
 	while (com != CMD_STOP);
 
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	LOG_INFO(mLogData.logger, "[{}] Exiting DoBufferProcessingLoop", mLogData.prefix);
 	#endif
 	return S_FALSE;
@@ -208,14 +208,14 @@ HRESULT capture_pin::BumpThreadPriority()
 {
 	if (!SetThreadPriority(m_hThread, THREAD_PRIORITY_TIME_CRITICAL))
 	{
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_ERROR(mLogData.logger, "[{}] Failed to set thread priority [{:#08x}]", mLogData.prefix, GetLastError());
 		#endif
 		return E_FAIL;
 	}
 	else
 	{
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_INFO(mLogData.logger, "[{}] Set thread priority to TIME_CRITICAL", mLogData.prefix);
 		#endif
 		return S_OK;
@@ -224,13 +224,13 @@ HRESULT capture_pin::BumpThreadPriority()
 
 HRESULT capture_pin::OnThreadDestroy()
 {
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	LOG_INFO(mLogData.logger, "[{}] >>> CapturePin::OnThreadDestroy", mLogData.prefix);
 	#endif
 
 	DoThreadDestroy();
 
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	LOG_INFO(mLogData.logger, "[{}] <<< CapturePin::OnThreadDestroy", mLogData.prefix);
 	#endif
 
@@ -239,7 +239,7 @@ HRESULT capture_pin::OnThreadDestroy()
 
 HRESULT capture_pin::BeginFlush()
 {
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::BeginFlush", mLogData.prefix);
 	#endif
 
@@ -249,7 +249,7 @@ HRESULT capture_pin::BeginFlush()
 
 HRESULT capture_pin::EndFlush()
 {
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::EndFlush", mLogData.prefix);
 	#endif
 
@@ -260,7 +260,7 @@ HRESULT capture_pin::EndFlush()
 HRESULT capture_pin::Notify(IBaseFilter* pSelf, Quality q)
 {
 	// just to avoid use of DbgBreak in default implementation as we can't do anything about it given we are a slave to the device
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::Notify {}", mLogData.prefix, q.Type == 0 ? "Famine" : "Flood");
 	#endif
 
@@ -270,7 +270,7 @@ HRESULT capture_pin::Notify(IBaseFilter* pSelf, Quality q)
 // see https://learn.microsoft.com/en-us/windows/win32/api/strmif/nf-strmif-iamstreamconfig-setformat
 STDMETHODIMP capture_pin::SetFormat(AM_MEDIA_TYPE* pmt)
 {
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	LOG_WARNING(mLogData.logger, "[{}] CapturePin::SetFormat ignored MT with GUID {}", mLogData.prefix,
 	            pmt->majortype.Data1);
 	#endif
@@ -289,7 +289,7 @@ HRESULT capture_pin::SetMediaType(const CMediaType* pmt)
 {
 	const HRESULT hr = CSourceStream::SetMediaType(pmt);
 
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	LOG_TRACE_L3(mLogData.logger, "[{}] CapturePin::SetMediaType ({:#08x})", mLogData.prefix,
 	             static_cast<unsigned long>(hr));
 	#endif
@@ -305,7 +305,7 @@ HRESULT capture_pin::DecideBufferSize(IMemAllocator* pIMemAlloc, ALLOCATOR_PROPE
 	HRESULT hr = NOERROR;
 	auto acceptedUpstreamBufferCount = ProposeBuffers(pProperties);
 
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::DecideBufferSize size: {} count: {} (from upstream? {})",
 	             mLogData.prefix, pProperties->cbBuffer, pProperties->cBuffers, acceptedUpstreamBufferCount);
 	#endif
@@ -315,7 +315,7 @@ HRESULT capture_pin::DecideBufferSize(IMemAllocator* pIMemAlloc, ALLOCATOR_PROPE
 
 	if (FAILED(hr))
 	{
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_WARNING(mLogData.logger, "[{}] CapturePin::DecideBufferSize failed to SetProperties result {:#08x}",
 		            mLogData.prefix, static_cast<unsigned long>(hr));
 		#endif
@@ -324,7 +324,7 @@ HRESULT capture_pin::DecideBufferSize(IMemAllocator* pIMemAlloc, ALLOCATOR_PROPE
 	}
 	if (actual.cbBuffer < pProperties->cbBuffer)
 	{
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_WARNING(mLogData.logger, "[{}] CapturePin::DecideBufferSize actual buffer is {} not {}", mLogData.prefix,
 		            actual.cbBuffer, pProperties->cbBuffer);
 		#endif
@@ -391,7 +391,7 @@ receiveconnection:
 	HRESULT hr = m_Connected->ReceiveConnection(this, pmt);
 	if (SUCCEEDED(hr))
 	{
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::RenegotiateMediaType ReceiveConnection succeeded [{:#08x}]",
 		             mLogData.prefix, static_cast<unsigned long>(hr));
 		#endif
@@ -403,7 +403,7 @@ receiveconnection:
 		}
 		else
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::RenegotiateMediaType SetMediaType failed [{:#08x}]",
 			             mLogData.prefix, static_cast<unsigned long>(hr));
 			#endif
@@ -413,7 +413,7 @@ receiveconnection:
 	{
 		if (timeout > 0)
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::NegotiateMediaType Buffers outstanding, retrying in 10ms..",
 			             mLogData.prefix);
 			#endif
@@ -423,7 +423,7 @@ receiveconnection:
 		}
 		else
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_TRACE_L1(
 				mLogData.logger, "[{}] CapturePin::NegotiateMediaType Buffers outstanding, timeout reached, flushing..",
 				mLogData.prefix);
@@ -437,7 +437,7 @@ receiveconnection:
 	}
 	else if (hrQA == S_OK) // docs say check S_OK explicitly rather than use the SUCCEEDED macro
 	{
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::NegotiateMediaType QueryAccept accepted", mLogData.prefix);
 		#endif
 
@@ -446,7 +446,7 @@ receiveconnection:
 		{
 			if (!renegotiateOnQueryAccept)
 			{
-				#ifndef NO_QUILL
+				#ifndef NO_LOGGING
 				LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::NegotiateMediaType - No buffer change",
 				             mLogData.prefix);
 				#endif
@@ -468,7 +468,7 @@ receiveconnection:
 					{
 						if (checkProps.cbBuffer == props.cbBuffer && checkProps.cBuffers == props.cBuffers)
 						{
-							#ifndef NO_QUILL
+							#ifndef NO_LOGGING
 							LOG_TRACE_L1(mLogData.logger, "[{}] Updated allocator to {} bytes {} buffers",
 							             mLogData.prefix,
 							             props.cbBuffer, props.cBuffers);
@@ -477,7 +477,7 @@ receiveconnection:
 						}
 						else
 						{
-							#ifndef NO_QUILL
+							#ifndef NO_LOGGING
 							LOG_WARNING(
 								mLogData.logger,
 								"[{}] Allocator accepted update to {} bytes {} buffers but is {} bytes {} buffers",
@@ -488,7 +488,7 @@ receiveconnection:
 					}
 					else
 					{
-						#ifndef NO_QUILL
+						#ifndef NO_LOGGING
 						LOG_WARNING(mLogData.logger,
 						            "[{}] Allocator did not accept update to {} bytes {} buffers [{:#08x}]",
 						            mLogData.prefix, props.cbBuffer, props.cBuffers, static_cast<unsigned long>(hr));
@@ -497,7 +497,7 @@ receiveconnection:
 				}
 				else
 				{
-					#ifndef NO_QUILL
+					#ifndef NO_LOGGING
 					LOG_WARNING(mLogData.logger,
 					            "[{}] Allocator did not commit update to {} bytes {} buffers [{:#08x}]",
 					            mLogData.prefix, props.cbBuffer, props.cBuffers, static_cast<unsigned long>(hr));
@@ -508,7 +508,7 @@ receiveconnection:
 	}
 	else
 	{
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_WARNING(
 			mLogData.logger,
 			"[{}] CapturePin::NegotiateMediaType Receive Connection failed (hr: {:#08x}); QueryAccept: {:#08x}",
@@ -517,7 +517,7 @@ receiveconnection:
 	}
 	if (retVal == S_OK)
 	{
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::NegotiateMediaType succeeded", mLogData.prefix);
 		#endif
 
@@ -526,7 +526,7 @@ receiveconnection:
 	else
 	{
 		// reinstate the old formats otherwise we're stuck thinking we have the new format
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_TRACE_L1(mLogData.logger, "[{}] CapturePin::NegotiateMediaType failed {:#08x}", mLogData.prefix,
 		             static_cast<unsigned long>(retVal));
 		#endif

@@ -124,6 +124,9 @@
 #define IDC_ENABLE_HIGH_PRIORITY        1120
 #define IDC_VIDEO_FPS                   1121
 #define IDC_VIDEO_FPS_LABEL             1122
+#define IDC_ENABLE_METRICS              1123
+#define IDC_METRICS_PORT                1124
+#define IDC_METRICS_STATUS              1125
 
 // Next default values for new objects
 // 
@@ -131,7 +134,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        103
 #define _APS_NEXT_COMMAND_VALUE         40001
-#define _APS_NEXT_CONTROL_VALUE         1122
+#define _APS_NEXT_CONTROL_VALUE         1126
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

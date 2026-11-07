@@ -1,5 +1,13 @@
 {
   "dependencies": [
-    "gtest"
+    "gtest",
+    "quill",
+    {
+      "name": "prometheus-cpp",
+      "default-features": false,
+      "features": [
+        "pull"
+      ]
+    }
   ]
 }

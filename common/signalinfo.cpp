@@ -143,7 +143,20 @@ HRESULT CSignalInfoProp::OnApplyChanges()
 	bool enableAudio = static_cast<bool>(SendDlgItemMessage(m_Dlg, IDC_ENABLE_AUDIO, BM_GETCHECK, 0, 0));
 	auto hr6 = mSignalInfo->SetAudioCaptureEnabled(enableAudio);
 
-	return hr1 == S_OK && hr2 == S_OK && hr3 == S_OK && hr4 == S_OK && hr5 == S_OK && hr6 == S_OK ? S_OK : E_FAIL;
+	bool enableMetrics = static_cast<bool>(SendDlgItemMessage(m_Dlg, IDC_ENABLE_METRICS, BM_GETCHECK, 0, 0));
+	auto hr7 = mSignalInfo->SetMetricsEnabled(enableMetrics);
+
+	SendDlgItemMessage(m_Dlg, IDC_METRICS_PORT, WM_GETTEXT, 16, reinterpret_cast<LPARAM>(&b1));
+	DWORD metricsPort = _wtoi(b1);
+	auto hr8 = mSignalInfo->SetMetricsPort(metricsPort);
+
+	// show the outcome (e.g. that a restart is required)
+	mSignalInfo->Reload();
+
+	return hr1 == S_OK && hr2 == S_OK && hr3 == S_OK && hr4 == S_OK && hr5 == S_OK && hr6 == S_OK && hr7 == S_OK
+	       && hr8 == S_OK
+		       ? S_OK
+		       : E_FAIL;
 }
 
 INT_PTR CSignalInfoProp::OnReceiveMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -199,6 +212,39 @@ INT_PTR CSignalInfoProp::OnReceiveMessage(HWND hwnd, UINT uMsg, WPARAM wParam, L
 			mSignalInfo->IsAudioCaptureEnabled(&existing);
 
 			if (bFlag != existing)
+			{
+				SetDirty();
+				return TRUE;
+			}
+			return FALSE;
+		}
+		if (LOWORD(wParam) == IDC_ENABLE_METRICS && HIWORD(wParam) == BN_CLICKED)
+		{
+			bool bFlag = static_cast<bool>(SendDlgItemMessage(m_Dlg, LOWORD(wParam), BM_GETCHECK, 0, 0));
+			bool existing;
+			mSignalInfo->IsMetricsEnabled(&existing);
+
+			EnableWindow(GetDlgItem(m_Dlg, IDC_METRICS_PORT), bFlag);
+			if (bFlag != existing)
+			{
+				SetDirty();
+				return TRUE;
+			}
+			return FALSE;
+		}
+		if (LOWORD(wParam) == IDC_METRICS_PORT && HIWORD(wParam) == EN_CHANGE)
+		{
+			WCHAR b1[16];
+			SendDlgItemMessage(m_Dlg, IDC_METRICS_PORT, WM_GETTEXT, 16, reinterpret_cast<LPARAM>(&b1));
+			DWORD port = _wtoi(b1);
+			if (port > 65535)
+			{
+				SendDlgItemMessage(m_Dlg, LOWORD(wParam), EM_UNDO, 0, 0);
+				return FALSE;
+			}
+			DWORD existing;
+			mSignalInfo->GetMetricsPort(&existing);
+			if (port != 0 && port != existing)
 			{
 				SetDirty();
 				return TRUE;
@@ -579,5 +625,19 @@ HRESULT CSignalInfoProp::ReloadControls(const bool& rateEnabled, const bool& pro
 	SendDlgItemMessage(m_Dlg, IDC_ENABLE_HIGH_PRIORITY, BM_SETCHECK, highThreadPrio, 0);
 	SendDlgItemMessage(m_Dlg, IDC_ENABLE_AUDIO, BM_SETCHECK, audioCapture, 0);
 
+	return S_OK;
+}
+
+HRESULT CSignalInfoProp::ReloadMetricsControls(const bool& enabled, const DWORD& port, const std::string& status)
+{
+	WCHAR buffer[8];
+	_snwprintf_s(buffer, _TRUNCATE, L"%d", port);
+	SendDlgItemMessage(m_Dlg, IDC_METRICS_PORT, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+	EnableWindow(GetDlgItem(m_Dlg, IDC_METRICS_PORT), enabled);
+	SendDlgItemMessage(m_Dlg, IDC_ENABLE_METRICS, BM_SETCHECK, enabled, 0);
+
+	WCHAR statusBuffer[128];
+	_snwprintf_s(statusBuffer, _TRUNCATE, L"%hs", status.c_str());
+	SendDlgItemMessage(m_Dlg, IDC_METRICS_STATUS, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(statusBuffer));
 	return S_OK;
 }

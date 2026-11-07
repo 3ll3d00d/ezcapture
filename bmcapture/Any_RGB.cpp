@@ -34,7 +34,7 @@ HRESULT any_rgb::WriteTo(video_frame* srcFrame, IMediaSample* dstFrame)
 
 	if (S_OK != result)
 	{
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_WARNING(mLogData.logger, "[{}] Failed to convert frame to BGRA {:#08x}", mLogData.prefix,
 		            static_cast<unsigned long>(result));
 		#endif
@@ -44,7 +44,7 @@ HRESULT any_rgb::WriteTo(video_frame* srcFrame, IMediaSample* dstFrame)
 		return S_FALSE;
 	}
 
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	LOG_TRACE_L3(mLogData.logger, "[{}] Converted frame to BGRA in {:.3f} ms", mLogData.prefix,
 	             execTime);
 	#endif

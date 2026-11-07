@@ -43,7 +43,7 @@ target_compile_definitions(mwcapture PRIVATE
     $<$<CONFIG:Release>:NDEBUG>
     $<$<CONFIG:Release>:_WINSOCK_DEPRECATED_NO_WARNINGS>
     $<$<CONFIG:Release>:WIN32_LEAN_AND_MEAN>
-    $<$<AND:$<CONFIG:Release>,$<NOT:$<BOOL:${EZ_ENABLE_TRACE}>>>:NO_QUILL>
+    $<$<AND:$<CONFIG:Release>,$<NOT:$<BOOL:${EZ_ENABLE_TRACE}>>>:NO_LOGGING>
     $<$<AND:$<CONFIG:Release>,$<BOOL:${EZ_ENABLE_TRACE}>>:CAPTURE_NAME_SUFFIX=1>
 )
 

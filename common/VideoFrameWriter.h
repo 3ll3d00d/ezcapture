@@ -52,7 +52,7 @@ protected:
 		auto sizeDelta = srcSize - dstFrame->GetSize();
 		if (sizeDelta > 0)
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_WARNING(mLogData.logger, "[{}] Framebuffer {} too small, failing (src: {}, dst: {})",
 				mLogData.prefix, frameIndex, srcSize, dstFrame->GetSize());
 			#endif
@@ -84,7 +84,7 @@ protected:
 				mPixelsToPad = std::max(paddedWidth - expectedWidth, 0);
 				DeleteMediaType(mt);
 
-				#ifndef NO_QUILL
+				#ifndef NO_LOGGING
 				if (mPixelsToPad > 0)
 				{
 					LOG_TRACE_L2(mLogData.logger,

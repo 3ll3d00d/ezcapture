@@ -146,7 +146,7 @@ namespace mode_switch
 			auto width = devMode.dmPelsWidth;
 			auto height = devMode.dmPelsHeight;
 			auto freq = devMode.dmDisplayFrequency;
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_INFO(ld.logger, "[{}] Current monitor = {} {} x {} @ {} Hz", ld.prefix,
 			         std::wstring{ monitorInfo.szDevice },
 			         width, height, freq);
@@ -160,7 +160,7 @@ namespace mode_switch
 	{
 		if (targetRefreshRate == 0L || targetRefreshRate > 240L)
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_ERROR(ld.logger, "[{}] Invalid refresh rate change requested to {} Hz, ignoring", ld.prefix,
 			          targetRefreshRate);
 			#endif
@@ -168,7 +168,7 @@ namespace mode_switch
 			return E_FAIL;
 		}
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		const auto t1 = std::chrono::high_resolution_clock::now();
 		#endif
 
@@ -179,7 +179,7 @@ namespace mode_switch
 		if (GetMonitorInfo(activeMonitor, &monitorInfo)
 			&& EnumDisplaySettings(monitorInfo.szDevice, ENUM_CURRENT_SETTINGS, &devMode))
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			const auto t2 = std::chrono::high_resolution_clock::now();
 			#endif
 
@@ -188,14 +188,14 @@ namespace mode_switch
 			auto freq = devMode.dmDisplayFrequency;
 			if (freq == targetRefreshRate)
 			{
-				#ifndef NO_QUILL
+				#ifndef NO_LOGGING
 				LOG_TRACE_L2(ld.logger, "[{}] No change requested from {} {} x {} @ {} Hz", ld.prefix,
 				             std::wstring{ monitorInfo.szDevice }, width, height, freq);
 				#endif
 				return S_OK;
 			}
 
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_INFO(ld.logger, "[{}] Requesting change from {} {} x {} @ {} Hz to {} Hz", ld.prefix,
 			         std::wstring{ monitorInfo.szDevice }, width, height, freq, targetRefreshRate);
 			#endif
@@ -204,7 +204,7 @@ namespace mode_switch
 
 			auto res = ChangeDisplaySettings(&devMode, 0);
 
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			const auto t3 = std::chrono::high_resolution_clock::now();
 			const auto getLat = duration_cast<std::chrono::microseconds>(t2 - t1).count();
 			const auto chgLat = duration_cast<std::chrono::microseconds>(t3 - t2).count();
@@ -213,7 +213,7 @@ namespace mode_switch
 			switch (res)
 			{
 			case DISP_CHANGE_SUCCESSFUL:
-				#ifndef NO_QUILL
+				#ifndef NO_LOGGING
 				LOG_INFO(ld.logger, "[{}] Completed change from {} {} x {} @ {} Hz to {} Hz ({:.3f}ms / {:.3f}ms)",
 				         ld.prefix, std::wstring{ monitorInfo.szDevice }, width, height, freq, targetRefreshRate,
 				         static_cast<double>(getLat) / 1000, static_cast<double>(chgLat) / 1000);
@@ -232,7 +232,7 @@ namespace mode_switch
 						: res == DISP_CHANGE_BADPARAM
 						? "bad param"
 						: "?";
-				#ifndef NO_QUILL
+				#ifndef NO_LOGGING
 				LOG_INFO(ld.logger,
 				         "[{}] Failed to change from {} {} x {} @ {} Hz to {} Hz due to {} / {} ({:.3f}ms / {:.3f}ms)",
 				         ld.prefix, std::wstring{ monitorInfo.szDevice }, width, height, freq, targetRefreshRate, res,

@@ -38,7 +38,7 @@ inline bool diff(double x, double y)
 
 inline void logBitmapHeader(const log_data& log, const std::string& desc, const BITMAPINFOHEADER* bmi)
 {
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	bool rgb = bmi->biCompression == 0;
 	// use transform if we ever have c++23 in msvc
 	auto pix = rgb ? std::nullopt : findByFourCC(bmi->biCompression);
@@ -63,7 +63,7 @@ inline void logVideoMediaType(const log_data& log, const std::string& desc, cons
 	{
 		if (IsEqualGUID(pmt->formattype, FORMAT_VIDEOINFO2) == TRUE)
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			auto header = reinterpret_cast<VIDEOINFOHEADER2*>(pmt->pbFormat);
 			auto bmi = header->bmiHeader;
 			logBitmapHeader(log, desc + " VIH2", &bmi);
@@ -73,7 +73,7 @@ inline void logVideoMediaType(const log_data& log, const std::string& desc, cons
 		}
 		else if (IsEqualGUID(pmt->formattype, FORMAT_VideoInfo) == TRUE)
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			auto header = reinterpret_cast<VIDEOINFOHEADER*>(pmt->pbFormat);
 			auto bmi = header->bmiHeader;
 			logBitmapHeader(log, desc + " VIH", &bmi);
@@ -83,7 +83,7 @@ inline void logVideoMediaType(const log_data& log, const std::string& desc, cons
 		}
 	}
 
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	if (!matched)
 	{
 		LOG_WARNING(log.logger, "[{}] {} ignored unknown type {:#08x} - {:#08x}", log.prefix, desc,
@@ -95,7 +95,7 @@ inline void logVideoMediaType(const log_data& log, const std::string& desc, cons
 inline void doLogHdrMeta(const hdr_meta& newMeta, const log_data& log, bool logPrimaries, bool logWp, bool logMax,
                          bool logTf)
 {
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	if (logPrimaries)
 	{
 		LOG_INFO(log.logger, "[{}] Primaries RGB {:.4f} x {:.4f} {:.4f} x {:.4f} {:.4f} x {:.4f}",
@@ -122,7 +122,7 @@ inline void doLogHdrMeta(const hdr_meta& newMeta, const log_data& log, bool logP
 
 inline void logHdrMeta(const hdr_meta& newMeta, const hdr_meta& oldMeta, const log_data& log)
 {
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	if (newMeta.exists())
 	{
 		bool logPrimaries;

@@ -42,7 +42,7 @@ class video_capture_pin : public capture_pin
 public:
 	STDMETHODIMP SetFormat(AM_MEDIA_TYPE* pmt) override
 	{
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		logVideoMediaType(mLogData, "VideoCapturePin::SetFormat", pmt);
 		#endif
 
@@ -51,7 +51,7 @@ public:
 
 	HRESULT SetMediaType(const CMediaType* pmt) override
 	{
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		logVideoMediaType(mLogData, "VideoCapturePin::SetMediaType", pmt);
 		#endif
 
@@ -60,7 +60,7 @@ public:
 
 	HRESULT CheckMediaType(const CMediaType* pmt) override
 	{
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		logVideoMediaType(mLogData, "VideoCapturePin::CheckMediaType", pmt);
 		#endif
 
@@ -84,7 +84,7 @@ public:
 			}
 		}
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_TRACE_L3(mLogData.logger, "[{}] CapturePin::CheckMediaType (idx: {}, res: {:#08x}, sz: {})",
 		             mLogData.prefix, idx, static_cast<unsigned long>(hr), pmt->GetSampleSize());
 		#endif
@@ -181,7 +181,9 @@ public:
 
 	void RecordLatency()
 	{
-		if (mFrameTs.recordTo(mFrameMetrics))
+		const bool windowComplete = mFrameTs.recordTo(mFrameMetrics);
+		mFilter->OnVideoFrameMeasured(mFrameMetrics);
+		if (windowComplete)
 		{
 			mFilter->RecordVideoFrameLatency(mFrameMetrics);
 		}
@@ -228,7 +230,7 @@ protected:
 	{
 		mSignalledFormat = signalledFormat;
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_TRACE_L1(mLogData.logger, "[{}] Updating conversion strategy from {} to {}", mLogData.prefix,
 		             to_string(mFrameWriterStrategy), to_string(newStrategy));
 		#endif
@@ -265,7 +267,7 @@ protected:
 		{
 			auto target = mVideoFormat.CalcRefreshRate();
 
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_INFO(mLogData.logger, "[{}] Triggering refresh rate change to {} Hz", mLogData.prefix, target);
 			#endif
 
@@ -276,7 +278,7 @@ protected:
 		if (enabled)
 		{
 			auto profileId = mFilter->GetMCProfileId(mVideoFormat.hdrMeta.transferFunction != 4);
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_INFO(mLogData.logger, "[{}] Triggering MC JRVR profile change to {}", mLogData.prefix, profileId);
 			#endif
 			mRateSwitcher.PutThreadMsg(MC_PROFILE, profileId, nullptr);
@@ -313,7 +315,7 @@ protected:
 				IMediaSideData* pMediaSideData = nullptr;
 				if (SUCCEEDED(pms->QueryInterface(&pMediaSideData)))
 				{
-					#ifndef NO_QUILL
+					#ifndef NO_LOGGING
 					LOG_TRACE_L1(mLogData.logger, "[{}] Updating HDR meta in frame {}, last update at {}",
 					             mLogData.prefix, mFrameCounter, mLastSentHdrMetaAt);
 					#endif
@@ -348,7 +350,7 @@ protected:
 					                            sizeof(hdrLightLevel));
 					pMediaSideData->Release();
 
-					#ifndef NO_QUILL
+					#ifndef NO_LOGGING
 					LOG_TRACE_L1(mLogData.logger, "[{}] HDR meta: R {:.4f} {:.4f}", mLogData.prefix,
 					             hdr.display_primaries_x[2], hdr.display_primaries_y[2]);
 					LOG_TRACE_L1(mLogData.logger, "[{}] HDR meta: G {:.4f} {:.4f}", mLogData.prefix,
@@ -367,7 +369,7 @@ protected:
 				}
 				else
 				{
-					#ifndef NO_QUILL
+					#ifndef NO_LOGGING
 					LOG_WARNING(mLogData.logger,
 					            "[{}] HDR meta to send via MediaSideDataHDR but not supported by MediaSample",
 					            mLogData.prefix);
@@ -383,7 +385,7 @@ protected:
 
 	void LogHdrMetaIfPresent(const video_format* newVideoFormat) const
 	{
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		logHdrMeta(newVideoFormat->hdrMeta, mVideoFormat.hdrMeta, mLogData);
 		#endif
 	}
@@ -392,13 +394,13 @@ protected:
 	{
 		auto retVal = S_RECONNECTION_UNNECESSARY;
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LogHdrMetaIfPresent(&newVideoFormat);
 		#endif
 
 		if (ShouldChangeMediaType(&newVideoFormat, IsFallbackActive(&newVideoFormat)))
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_WARNING(mLogData.logger, "[{}] VideoFormat changed! Attempting to reconnect", mLogData.prefix);
 			#endif
 
@@ -420,7 +422,7 @@ protected:
 				{
 					auto fallbackPixelFormat = search->second.first;
 
-					#ifndef NO_QUILL
+					#ifndef NO_LOGGING
 					LOG_WARNING(mLogData.logger,
 					            "[{}] VideoFormat changed but not able to reconnect! [Result: {:#08x}] Attempting fallback format {}",
 					            mLogData.prefix, static_cast<unsigned long>(hr), fallbackPixelFormat.name);
@@ -439,7 +441,7 @@ protected:
 					{
 						auto strategy = search->second.second;
 
-						#ifndef NO_QUILL
+						#ifndef NO_LOGGING
 						LOG_WARNING(mLogData.logger,
 						            "[{}] VideoFormat changed and fallback format {} required to reconnect, updating frame conversion strategy to {}",
 						            mLogData.prefix, fallbackVideoFormat.pixelFormat.name, to_string(strategy));
@@ -451,7 +453,7 @@ protected:
 					}
 					else
 					{
-						#ifndef NO_QUILL
+						#ifndef NO_LOGGING
 						LOG_WARNING(mLogData.logger,
 						            "[{}] VideoFormat changed but fallback format also not able to reconnect! Will retry after backoff [Result: {:#08x}]",
 						            mLogData.prefix, static_cast<unsigned long>(hr),
@@ -463,7 +465,7 @@ protected:
 				}
 				else
 				{
-					#ifndef NO_QUILL
+					#ifndef NO_LOGGING
 					LOG_ERROR(mLogData.logger,
 					          "[{}] VideoFormat changed but not able to reconnect! Will retry after backoff [Result: {:#08x}]",
 					          mLogData.prefix, static_cast<unsigned long>(hr));

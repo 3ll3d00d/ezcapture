@@ -23,6 +23,7 @@
 #include "mw_audio_capture_pin.h"
 
 #define REG_KEY_BASE L"MWCapture"
+#define DEFAULT_METRICS_PORT 9464
 
 #if CAPTURE_NAME_SUFFIX == 1
 #define LOG_PREFIX_NAME "MagewellTrace"
@@ -50,11 +51,12 @@ CUnknown* magewell_capture_filter::CreateInstance(LPUNKNOWN punk, HRESULT* phr)
 }
 
 magewell_capture_filter::magewell_capture_filter(LPUNKNOWN punk, HRESULT* phr) :
-	hdmi_capture_filter(WLOG_PREFIX_NAME, punk, phr, CLSID_MWCAPTURE_FILTER, LOG_PREFIX_NAME, REG_KEY_BASE)
+	hdmi_capture_filter(WLOG_PREFIX_NAME, punk, phr, CLSID_MWCAPTURE_FILTER, LOG_PREFIX_NAME, REG_KEY_BASE,
+	                    DEFAULT_METRICS_PORT)
 {
 	// Initialise the device and validate that it presents some form of data
 	mInited = MWCaptureInitInstance();
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	if (!mInited)
 	{
 		LOG_ERROR(mLogData.logger, "[{}] Unable to init", mLogData.prefix);
@@ -92,7 +94,7 @@ magewell_capture_filter::magewell_capture_filter(LPUNKNOWN punk, HRESULT* phr) :
 			}
 			else
 			{
-				#ifndef NO_QUILL
+				#ifndef NO_LOGGING
 				LOG_WARNING(mLogData.logger, "[{}] Ignoring unknown USB device type {} with serial no {}",
 					mLogData.prefix, mci.szProductName, di.serialNo);
 				#endif
@@ -109,7 +111,7 @@ magewell_capture_filter::magewell_capture_filter(LPUNKNOWN punk, HRESULT* phr) :
 		di.hChannel = MWOpenChannelByPath(di.devicePath);
 		if (di.hChannel == nullptr)
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_WARNING(mLogData.logger, "[{}] Unable to open channel on {} device {} at path {}, ignoring",
 				mLogData.prefix,
 				devicetype_to_name(di.deviceType), di.serialNo, std::wstring{ di.devicePath });
@@ -120,7 +122,7 @@ magewell_capture_filter::magewell_capture_filter(LPUNKNOWN punk, HRESULT* phr) :
 		if (MW_SUCCEEDED != MWGetVideoInputSourceArray(di.hChannel, nullptr, &videoInputTypeCount))
 		{
 			MWCloseChannel(di.hChannel);
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_WARNING(mLogData.logger, "[{}] Unable to detect video inputs on {} device {} at path {}, ignoring",
 				mLogData.prefix,
 				devicetype_to_name(di.deviceType), di.serialNo, std::wstring{ di.devicePath });
@@ -131,7 +133,7 @@ magewell_capture_filter::magewell_capture_filter(LPUNKNOWN punk, HRESULT* phr) :
 		if (MW_SUCCEEDED != MWGetVideoInputSourceArray(di.hChannel, videoInputTypes, &videoInputTypeCount))
 		{
 			MWCloseChannel(di.hChannel);
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_WARNING(mLogData.logger,
 				"[{}] Unable to load supported video input types on {} device {} at path {}, ignoring",
 				mLogData.prefix,
@@ -144,7 +146,7 @@ magewell_capture_filter::magewell_capture_filter(LPUNKNOWN punk, HRESULT* phr) :
 		{
 			if (INPUT_TYPE(videoInputTypes[j]) == MWCAP_VIDEO_INPUT_TYPE_HDMI)
 			{
-				#ifndef NO_QUILL
+				#ifndef NO_LOGGING
 				LOG_WARNING(mLogData.logger,
 					"[{}] Found HDMI input at position {} on {} device {} at path {}, ignoring",
 					mLogData.prefix,
@@ -156,7 +158,7 @@ magewell_capture_filter::magewell_capture_filter(LPUNKNOWN punk, HRESULT* phr) :
 		if (!hdmiFound)
 		{
 			MWCloseChannel(di.hChannel);
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_WARNING(mLogData.logger,
 				"[{}] Found device but no HDMI input available on {} device {} at path {}, ignoring",
 				mLogData.prefix,
@@ -168,7 +170,7 @@ magewell_capture_filter::magewell_capture_filter(LPUNKNOWN punk, HRESULT* phr) :
 		// TODO match against targetPath
 		if (diToUse == nullptr) // && di.devicePath == targetPath || targetPath == nullptr
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_INFO(mLogData.logger, "[{}] Filter will use {} device {} at path {}", mLogData.prefix,
 				devicetype_to_name(di.deviceType),
 				di.serialNo, std::wstring{ di.devicePath });
@@ -187,7 +189,7 @@ magewell_capture_filter::magewell_capture_filter(LPUNKNOWN punk, HRESULT* phr) :
 		}
 		else
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_INFO(mLogData.logger, "[{}] Ignoring usable {} device {} at path {}", mLogData.prefix,
 				devicetype_to_name(di.deviceType),
 				di.serialNo, std::wstring{ di.devicePath });
@@ -201,7 +203,7 @@ magewell_capture_filter::magewell_capture_filter(LPUNKNOWN punk, HRESULT* phr) :
 
 	if (diToUse == nullptr)
 	{
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_ERROR(mLogData.logger, "No valid channels found");
 		#endif
 
@@ -355,6 +357,8 @@ void magewell_capture_filter::OnVideoSignalLoaded(video_signal* vs)
 		break;
 	}
 
+	PublishVideoSignalMetrics();
+
 	if (mInfoCallback != nullptr)
 	{
 		mInfoCallback->Reload(&mVideoInputStatus);
@@ -372,6 +376,8 @@ void magewell_capture_filter::OnAudioSignalLoaded(audio_signal* as)
 	mAudioInputStatus.audioInChannelPairs = as->signalStatus.wChannelValid;
 	mAudioInputStatus.audioInChannelMap = as->audioInfo.byChannelAllocation;
 	mAudioInputStatus.audioInLfeLevel = as->audioInfo.byLFEPlaybackLevel;
+
+	PublishAudioSignalMetrics();
 
 	if (mInfoCallback != nullptr)
 	{
@@ -401,7 +407,7 @@ void magewell_capture_filter::OnDeviceUpdated()
 		mDeviceStatus.protocol = USB;
 	}
 
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	if (oldDesc != mDeviceStatus.deviceDesc)
 	{
 		LOG_INFO(mLogData.logger, "[{}] Recorded device description: {}", mLogData.prefix, mDeviceStatus.deviceDesc);

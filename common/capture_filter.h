@@ -24,16 +24,13 @@
 #include "logging.h"
 #include "metric.h"
 #include "signalinfo.h"
+#include "metrics.h"
 #include "modeswitcher.h"
 
 #include <streams.h>
 #include "ISpecifyPropertyPages2.h"
 #include "lavfilters_side_data.h"
 #include <set>
-
-#ifndef NO_QUILL
-#include <quill/Backend.h>
-#endif
 
 EXTERN_C const AMOVIESETUP_PIN sMIPPins[];
 
@@ -106,6 +103,7 @@ public:
 			mInfoCallback->ReloadA2(&mAudioLatencyStats2);
 			mInfoCallback->ReloadControls(mRefreshRateSwitchEnabled, mHdrProfileSwitchEnabled, mHdrProfile,
 			                              mSdrProfile, mHighThreadPriorityEnabled, mAudioCaptureEnabled);
+			mInfoCallback->ReloadMetricsControls(mMetricsConfig.enabled, mMetricsConfig.port, mMetricsStatus);
 			return S_OK;
 		}
 		return E_FAIL;
@@ -171,6 +169,24 @@ public:
 
 	STDMETHODIMP SetAudioCaptureEnabled(bool enabled) override;
 
+	STDMETHODIMP IsMetricsEnabled(bool* enabled) override
+	{
+		if (!enabled) return E_POINTER;
+		*enabled = mMetricsConfig.enabled;
+		return S_OK;
+	}
+
+	STDMETHODIMP SetMetricsEnabled(bool enabled) override;
+
+	STDMETHODIMP GetMetricsPort(DWORD* port) override
+	{
+		if (!port) return E_POINTER;
+		*port = mMetricsConfig.port;
+		return S_OK;
+	}
+
+	STDMETHODIMP SetMetricsPort(DWORD port) override;
+
 	DWORD GetMCProfileId(bool hdr)
 	{
 		return hdr ? mHdrProfile : mSdrProfile;
@@ -187,14 +203,28 @@ public:
 	void OnAudioFormatLoaded(audio_format* af);
 	void OnHdrUpdated(MediaSideDataHDR* hdr, MediaSideDataHDRContentLightLevel* light);
 
+	// called for every frame
+	void OnVideoFrameMeasured(const frame_metrics& metrics)
+	{
+		mMetrics.on_frame(metric_stream::VIDEO, metrics);
+	}
+
+	// called for every frame
+	void OnAudioFrameMeasured(const frame_metrics& metrics)
+	{
+		mMetrics.on_frame(metric_stream::AUDIO, metrics);
+	}
+
+	// called each time the metrics window completes
 	void RecordVideoFrameLatency(const frame_metrics& metrics)
 	{
+		mMetrics.on_window(metric_stream::VIDEO, metrics);
 		const std::string src = "video";
 		CaptureLatency(metrics.m1, mVideoLatencyStats1, metrics.name1, src);
 		CaptureLatency(metrics.m2, mVideoLatencyStats2, metrics.name2, src);
 		mVideoMeasuredFps = metrics.actualFrameRate;
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_TRACE_L2(mLogData.logger, "[{}] Measured fps {:.3f} Hz ({},{},{},{})", mLogData.prefix,
 		             mVideoMeasuredFps, metrics.startTs, metrics.endTs, metrics.endTs - metrics.startTs,
 		             metrics.m1.capacity()-1);
@@ -218,8 +248,10 @@ public:
 		}
 	}
 
+	// called each time the metrics window completes
 	void RecordAudioFrameLatency(const frame_metrics& metrics)
 	{
+		mMetrics.on_window(metric_stream::AUDIO, metrics);
 		const std::string src = "audio";
 		CaptureLatency(metrics.m1, mAudioLatencyStats1, metrics.name1, src);
 		CaptureLatency(metrics.m2, mAudioLatencyStats2, metrics.name2, src);
@@ -231,19 +263,21 @@ public:
 	}
 
 protected:
-	capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID clsid, const std::string& pLogPrefix,
-	               std::wstring pRegKeyBase);
-
-	~capture_filter() override
+	// publish the current signal to the (optional) Prometheus metrics, call after any of the status changes
+	void PublishVideoSignalMetrics()
 	{
-		#ifndef NO_QUILL
-		LOG_INFO(mLogData.logger, "[{}] Shutting down logging system", mLogData.prefix);
-		quill::Frontend::remove_logger(mLogData.logger);
-		quill::Frontend::remove_logger(mLogData.audioLat);
-		quill::Frontend::remove_logger(mLogData.videoLat);
-		quill::Backend::stop();
-		#endif
+		mMetrics.on_video_signal(mVideoInputStatus, mVideoOutputStatus, mHdrStatus);
 	}
+
+	void PublishAudioSignalMetrics()
+	{
+		mMetrics.on_audio_signal(mAudioInputStatus, mAudioOutputStatus);
+	}
+
+	capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID clsid, const std::string& pLogPrefix,
+	               std::wstring pRegKeyBase, uint16_t pDefaultMetricsPort);
+
+	~capture_filter() override;
 
 	log_data mLogData{};
 	IReferenceClock* mClock;
@@ -269,8 +303,17 @@ protected:
 	bool mRefreshRateSwitchEnabled{true};
 	bool mHighThreadPriorityEnabled{true};
 	bool mAudioCaptureEnabled{true};
+	metrics_config mMetricsConfig{};
+	std::string mMetricsStatus{"Disabled"};
+	capture_metrics mMetrics{};
 
 private:
+	// the quill backend is shared by every filter in the module so is started/stopped by reference count
+	static void AcquireQuillBackend(const std::string& logPrefix);
+	static void ReleaseQuillBackend();
+
+	bool mQuillBackendAcquired{false};
+
 	void CaptureLatency(const metric& metric, latency_stats& lat, const std::string& desc, const std::string& src)
 	{
 		lat.min = metric.min();
@@ -278,7 +321,7 @@ private:
 		lat.max = metric.max();
 		lat.name = desc;
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_TRACE_L2(mLogData.logger, "[{}] {} {} latency stats {:.3f},{:.3f},{:.3f}", mLogData.prefix,
 		             desc, src, static_cast<double>(lat.min) / 10000.0, lat.mean / 10000.0,
 		             static_cast<double>(lat.max) / 10000.0);
@@ -297,8 +340,8 @@ public:
 
 protected:
 	hdmi_capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID clsid, const std::string& logPrefix,
-	                    const std::wstring& regKeyBase) :
-		capture_filter(pName, punk, phr, clsid, logPrefix, regKeyBase)
+	                    const std::wstring& regKeyBase, uint16_t defaultMetricsPort) :
+		capture_filter(pName, punk, phr, clsid, logPrefix, regKeyBase, defaultMetricsPort)
 	{
 	}
 

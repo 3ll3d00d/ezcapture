@@ -32,7 +32,7 @@ public:
 		mStreamStartTime = streamStartTime;
 		mFrameTs.initialise(streamStartTime, streamHighResStartTime);
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_WARNING(mLogData.logger, "[{}] CapturePin::SetStartTime at {} / {}", mLogData.prefix, streamStartTime, streamHighResStartTime);
 		#endif
 	}
@@ -41,7 +41,7 @@ public:
 	{
 		mStreamStopTime = streamStopTime;
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_WARNING(mLogData.logger, "[{}] CapturePin::SetStopTime at {}", mLogData.prefix, streamStopTime);
 		#endif
 	}

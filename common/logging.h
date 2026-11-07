@@ -23,7 +23,8 @@
 
 #include <string>
 
-#ifndef NO_QUILL
+// Quill is always compiled in because it carries the (opt-in) Prometheus metrics. NO_LOGGING only
+// compiles out the log statements and the log file sinks.
 #include <quill/Logger.h>
 #include <quill/Frontend.h>
 #include "quill/LogMacros.h"
@@ -33,22 +34,31 @@ inline constexpr std::string_view audioLatencyLoggerName{"aLat"};
 inline constexpr std::string_view videoLatencyLoggerName{"vLat"};
 inline constexpr std::string_view filterLoggerName{"filter"};
 
-struct CustomFrontendOptions
+template <uint32_t QueueCapacity>
+struct EzFrontendOptions
 {
 	static constexpr quill::QueueType queue_type{quill::QueueType::BoundedDropping};
-	static constexpr uint32_t initial_queue_capacity{64 * 1024 * 1024}; // 64MiB
+	static constexpr uint32_t initial_queue_capacity{QueueCapacity};
 	static constexpr uint32_t blocking_queue_retry_interval_ns{800};
 	static constexpr size_t unbounded_queue_max_capacity = 2ull * 1024u * 1024u * 1024u;
 	static constexpr quill::HugePagesPolicy huge_pages_policy = quill::HugePagesPolicy::Never;
 };
 
+// Distinct types (rather than one type whose capacity depends on NO_LOGGING) so translation units built
+// with different NO_LOGGING settings (e.g. the tests) never share mismatched quill template instantiations.
+#ifdef NO_LOGGING
+// only metric samples (a few small records per frame) are ever queued
+using CustomFrontendOptions = EzFrontendOptions<1024 * 1024>; // 1MiB
+#else
+using CustomFrontendOptions = EzFrontendOptions<64 * 1024 * 1024>; // 64MiB
+#endif
+
 using CustomFrontend = quill::FrontendImpl<CustomFrontendOptions>;
 using CustomLogger = quill::LoggerImpl<CustomFrontendOptions>;
-#endif
 
 struct log_data
 {
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	CustomLogger* logger = nullptr;
 	CustomLogger* audioLat = nullptr;
 	CustomLogger* videoLat = nullptr;
@@ -58,7 +68,7 @@ struct log_data
 	void init(const std::string& pPrefix)
 	{
 		prefix = pPrefix;
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		logger = CustomFrontend::get_logger(std::string{filterLoggerName});
 		audioLat = CustomFrontend::get_logger(std::string{audioLatencyLoggerName});
 		videoLat = CustomFrontend::get_logger(std::string{videoLatencyLoggerName});
