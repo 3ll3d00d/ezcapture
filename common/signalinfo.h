@@ -57,6 +57,7 @@ interface __declspec(uuid("4D6B8852-06A6-4997-BC07-3507BB77F748")) ISignalInfoCB
 	STDMETHOD(ReloadControls)(const bool& rateEnabled, const bool& profileEnabled, const DWORD& hdr, const DWORD& sdr,
 	                          const bool& highThreadPrio, const bool& audioCapture) = 0;
 	STDMETHOD(ReloadMetricsControls)(const bool& enabled, const DWORD& port, const std::string& status) = 0;
+	STDMETHOD(Reload)(dv_status* payload) = 0;
 };
 
 interface __declspec(uuid("6A505550-28B2-4668-BC2C-461E75A63BC4")) ISignalInfo : IUnknown
@@ -114,8 +115,16 @@ public:
 	HRESULT ReloadControls(const bool& rateEnabled, const bool& profileEnabled, const DWORD& hdr,
 	                       const DWORD& sdr, const bool& highThreadPrio, const bool& audioCapture) override;
 	HRESULT ReloadMetricsControls(const bool& enabled, const DWORD& port, const std::string& status) override;
+	HRESULT Reload(dv_status* payload) override;
 
 private:
+	void ShowHdrLabels();
+
+	// while the DV tunnel is active the HDR box shows DV status instead
+	bool mDvShown{false};
+	bool mHaveHdr{false};
+	hdr_status mLastHdr{};
+
 	void SetDirty()
 	{
 		m_bDirty = TRUE;

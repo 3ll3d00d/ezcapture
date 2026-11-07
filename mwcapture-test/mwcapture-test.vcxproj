@@ -175,6 +175,7 @@
   <ItemGroup>
     <ClCompile Include="conversion_test.cpp" />
     <ClCompile Include="metrics_test.cpp" />
+    <ClCompile Include="dv_tunnel_test.cpp" />
     <ClCompile Include="test.cpp" />
   </ItemGroup>
   <ItemGroup>

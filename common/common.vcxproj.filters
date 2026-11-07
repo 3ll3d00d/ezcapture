@@ -101,6 +101,12 @@
     <ClInclude Include="capture_pin.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="dv_tunnel.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="dv_tunnel_lav.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="video_capture_pin.h">
       <Filter>Header Files</Filter>
     </ClInclude>

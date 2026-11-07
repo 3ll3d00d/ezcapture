@@ -20,6 +20,8 @@
 
 #include "mw_video_capture_pin.h"
 #include "straight_through.h"
+#include <array>
+#include <format>
 #include <memory>
 
 magewell_video_capture_pin::video_capture::video_capture(magewell_video_capture_pin* pin, HCHANNEL hChannel) :
@@ -151,16 +153,39 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 			pin->mFrameTs.snap(now, READING);
 
 			uint8_t* writeBuffer = pin->mFrameWriterStrategy == STRAIGHT_THROUGH ? pmsData : pin->mCapturedFrame.data;
+			auto captureSize = pin->mVideoFormat.imageSize;
+			auto captureStride = pin->mVideoFormat.lineLength;
+			auto captureFourcc = pin->mVideoFormat.pixelFormat.fourcc;
+			auto captureColourFormat = static_cast<MWCAP_VIDEO_COLOR_FORMAT>(pin->mVideoFormat.colourFormat);
+			auto captureQuantisation = static_cast<MWCAP_VIDEO_QUANTIZATION_RANGE>(pin->mVideoFormat.quantisation);
+			auto captureSaturation = static_cast<MWCAP_VIDEO_SATURATION_RANGE>(pin->mVideoFormat.saturation);
+			if (pin->mVideoFormat.dvTunnel)
+			{
+				// capture the tunnel exactly as sent, i.e. RGB in and out so the card does no conversion
+				DWORD imageSize;
+				BGR24.GetImageDimensions(pin->mVideoFormat.cx, pin->mVideoFormat.cy, &captureStride, &imageSize);
+				if (pin->mDvCapture.size() < imageSize)
+				{
+					pin->mDvCapture.resize(imageSize);
+				}
+				pin->mDvCaptureStride = captureStride;
+				writeBuffer = pin->mDvCapture.data();
+				captureSize = imageSize;
+				captureFourcc = BGR24.fourcc;
+				captureColourFormat = static_cast<MWCAP_VIDEO_COLOR_FORMAT>(pin->mVideoSignal.signalStatus.colorFormat);
+				captureQuantisation = static_cast<MWCAP_VIDEO_QUANTIZATION_RANGE>(pin->mVideoSignal.signalStatus.quantRange);
+				captureSaturation = static_cast<MWCAP_VIDEO_SATURATION_RANGE>(pin->mVideoSignal.signalStatus.satRange);
+			}
 
 			hr = MWCaptureVideoFrameToVirtualAddressEx(
 				hChannel,
 				pin->mHasSignal ? pin->mVideoSignal.bufferInfo.iNewestBuffering : MWCAP_VIDEO_FRAME_ID_NEWEST_BUFFERING,
 				writeBuffer,
-				pin->mVideoFormat.imageSize,
-				pin->mVideoFormat.lineLength,
+				captureSize,
+				captureStride,
 				FALSE,
 				nullptr,
-				pin->mVideoFormat.pixelFormat.fourcc,
+				captureFourcc,
 				pin->mVideoFormat.cx,
 				pin->mVideoFormat.cy,
 				0,
@@ -178,9 +203,9 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 				nullptr,
 				pin->mVideoFormat.aspectX,
 				pin->mVideoFormat.aspectY,
-				static_cast<MWCAP_VIDEO_COLOR_FORMAT>(pin->mVideoFormat.colourFormat),
-				static_cast<MWCAP_VIDEO_QUANTIZATION_RANGE>(pin->mVideoFormat.quantisation),
-				static_cast<MWCAP_VIDEO_SATURATION_RANGE>(pin->mVideoFormat.saturation)
+				captureColourFormat,
+				captureQuantisation,
+				captureSaturation
 			);
 			if (hr != MW_SUCCEEDED)
 			{
@@ -253,7 +278,11 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 				pin->mFrameTs.snap(now, READ);
 				pin->mFrameCounter++;
 
-				if (pin->mFrameWriterStrategy != STRAIGHT_THROUGH)
+				if (pin->mVideoFormat.dvTunnel)
+				{
+					pin->WriteDvTunnelFrame(pms);
+				}
+				else if (pin->mFrameWriterStrategy != STRAIGHT_THROUGH)
 				{
 					video_sample_buffer buffer{
 						.index = pin->mFrameCounter,
@@ -263,6 +292,10 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 						.length = pin->mVideoFormat.imageSize
 					};
 					pin->mFrameWriter->WriteTo(&buffer, pms);
+				}
+				else if (pin->mHasSignal && pin->IsDvTunnelCandidate())
+				{
+					pin->ProbeDvTunnel(pmsData, pin->mVideoFormat.lineLength);
 				}
 			}
 		}
@@ -357,6 +390,8 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 			pin->mUpdatedMediaType = false;
 		}
 		pin->AppendHdrSideDataIfNecessary(pms, endTime);
+		pin->AppendDvSideData(pms);
+		pin->PublishDvStatus();
 		pin->RecordLatency();
 		pin->SnapTemperatureIfNecessary(endTime);
 
@@ -659,6 +694,31 @@ void magewell_video_capture_pin::LoadFormat(video_format* videoFormat, video_sig
 		videoFormat->colourFormatName = "UNK";
 	}
 
+	if (mDvLocked)
+	{
+		if (IsDvTunnelCandidate())
+		{
+			// the card still captures BGR24, it is decoded to 12-bit IPT-PQ 4:2:2 in P210
+			videoFormat->dvTunnel = true;
+			videoFormat->pixelFormat = P210;
+			videoFormat->colourFormat = BT2020;
+			videoFormat->colourFormatName = "DV";
+			videoFormat->quantisation = mDvFullRange ? QUANTISATION_FULL : QUANTISATION_LIMITED;
+			videoFormat->saturation = mDvFullRange ? SATURATION_FULL : SATURATION_LIMITED;
+			videoFormat->hdrMeta = {};
+			videoFormat->hdrMeta.transferFunction = 15;
+		}
+		else
+		{
+			#ifndef NO_LOGGING
+			LOG_WARNING(mLogData.logger, "[{}] DV tunnel unlocked, signal is no longer 8-bit RGB without HDR infoframe",
+			            mLogData.prefix);
+			#endif
+			mDvLocked = false;
+			mDvDecoder.reset();
+		}
+	}
+
 	if (captureFormats->usb)
 	{
 		bool found = false;
@@ -834,6 +894,215 @@ HRESULT magewell_video_capture_pin::LoadSignal(HCHANNEL* pChannel)
 	return S_OK;
 }
 
+bool magewell_video_capture_pin::IsDvTunnelCandidate() const
+{
+	return !mDvRejected
+		&& mFilter->GetDeviceType() == MW_PRO
+		&& mVideoSignal.signalStatus.state == MWCAP_VIDEO_SIGNAL_LOCKED
+		&& mVideoSignal.inputStatus.hdmiStatus.byBitDepth == 8
+		&& mVideoSignal.inputStatus.hdmiStatus.pixelEncoding == HDMI_ENCODING_RGB_444
+		&& !mHasHdrInfoFrame
+		&& (mVideoSignal.signalStatus.cx & 1) == 0;
+}
+
+void magewell_video_capture_pin::ProbeDvTunnel(const uint8_t* frame, DWORD stride)
+{
+	mDvDecoder.process(frame, stride, mVideoFormat.cx, mVideoFormat.cy, mFrameCounter);
+	if (mDvDecoder.locked())
+	{
+		mDvLocked = true;
+		mDvOutputWidth = 0;
+		if (mDvDecoder.active().valid)
+		{
+			mDvFullRange = mDvDecoder.active().fullRange();
+		}
+		#ifndef NO_LOGGING
+		LOG_WARNING(mLogData.logger, "[{}] DV tunnel detected at frame {}, switching to P210 [metadata: {}, full range: {}]",
+		            mLogData.prefix, mFrameCounter, mDvDecoder.active().valid, mDvFullRange);
+		#endif
+		// never show the packed pixels
+		memset(const_cast<uint8_t*>(frame), 0, mVideoFormat.imageSize);
+	}
+}
+
+void magewell_video_capture_pin::WriteDvTunnelFrame(IMediaSample* pms)
+{
+	const auto cx = mVideoFormat.cx;
+	const auto cy = mVideoFormat.cy;
+	mDvDecoder.process(mDvCapture.data(), mDvCaptureStride, cx, cy, mFrameCounter);
+	if (mDvDecoder.active().valid)
+	{
+		mDvFullRange = mDvDecoder.active().fullRange();
+	}
+
+	// the renderer may ask for padding via the media type on the sample
+	AM_MEDIA_TYPE* smt = nullptr;
+	if (S_OK == pms->GetMediaType(&smt) && smt != nullptr)
+	{
+		if (smt->formattype == FORMAT_VideoInfo2 && smt->pbFormat != nullptr)
+		{
+			mDvOutputWidth = reinterpret_cast<VIDEOINFOHEADER2*>(smt->pbFormat)->bmiHeader.biWidth;
+		}
+		DeleteMediaType(smt);
+	}
+	const auto width = std::max(mDvOutputWidth, cx);
+	const size_t dstStride = static_cast<size_t>(width) * 2;
+	const size_t planeSize = dstStride * cy;
+	BYTE* out;
+	pms->GetPointer(&out);
+	if (static_cast<size_t>(pms->GetSize()) < planeSize * 2)
+	{
+		#ifndef NO_LOGGING
+		LOG_WARNING(mLogData.logger, "[{}] DV tunnel sample too small ({} < {})", mLogData.prefix, pms->GetSize(),
+		            planeSize * 2);
+		#endif
+		return;
+	}
+	if (mDvDecoder.render())
+	{
+		dv_tunnel::unpack_bgr24(mDvCapture.data(), mDvCaptureStride, out, out + planeSize, dstStride, cx, cy);
+	}
+	else
+	{
+		dv_tunnel::fill_black(out, out + planeSize, dstStride, cx, cy);
+	}
+	if (!mDvDecoder.locked())
+	{
+		#ifndef NO_LOGGING
+		LOG_WARNING(mLogData.logger, "[{}] DV tunnel ended at frame {}, switching back to RGB", mLogData.prefix,
+		            mFrameCounter);
+		#endif
+		mDvLocked = false;
+	}
+	LogDvTunnelStats();
+}
+
+void magewell_video_capture_pin::AppendDvSideData(IMediaSample* pms)
+{
+	if (!mVideoFormat.dvTunnel || !mDvDecoder.render())
+	{
+		return;
+	}
+	IMediaSideData* sideData = nullptr;
+	if (FAILED(pms->QueryInterface(&sideData)))
+	{
+		return;
+	}
+	dv_tunnel::to_lav(mDvDecoder.active(), *mDvSideData);
+	// as LAV does, V2 plus the legacy layout without extensions
+	sideData->SetSideData(IID_MediaSideDataDOVIMetadataV2, reinterpret_cast<const BYTE*>(mDvSideData.get()),
+	                      sizeof(MediaSideDataDOVIMetadata));
+	sideData->SetSideData(IID_MediaSideDataDOVIMetadata, reinterpret_cast<const BYTE*>(mDvSideData.get()),
+	                      offsetof(MediaSideDataDOVIMetadata, Extensions));
+	sideData->Release();
+}
+
+void magewell_video_capture_pin::PublishDvStatus()
+{
+	const auto state = mDvRejected
+		                   ? DV_REJECTED
+		                   : mVideoFormat.dvTunnel
+		                   ? (mDvDecoder.render() ? DV_LOCKED : DV_NO_METADATA)
+		                   : mHasSignal && IsDvTunnelCandidate()
+		                   ? DV_SEARCHING
+		                   : DV_INACTIVE;
+	// on any change of state and about once a second while locked
+	const auto interval = static_cast<uint64_t>(std::max(1L, std::lround(mVideoFormat.fps)));
+	const bool periodic = (state == DV_LOCKED || state == DV_NO_METADATA)
+		&& mFrameCounter >= mDvStatusPublishedAt + interval;
+	if (state == mDvPublishedState && !periodic)
+	{
+		return;
+	}
+	const auto& md = mDvDecoder.active();
+	const auto& stats = mDvDecoder.stats();
+	dv_status status{
+		.state = state,
+		.metadataValid = md.valid,
+		.fullRange = md.fullRange(),
+		.colourSpace = md.signalColorSpace,
+		.sourceMinPq = md.sourceMinPq,
+		.sourceMaxPq = md.sourceMaxPq,
+		.hasL1 = md.hasL1,
+		.l1MinPq = md.l1MinPq,
+		.l1AvgPq = md.l1AvgPq,
+		.l1MaxPq = md.l1MaxPq,
+		.metadataBytes = stats.lastMetadataLength,
+		.packets = stats.lastPacketCount,
+		.frames = stats.frames,
+		.rejectedFrames = stats.rejectedFrames,
+		.crcFailedCopies = stats.crcFailedCopies,
+		.recoveredPackets = stats.recoveredPackets
+	};
+	mFilter->OnDvStatusUpdated(status);
+	mDvPublishedState = state;
+	mDvStatusPublishedAt = mFrameCounter;
+}
+
+void magewell_video_capture_pin::LogDvTunnelStats()
+{
+	#ifndef NO_LOGGING
+	const auto& stats = mDvDecoder.stats();
+	if (stats.frames < mDvStatsLoggedAt + 600)
+	{
+		return;
+	}
+	mDvStatsLoggedAt = stats.frames;
+	const auto& md = mDvDecoder.active();
+	LOG_INFO(mLogData.logger,
+	         "[{}] DV tunnel [frames: {}, rejected: {}, no_md: {}, crc failed copies: {}, recovered: {}, md bytes: {}, packets: {}, valid: {}, full range: {}, colour space: {}, source pq: {}-{}, L1: {}/{}/{}, ext: {}]",
+	         mLogData.prefix, stats.frames, stats.rejectedFrames, stats.noMetadataFrames, stats.crcFailedCopies,
+	         stats.recoveredPackets, stats.lastMetadataLength, stats.lastPacketCount, md.valid, md.fullRange(),
+	         md.signalColorSpace, md.sourceMinPq, md.sourceMaxPq, md.l1MinPq, md.l1AvgPq, md.l1MaxPq,
+	         md.extensions.size());
+	#endif
+}
+
+void magewell_video_capture_pin::LogDvEdidSupport(HCHANNEL hChannel) const
+{
+	#ifndef NO_LOGGING
+	std::array<BYTE, 512> edid{};
+	ULONG size = static_cast<ULONG>(edid.size());
+	auto hr = MWGetEDID(hChannel, edid.data(), &size);
+	if (hr != MW_SUCCEEDED)
+	{
+		size = 256;
+		hr = MWGetEDID(hChannel, edid.data(), &size);
+	}
+	if (hr != MW_SUCCEEDED)
+	{
+		LOG_WARNING(mLogData.logger, "[{}] Unable to read the EDID to check for Dolby Vision support ({})",
+		            mLogData.prefix, static_cast<int>(hr));
+		return;
+	}
+	const auto dv = dv_tunnel::find_dolby_vision(edid.data(), std::min<size_t>(size, edid.size()));
+	std::string payload;
+	for (const auto b : dv.payload)
+	{
+		payload += std::format("{:02x}", b);
+	}
+	if (!dv.present)
+	{
+		LOG_WARNING(mLogData.logger,
+		            "[{}] Card EDID ({} bytes) has no Dolby Vision block, a source connected directly will not send the DV RGB tunnel (ignore if an upstream device such as an HDFury presents its own EDID)",
+		            mLogData.prefix, size);
+	}
+	else if (!dv.standard)
+	{
+		LOG_WARNING(mLogData.logger,
+		            "[{}] Card EDID Dolby Vision block v{} only supports low latency DV, a source connected directly will send LLDV rather than the DV RGB tunnel (ignore if an upstream device such as an HDFury presents its own EDID) [payload: {}]",
+		            mLogData.prefix, dv.version, payload);
+	}
+	else
+	{
+		LOG_INFO(mLogData.logger,
+		         "[{}] Card EDID Dolby Vision block v{} supports the DV RGB tunnel [low latency: {}, 2160p60: {}, payload: {}]",
+		         mLogData.prefix, dv.version, dv.lowLatency,
+		         dv.supports2160p60Known ? (dv.supports2160p60 ? "yes" : "no") : "not signalled", payload);
+	}
+	#endif
+}
+
 void magewell_video_capture_pin::OnFrameWriterStrategyUpdated()
 {
 	switch (mFrameWriterStrategy)
@@ -982,6 +1251,17 @@ HRESULT magewell_video_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample, R
 		auto shouldResizeMetrics = newVideoFormat.frameInterval != mVideoFormat.frameInterval;
 
 		auto onSignalResult = OnVideoSignal(newVideoFormat);
+
+		if (FAILED(onSignalResult) && newVideoFormat.dvTunnel && !mVideoFormat.dvTunnel)
+		{
+			#ifndef NO_LOGGING
+			LOG_ERROR(mLogData.logger, "[{}] Renderer rejected P210 for the DV tunnel, DV decode disabled until restart",
+			          mLogData.prefix);
+			#endif
+			mDvRejected = true;
+			mDvLocked = false;
+			mDvDecoder.reset();
+		}
 
 		if (onSignalResult != S_RECONNECTION_UNNECESSARY || (hadSignal && !mHasSignal))
 		{
@@ -1198,6 +1478,11 @@ HRESULT magewell_video_capture_pin::OnThreadCreate()
 	LoadSignal(&hChannel);
 
 	mFilter->OnVideoSignalLoaded(&mVideoSignal);
+
+	if (mFilter->GetDeviceType() == MW_PRO)
+	{
+		LogDvEdidSupport(hChannel);
+	}
 
 	auto deviceType = mFilter->GetDeviceType();
 	if (deviceType == MW_PRO)
