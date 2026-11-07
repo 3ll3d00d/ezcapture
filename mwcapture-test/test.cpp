@@ -46,17 +46,24 @@ TEST(HDR, CanParseHDRInfoFrame)
 
 	LoadHdrMeta(&o, &i);
 
+	// hdr_meta holds physical values: the raw CTA-861.3 fields are scaled by
+	// 0.00002 (chromaticity), 0.0001 cd/m2 (min luminance), 1 cd/m2 (max luminance).
+	// This payload is BT.2020 primaries with a D65 white point.
+	constexpr double tol = 1e-9;
 	EXPECT_TRUE(o.exists());
-	EXPECT_EQ(o.r_primary_x, 35400);
-	EXPECT_EQ(o.r_primary_y, 14600);
-	EXPECT_EQ(o.g_primary_x, 8500);
-	EXPECT_EQ(o.g_primary_y, 39850);
-	EXPECT_EQ(o.b_primary_x, 6550);
-	EXPECT_EQ(o.b_primary_y, 2300);
+	EXPECT_NEAR(o.r_primary_x, 0.708, tol);   // raw 35400
+	EXPECT_NEAR(o.r_primary_y, 0.292, tol);   // raw 14600
+	EXPECT_NEAR(o.g_primary_x, 0.170, tol);   // raw 8500
+	EXPECT_NEAR(o.g_primary_y, 0.797, tol);   // raw 39850
+	EXPECT_NEAR(o.b_primary_x, 0.131, tol);   // raw 6550
+	EXPECT_NEAR(o.b_primary_y, 0.046, tol);   // raw 2300
+	EXPECT_NEAR(o.whitepoint_x, 0.3127, tol); // raw 15635
+	EXPECT_NEAR(o.whitepoint_y, 0.3290, tol); // raw 16450
 	EXPECT_EQ(o.maxCLL, 4000);
 	EXPECT_EQ(o.maxFALL, 1000);
-	EXPECT_EQ(o.minDML, 50);
-	EXPECT_EQ(o.maxDML, 3999);
+	EXPECT_NEAR(o.minDML, 0.005, tol);        // raw 50
+	EXPECT_NEAR(o.maxDML, 3999.0, tol);       // raw 3999
+	EXPECT_EQ(o.transferFunction, 15);        // EOTF 2 = ST2084 (PQ)
 }
 
 TEST(DIMS, CanCalcImageDims)
