@@ -19,10 +19,10 @@ jobs:
         configuration: [ Debug, Release, ReleaseTrace, ReleaseNoArch, ReleaseTraceNoArch ]
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
 
     - name: Add MSBuild to PATH
-      uses: microsoft/setup-msbuild@v2
+      uses: microsoft/setup-msbuild@v3
 
     - name: Setup vcpkg for mwcapture
       uses: lukka/run-vcpkg@v11
@@ -45,7 +45,7 @@ jobs:
         msbuild /t:Rebuild /p:Configuration=${{ matrix.configuration }}
 
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: msbuild-${{ matrix.configuration }}
         path: x64/${{ matrix.configuration }}/**
@@ -59,7 +59,7 @@ jobs:
         preset: [ debug, release, release-noarch, release-trace, release-trace-noarch ]
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
 
     - name: Setup MSVC dev environment
       uses: ilammy/msvc-dev-cmd@v1
@@ -81,7 +81,7 @@ jobs:
       run: cmake --build --preset ${{ matrix.preset }}
 
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: cmake-${{ matrix.preset }}
         path: out/build/${{ matrix.preset }}/x64/**
