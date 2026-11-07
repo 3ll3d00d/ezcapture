@@ -78,6 +78,120 @@ void capture_filter::ReleaseQuillBackend()
 	}
 }
 
+#ifndef NO_LOGGING
+namespace
+{
+	// quill loggers are process wide and shared by name so every filter instance in the process (e.g. one created
+	// only to show the property page while another is playing) uses the same loggers, they are created by the first
+	// instance and removed by the last
+	std::mutex loggingLock;
+	int loggingUsers{0};
+	int64_t loggingEpochSeconds{0};
+
+	quill::RotatingFileSinkConfig latency_sink_config()
+	{
+		quill::RotatingFileSinkConfig cfg;
+		cfg.set_max_backup_files(3);
+		cfg.set_rotation_time_daily("00:00");
+		cfg.set_rotation_naming_scheme(quill::RotatingFileSinkConfig::RotationNamingScheme::Date);
+		cfg.set_filename_append_option(quill::FilenameAppendOption::None);
+		return cfg;
+	}
+
+	quill::PatternFormatterOptions latency_pattern()
+	{
+		return quill::PatternFormatterOptions{"%(time),%(message)", "%H:%M:%S.%Qns", quill::Timezone::GmtTime};
+	}
+}
+
+void capture_filter::AcquireLogging(const std::string& pLogPrefix)
+{
+	std::lock_guard lock{loggingLock};
+	if (loggingUsers++ == 0)
+	{
+		loggingEpochSeconds = std::chrono::duration_cast<std::chrono::seconds>(
+			std::chrono::system_clock::now().time_since_epoch()).count();
+		auto filterFileSink = CustomFrontend::create_or_get_sink<quill::RotatingFileSink>(
+			(std::filesystem::temp_directory_path() / std::format("{}_{}.log", pLogPrefix, loggingEpochSeconds)).
+			string(),
+			[]()
+			{
+				quill::RotatingFileSinkConfig cfg;
+				cfg.set_max_backup_files(12);
+				cfg.set_rotation_frequency_and_interval('H', 1);
+				cfg.set_rotation_naming_scheme(quill::RotatingFileSinkConfig::RotationNamingScheme::DateAndTime);
+				cfg.set_filename_append_option(quill::FilenameAppendOption::None);
+				return cfg;
+			}(),
+			quill::FileEventNotifier{});
+		auto* logger = CustomFrontend::create_or_get_logger(std::string{filterLoggerName},
+		                                                    std::move(filterFileSink),
+		                                                    quill::PatternFormatterOptions{
+			                                                    "%(time) [%(thread_id)] %(short_source_location:<28) "
+			                                                    "LOG_%(log_level:<9) %(logger:<12) %(message)",
+			                                                    "%H:%M:%S.%Qns",
+			                                                    quill::Timezone::GmtTime
+		                                                    });
+		auto videoLatencySink = CustomFrontend::create_or_get_sink<quill::RotatingFileSink>(
+			(std::filesystem::temp_directory_path() / std::format("{}_video_{}.csv", pLogPrefix,
+			                                                     loggingEpochSeconds)).string(),
+			latency_sink_config(),
+			quill::FileEventNotifier{});
+		auto* videoLat = CustomFrontend::create_or_get_logger(std::string{videoLatencyLoggerName},
+		                                                      std::move(videoLatencySink), latency_pattern());
+		// printing absolutely everything we may ever log
+		logger->set_log_level(MIN_LOG_LEVEL);
+		videoLat->set_log_level(MIN_LOG_LEVEL);
+	}
+	mLogData.logger = CustomFrontend::get_logger(std::string{filterLoggerName});
+	mLogData.videoLat = CustomFrontend::get_logger(std::string{videoLatencyLoggerName});
+	mLogData.audioLat = CustomFrontend::get_logger(std::string{audioLatencyLoggerName});
+	mLoggingAcquired = true;
+}
+
+void capture_filter::AcquireAudioLatencyLogger(const std::string& pLogPrefix)
+{
+	std::lock_guard lock{loggingLock};
+	mLogData.audioLat = CustomFrontend::get_logger(std::string{audioLatencyLoggerName});
+	if (mLogData.audioLat == nullptr)
+	{
+		auto audioLatencySink = CustomFrontend::create_or_get_sink<quill::RotatingFileSink>(
+			(std::filesystem::temp_directory_path() / std::format("{}_audio_{}.csv", pLogPrefix,
+			                                                     loggingEpochSeconds)).string(),
+			latency_sink_config(),
+			quill::FileEventNotifier{});
+		mLogData.audioLat = CustomFrontend::create_or_get_logger(std::string{audioLatencyLoggerName},
+		                                                         std::move(audioLatencySink), latency_pattern());
+		mLogData.audioLat->set_log_level(MIN_LOG_LEVEL);
+	}
+}
+
+void capture_filter::ReleaseLogging()
+{
+	std::lock_guard lock{loggingLock};
+	if (--loggingUsers > 0)
+	{
+		return;
+	}
+	// the removal must complete while the backend is running, a logger still pending removal cannot be recreated
+	// so the next filter instance (i.e. the next playback) would throw from its constructor
+	for (const auto* name : {filterLoggerName.data(), audioLatencyLoggerName.data(), videoLatencyLoggerName.data()})
+	{
+		if (auto* logger = CustomFrontend::get_logger(std::string{name}))
+		{
+			if (quill::Backend::is_running())
+			{
+				CustomFrontend::remove_logger_blocking(logger);
+			}
+			else
+			{
+				CustomFrontend::remove_logger(logger);
+			}
+		}
+	}
+}
+#endif
+
 capture_filter::capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID clsid, const std::string& pLogPrefix,
                                std::wstring pRegKeyBase, uint16_t pDefaultMetricsPort) :
 	CSource(pName, punk, clsid),
@@ -89,53 +203,7 @@ capture_filter::capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSI
 	#ifndef NO_LOGGING
 	AcquireQuillBackend(pLogPrefix);
 	mQuillBackendAcquired = true;
-	auto now = std::chrono::system_clock::now();
-	auto epochSeconds = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
-	auto filterFileSink = CustomFrontend::create_or_get_sink<quill::RotatingFileSink>(
-		(std::filesystem::temp_directory_path() / std::format("{}_{}.log", pLogPrefix, epochSeconds)).string(),
-		[]()
-		{
-			quill::RotatingFileSinkConfig cfg;
-			cfg.set_max_backup_files(12);
-			cfg.set_rotation_frequency_and_interval('H', 1);
-			cfg.set_rotation_naming_scheme(quill::RotatingFileSinkConfig::RotationNamingScheme::DateAndTime);
-			cfg.set_filename_append_option(quill::FilenameAppendOption::None);
-			return cfg;
-		}(),
-		quill::FileEventNotifier{});
-	mLogData.logger =
-		CustomFrontend::create_or_get_logger(std::string{filterLoggerName},
-		                                     std::move(filterFileSink),
-		                                     quill::PatternFormatterOptions{
-			                                     "%(time) [%(thread_id)] %(short_source_location:<28) "
-			                                     "LOG_%(log_level:<9) %(logger:<12) %(message)",
-			                                     "%H:%M:%S.%Qns",
-			                                     quill::Timezone::GmtTime
-		                                     });
-	auto videoLatencySink = CustomFrontend::create_or_get_sink<quill::RotatingFileSink>(
-		(std::filesystem::temp_directory_path() / std::format("{}_video_{}.csv", pLogPrefix, epochSeconds)).string(),
-		[]()
-		{
-			quill::RotatingFileSinkConfig cfg;
-			cfg.set_max_backup_files(3);
-			cfg.set_rotation_time_daily("00:00");
-			cfg.set_rotation_naming_scheme(quill::RotatingFileSinkConfig::RotationNamingScheme::Date);
-			cfg.set_filename_append_option(quill::FilenameAppendOption::None);
-			return cfg;
-		}(),
-		quill::FileEventNotifier{});
-	mLogData.videoLat =
-		CustomFrontend::create_or_get_logger(std::string{videoLatencyLoggerName},
-		                                     std::move(videoLatencySink),
-		                                     quill::PatternFormatterOptions{
-			                                     "%(time),%(message)",
-			                                     "%H:%M:%S.%Qns",
-			                                     quill::Timezone::GmtTime
-		                                     });
-
-	// printing absolutely everything we may ever log
-	mLogData.logger->set_log_level(MIN_LOG_LEVEL);
-	mLogData.videoLat->set_log_level(MIN_LOG_LEVEL);
+	AcquireLogging(pLogPrefix);
 	#endif
 
 	auto monitorConfig = mode_switch::GetAllSupportedRefreshRates();
@@ -204,27 +272,7 @@ capture_filter::capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSI
 		if (mAudioCaptureEnabled)
 		{
 			#ifndef NO_LOGGING
-			auto audioLatencySink = CustomFrontend::create_or_get_sink<quill::RotatingFileSink>(
-				(std::filesystem::temp_directory_path() / std::format("{}_audio_{}.csv", pLogPrefix, epochSeconds)).string(),
-				[]()
-				{
-					quill::RotatingFileSinkConfig cfg;
-					cfg.set_max_backup_files(3);
-					cfg.set_rotation_time_daily("00:00");
-					cfg.set_rotation_naming_scheme(quill::RotatingFileSinkConfig::RotationNamingScheme::Date);
-					cfg.set_filename_append_option(quill::FilenameAppendOption::None);
-					return cfg;
-				}(),
-					quill::FileEventNotifier{});
-			mLogData.audioLat =
-				CustomFrontend::create_or_get_logger(std::string{ audioLatencyLoggerName },
-					std::move(audioLatencySink),
-					quill::PatternFormatterOptions{
-						"%(time),%(message)",
-						"%H:%M:%S.%Qns",
-						quill::Timezone::GmtTime
-					});
-			mLogData.audioLat->set_log_level(MIN_LOG_LEVEL);
+			AcquireAudioLatencyLogger(pLogPrefix);
 			#endif
 		}
 	}
@@ -259,11 +307,18 @@ capture_filter::capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSI
 capture_filter::~capture_filter()
 {
 	mMetrics.stop();
+	// delete the pins here rather than in ~CSource so anything they log as they are torn down happens before the
+	// loggers are released (the pin destructor removes it from m_paStreams and decrements m_iPins)
+	while (m_iPins > 0)
+	{
+		delete m_paStreams[m_iPins - 1];
+	}
 	#ifndef NO_LOGGING
-	LOG_INFO(mLogData.logger, "[{}] Shutting down logging system", mLogData.prefix);
-	quill::Frontend::remove_logger(mLogData.logger);
-	quill::Frontend::remove_logger(mLogData.audioLat);
-	quill::Frontend::remove_logger(mLogData.videoLat);
+	if (mLoggingAcquired)
+	{
+		LOG_INFO(mLogData.logger, "[{}] Shutting down logging system", mLogData.prefix);
+		ReleaseLogging();
+	}
 	#endif
 	if (mQuillBackendAcquired)
 	{
