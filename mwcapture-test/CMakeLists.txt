@@ -1,7 +1,7 @@
 find_package(GTest CONFIG REQUIRED)
 find_package(prometheus-cpp CONFIG REQUIRED)
 
-add_executable(mwcapture-test test.cpp conversion_test.cpp metrics_test.cpp)
+add_executable(mwcapture-test test.cpp conversion_test.cpp metrics_test.cpp dv_tunnel_test.cpp)
 
 # mwcapture is a MODULE (.ax COM filter, no import lib to link against);
 # test.cpp only needs its header-only mw_domain.h (included via a relative

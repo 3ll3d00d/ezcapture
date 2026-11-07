@@ -93,6 +93,7 @@ public:
 			mInfoCallback->Reload(&mVideoInputStatus);
 			mInfoCallback->Reload(&mVideoOutputStatus);
 			mInfoCallback->Reload(&mHdrStatus);
+			mInfoCallback->Reload(&mDvStatus);
 			mInfoCallback->Reload(&mDeviceStatus);
 			mInfoCallback->Reload(&mDisplayStatus);
 			mInfoCallback->ReloadV1(&mVideoLatencyStats1);
@@ -203,6 +204,15 @@ public:
 	void OnAudioFormatLoaded(audio_format* af);
 	void OnHdrUpdated(MediaSideDataHDR* hdr, MediaSideDataHDRContentLightLevel* light);
 
+	void OnDvStatusUpdated(const dv_status& status)
+	{
+		mDvStatus = status;
+		if (mInfoCallback != nullptr)
+		{
+			mInfoCallback->Reload(&mDvStatus);
+		}
+	}
+
 	// called for every frame
 	void OnVideoFrameMeasured(const frame_metrics& metrics)
 	{
@@ -294,6 +304,7 @@ protected:
 	latency_stats mAudioLatencyStats2{};
 	double mVideoMeasuredFps{0.0};
 	hdr_status mHdrStatus{};
+	dv_status mDvStatus{};
 	ISignalInfoCB* mInfoCallback = nullptr;
 	std::set<DWORD> mRefreshRates{};
 	std::wstring mRegKeyBase{};

@@ -23,7 +23,9 @@
 
 #include "mw_capture_filter.h"
 #include "video_capture_pin.h"
+#include "dv_tunnel_lav.h"
 #include <memory>
+#include <vector>
 
 /**
  * A video stream flowing from the capture device to an output pin.
@@ -72,6 +74,15 @@ protected:
 	void OnChangeMediaType() override;
 	HRESULT LoadSignal(HCHANNEL* pChannel);
 	void OnFrameWriterStrategyUpdated() override;
+
+	// experimental Dolby Vision RGB tunnel decode, pro only
+	bool IsDvTunnelCandidate() const;
+	void ProbeDvTunnel(const uint8_t* frame, DWORD stride);
+	void WriteDvTunnelFrame(IMediaSample* pms);
+	void AppendDvSideData(IMediaSample* pms);
+	void LogDvTunnelStats();
+	void PublishDvStatus();
+	void LogDvEdidSupport(HCHANNEL hChannel) const;
 
 	void SnapTemperatureIfNecessary(LONGLONG endTime)
 	{
@@ -134,6 +145,18 @@ protected:
 	video_signal mVideoSignal{};
 	usb_capture_formats mUsbCaptureFormats{};
 	bool mHasHdrInfoFrame{false};
+	// dv tunnel
+	dv_tunnel::decoder mDvDecoder{};
+	bool mDvLocked{false};
+	std::vector<uint8_t> mDvCapture{};
+	DWORD mDvCaptureStride{0};
+	int mDvOutputWidth{0};
+	bool mDvFullRange{true};
+	bool mDvRejected{false};
+	dv_state mDvPublishedState{DV_INACTIVE};
+	uint64_t mDvStatusPublishedAt{0};
+	uint64_t mDvStatsLoggedAt{0};
+	std::unique_ptr<MediaSideDataDOVIMetadata> mDvSideData{std::make_unique<MediaSideDataDOVIMetadata>()};
 	// USB only
 	uint16_t mCaptureSessionId{0};
 	std::unique_ptr<video_capture> mVideoCapture;

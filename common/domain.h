@@ -447,6 +447,35 @@ struct hdr_status
 	double hdrMaxFALL;
 };
 
+enum dv_state : uint8_t
+{
+	DV_INACTIVE, // not a signal that could carry the tunnel
+	DV_SEARCHING, // 8-bit RGB without an HDR infoframe but no DV header found
+	DV_LOCKED,
+	DV_NO_METADATA, // locked but no usable metadata so black is output
+	DV_REJECTED // the renderer would not accept P210
+};
+
+struct dv_status
+{
+	dv_state state{DV_INACTIVE};
+	bool metadataValid{false};
+	bool fullRange{false};
+	uint8_t colourSpace{0};
+	uint16_t sourceMinPq{0};
+	uint16_t sourceMaxPq{0};
+	bool hasL1{false};
+	uint16_t l1MinPq{0};
+	uint16_t l1AvgPq{0};
+	uint16_t l1MaxPq{0};
+	size_t metadataBytes{0};
+	size_t packets{0};
+	uint64_t frames{0};
+	uint64_t rejectedFrames{0};
+	uint64_t crcFailedCopies{0};
+	uint64_t recoveredPackets{0};
+};
+
 struct video_format
 {
 	colour_format colourFormat{REC709};
@@ -465,6 +494,8 @@ struct video_format
 	DWORD lineLength{0};
 	DWORD imageSize{0};
 	bool bottomUpDib{true};
+	// experimental, the card captures BGR24 which is decoded as a Dolby Vision RGB tunnel to pixelFormat
+	bool dvTunnel{false};
 
 	void CalculateDimensions()
 	{

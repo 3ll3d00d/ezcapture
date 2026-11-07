@@ -409,6 +409,8 @@
     <ClInclude Include="bgr10_rgb48.h" />
     <ClInclude Include="capture_filter.h" />
     <ClInclude Include="capture_pin.h" />
+    <ClInclude Include="dv_tunnel.h" />
+    <ClInclude Include="dv_tunnel_lav.h" />
     <ClInclude Include="audio_capture_pin.h" />
     <ClInclude Include="mccommands.h" />
     <ClInclude Include="metric.h" />

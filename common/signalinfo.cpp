@@ -17,6 +17,8 @@
 #include "commctrl.h"
 
 #include <corecrt_wstdio.h>
+#include <algorithm>
+#include <cmath>
 #include <vector>
 
 #include "resource.h"
@@ -417,6 +419,12 @@ HRESULT CSignalInfoProp::Reload(video_output_status* payload)
 
 HRESULT CSignalInfoProp::Reload(hdr_status* payload)
 {
+	mLastHdr = *payload;
+	mHaveHdr = true;
+	if (mDvShown)
+	{
+		return S_OK;
+	}
 	WCHAR buffer[28];
 	if (payload->hdrOn)
 	{
@@ -446,6 +454,105 @@ HRESULT CSignalInfoProp::Reload(hdr_status* payload)
 		SendDlgItemMessage(m_Dlg, IDC_HDR_MAX_CLL, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 		SendDlgItemMessage(m_Dlg, IDC_HDR_MAX_FALL, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 	}
+	return S_OK;
+}
+
+namespace
+{
+	// SMPTE ST 2084, 12-bit code value to cd/m2
+	double pq_to_nits(uint16_t pq)
+	{
+		constexpr double m1 = 2610.0 / 16384.0;
+		constexpr double m2 = 2523.0 / 4096.0 * 128.0;
+		constexpr double c1 = 3424.0 / 4096.0;
+		constexpr double c2 = 2413.0 / 4096.0 * 32.0;
+		constexpr double c3 = 2392.0 / 4096.0 * 32.0;
+		const double ep = std::pow(std::clamp(pq / 4095.0, 0.0, 1.0), 1.0 / m2);
+		return 10000.0 * std::pow(std::max(ep - c1, 0.0) / (c2 - c3 * ep), 1.0 / m1);
+	}
+
+	void set_text(HWND dlg, int id, const wchar_t* text)
+	{
+		SendDlgItemMessage(dlg, id, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(text));
+	}
+}
+
+void CSignalInfoProp::ShowHdrLabels()
+{
+	set_text(m_Dlg, IDC_HDR_RED_LABEL, L"Red");
+	set_text(m_Dlg, IDC_HDR_GREEN_LABEL, L"Green");
+	set_text(m_Dlg, IDC_HDR_BLUE_LABEL, L"Blue");
+	set_text(m_Dlg, IDC_HDR_WHITE_LABEL, L"White");
+	set_text(m_Dlg, IDC_HDR_DML_LABEL, L"DML");
+	set_text(m_Dlg, IDC_HDR_MAX_FALL_LABEL, L"MaxFALL");
+	set_text(m_Dlg, IDC_HDR_MAX_CLL_LABEL, L"MaxCLL");
+}
+
+HRESULT CSignalInfoProp::Reload(dv_status* payload)
+{
+	const auto state = payload->state;
+	if (state == DV_INACTIVE || state == DV_SEARCHING)
+	{
+		set_text(m_Dlg, IDC_HDR_BOX, state == DV_SEARCHING ? L"HDR (Dolby Vision: not detected)" : L"HDR");
+		if (mDvShown)
+		{
+			mDvShown = false;
+			ShowHdrLabels();
+			if (mHaveHdr)
+			{
+				auto last = mLastHdr;
+				Reload(&last);
+			}
+		}
+		return S_OK;
+	}
+
+	mDvShown = true;
+	set_text(m_Dlg, IDC_HDR_BOX, L"Dolby Vision");
+	set_text(m_Dlg, IDC_HDR_RED_LABEL, L"Status");
+	set_text(m_Dlg, IDC_HDR_GREEN_LABEL, L"Range");
+	set_text(m_Dlg, IDC_HDR_BLUE_LABEL, L"Source");
+	set_text(m_Dlg, IDC_HDR_WHITE_LABEL, L"L1 nits");
+	set_text(m_Dlg, IDC_HDR_DML_LABEL, L"Metadata");
+	set_text(m_Dlg, IDC_HDR_MAX_FALL_LABEL, L"Rejected");
+	set_text(m_Dlg, IDC_HDR_MAX_CLL_LABEL, L"CRC");
+
+	WCHAR buffer[64];
+	set_text(m_Dlg, IDC_HDR_RED, state == DV_LOCKED
+		                             ? L"Locked"
+		                             : state == DV_NO_METADATA
+		                             ? L"Locked, no metadata"
+		                             : L"Renderer rejected P210");
+	if (payload->metadataValid)
+	{
+		_snwprintf_s(buffer, _TRUNCATE, L"%s, colour space %u", payload->fullRange ? L"Full" : L"Limited",
+		             static_cast<unsigned>(payload->colourSpace));
+		set_text(m_Dlg, IDC_HDR_GREEN, buffer);
+		_snwprintf_s(buffer, _TRUNCATE, L"%.4f - %.0f nits", pq_to_nits(payload->sourceMinPq),
+		             pq_to_nits(payload->sourceMaxPq));
+		set_text(m_Dlg, IDC_HDR_BLUE, buffer);
+	}
+	else
+	{
+		set_text(m_Dlg, IDC_HDR_GREEN, L"-");
+		set_text(m_Dlg, IDC_HDR_BLUE, L"-");
+	}
+	if (payload->metadataValid && payload->hasL1)
+	{
+		_snwprintf_s(buffer, _TRUNCATE, L"%.2f / %.1f / %.0f", pq_to_nits(payload->l1MinPq),
+		             pq_to_nits(payload->l1AvgPq), pq_to_nits(payload->l1MaxPq));
+		set_text(m_Dlg, IDC_HDR_WHITE, buffer);
+	}
+	else
+	{
+		set_text(m_Dlg, IDC_HDR_WHITE, L"-");
+	}
+	_snwprintf_s(buffer, _TRUNCATE, L"%zu bytes / %zu pkts", payload->metadataBytes, payload->packets);
+	set_text(m_Dlg, IDC_HDR_DML, buffer);
+	_snwprintf_s(buffer, _TRUNCATE, L"%llu of %llu", payload->rejectedFrames, payload->frames);
+	set_text(m_Dlg, IDC_HDR_MAX_FALL, buffer);
+	_snwprintf_s(buffer, _TRUNCATE, L"%llu bad, %llu fixed", payload->crcFailedCopies, payload->recoveredPackets);
+	set_text(m_Dlg, IDC_HDR_MAX_CLL, buffer);
 	return S_OK;
 }
 
