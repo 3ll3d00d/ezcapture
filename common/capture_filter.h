@@ -313,6 +313,12 @@ private:
 	static void ReleaseQuillBackend();
 
 	bool mQuillBackendAcquired{false};
+	#ifndef NO_LOGGING
+	void AcquireLogging(const std::string& pLogPrefix);
+	void AcquireAudioLatencyLogger(const std::string& pLogPrefix);
+	static void ReleaseLogging();
+	bool mLoggingAcquired{false};
+	#endif
 
 	void CaptureLatency(const metric& metric, latency_stats& lat, const std::string& desc, const std::string& src)
 	{
