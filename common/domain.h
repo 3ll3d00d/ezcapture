@@ -224,35 +224,39 @@ struct pixel_format
 	}
 };
 
+// Deliberately not inline: pixel_format is not constexpr (std::string) so these are dynamically initialised and
+// tables built from them (all_pixel_formats, the mw_domain.h matrices) must be initialised after them. That order is
+// only guaranteed within one translation unit and MSVC, with /GL, ran the initialiser of an inline variable from
+// another TU after the tables had copied it, so each TU gets its own copy instead.
 // magewell
-const inline pixel_format NV12{pixel_format::NV12, 'N', 'V', '1', '2', 8, 12, false, YUV_420};
-const inline pixel_format NV16{pixel_format::NV16, 'N', 'V', '1', '6', 8, 16, false, YUV_422};
-const inline pixel_format P010{pixel_format::P010, 'P', '0', '1', '0', 10, 24, false, YUV_420};
-const inline pixel_format P210{pixel_format::P210, 'P', '2', '1', '0', 10, 32, false, YUV_422};
-const inline pixel_format AYUV{pixel_format::AYUV, 'A', 'Y', 'U', 'V', 8, 32, false, YUV_444};
-const inline pixel_format BGR24{pixel_format::BGR24, 'B', 'G', 'R', ' ', 8, 24, true, RGB_444};
-const inline pixel_format BGR10{pixel_format::BGR10, 'B', 'G', '1', '0', 10, 32, true, RGB_444};
+const pixel_format NV12{pixel_format::NV12, 'N', 'V', '1', '2', 8, 12, false, YUV_420};
+const pixel_format NV16{pixel_format::NV16, 'N', 'V', '1', '6', 8, 16, false, YUV_422};
+const pixel_format P010{pixel_format::P010, 'P', '0', '1', '0', 10, 24, false, YUV_420};
+const pixel_format P210{pixel_format::P210, 'P', '2', '1', '0', 10, 32, false, YUV_422};
+const pixel_format AYUV{pixel_format::AYUV, 'A', 'Y', 'U', 'V', 8, 32, false, YUV_444};
+const pixel_format BGR24{pixel_format::BGR24, 'B', 'G', 'R', ' ', 8, 24, true, RGB_444};
+const pixel_format BGR10{pixel_format::BGR10, 'B', 'G', '1', '0', 10, 32, true, RGB_444};
 // magewell usb
-const inline pixel_format YUY2{pixel_format::YUY2, 'Y', 'U', 'Y', '2', 8, 16, false, YUV_422};
-const inline pixel_format UYVY{pixel_format::UYVY, 'U', 'Y', 'V', 'Y', 8, 16, false, YUV_422};
-const inline pixel_format Y210{pixel_format::Y210, 'Y', '2', '1', '0', 10, 16, false, YUV_422};
+const pixel_format YUY2{pixel_format::YUY2, 'Y', 'U', 'Y', '2', 8, 16, false, YUV_422};
+const pixel_format UYVY{pixel_format::UYVY, 'U', 'Y', 'V', 'Y', 8, 16, false, YUV_422};
+const pixel_format Y210{pixel_format::Y210, 'Y', '2', '1', '0', 10, 16, false, YUV_422};
 // blackmagic, generally require conversion due to lack of native renderer support
-const inline pixel_format YUV2{pixel_format::YUV2, '2', 'V', 'U', 'Y', 8, 16, false, YUV_422};
-const inline pixel_format V210{pixel_format::V210, 'v', '2', '1', '0', 10, 16, false, YUV_422, 128};
-const inline pixel_format AY10{pixel_format::AY10, 'A', 'y', '1', '0', 10, 32, false, YUV_422, 256};
-const inline pixel_format ARGB{pixel_format::ARGB, 'A', 'R', 'G', 'B', 8, 32, true, RGB_444};
-const inline pixel_format BGRA{pixel_format::BGRA, 'B', 'G', 'R', 'A', 8, 32, true, RGB_444};
-const inline pixel_format RGBA{pixel_format::RGBA, 'R', 'G', 'B', 'A', 8, 32, true, RGB_444};
-const inline pixel_format R210{pixel_format::R210, 'r', '2', '1', '0', 10, 32, false, RGB_444, 256};
-const inline pixel_format R12B{pixel_format::R12B, 'R', '1', '2', 'B', 12, 36, false, RGB_444};
-const inline pixel_format R12L{pixel_format::R12L, 'R', '1', '2', 'L', 12, 36, false, RGB_444};
-const inline pixel_format R10L{pixel_format::R10L, 'R', '1', '0', 'l', 10, 32, false, RGB_444, 256};
-const inline pixel_format R10B{pixel_format::R10B, 'R', '1', '0', 'b', 10, 32, false, RGB_444, 256};
+const pixel_format YUV2{pixel_format::YUV2, '2', 'V', 'U', 'Y', 8, 16, false, YUV_422};
+const pixel_format V210{pixel_format::V210, 'v', '2', '1', '0', 10, 16, false, YUV_422, 128};
+const pixel_format AY10{pixel_format::AY10, 'A', 'y', '1', '0', 10, 32, false, YUV_422, 256};
+const pixel_format ARGB{pixel_format::ARGB, 'A', 'R', 'G', 'B', 8, 32, true, RGB_444};
+const pixel_format BGRA{pixel_format::BGRA, 'B', 'G', 'R', 'A', 8, 32, true, RGB_444};
+const pixel_format RGBA{pixel_format::RGBA, 'R', 'G', 'B', 'A', 8, 32, true, RGB_444};
+const pixel_format R210{pixel_format::R210, 'r', '2', '1', '0', 10, 32, false, RGB_444, 256};
+const pixel_format R12B{pixel_format::R12B, 'R', '1', '2', 'B', 12, 36, false, RGB_444};
+const pixel_format R12L{pixel_format::R12L, 'R', '1', '2', 'L', 12, 36, false, RGB_444};
+const pixel_format R10L{pixel_format::R10L, 'R', '1', '0', 'l', 10, 32, false, RGB_444, 256};
+const pixel_format R10B{pixel_format::R10B, 'R', '1', '0', 'b', 10, 32, false, RGB_444, 256};
 // jrvr
-const inline pixel_format YV16{pixel_format::YV16, 'Y', 'V', '1', '6', 8, 16, false, YUV_422};
-const inline pixel_format RGB48{pixel_format::RGB48, 'R', 'G', 'B', '0', 16, 48, false, RGB_444};
+const pixel_format YV16{pixel_format::YV16, 'Y', 'V', '1', '6', 8, 16, false, YUV_422};
+const pixel_format RGB48{pixel_format::RGB48, 'R', 'G', 'B', '0', 16, 48, false, RGB_444};
 // indicates not supported
-const inline pixel_format NA{pixel_format::FAIL, 'x', 'x', 'x', 'x', 0, 0, false, RGB_444};
+const pixel_format NA{pixel_format::FAIL, 'x', 'x', 'x', 'x', 0, 0, false, RGB_444};
 
 const std::array all_pixel_formats = {
 	NV12,
