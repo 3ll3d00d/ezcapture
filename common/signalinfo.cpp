@@ -39,21 +39,21 @@ static std::string wstring_to_string(const std::wstring& input)
 		auto empty = std::string{};
 		return empty;
 	}
-	int size = WideCharToMultiByte(CP_ACP, 0, input.c_str(), input.size(), nullptr, 0, nullptr, nullptr);
+	const auto inputLength = static_cast<int>(input.size());
+	// a multibyte code page can need more bytes than there are wide chars so size the output from this
+	const int size = WideCharToMultiByte(CP_ACP, 0, input.c_str(), inputLength, nullptr, 0, nullptr, nullptr);
 	if (size <= 0)
 	{
 		auto empty = std::string{};
 		return empty;
 	}
-	std::vector<char> outChars(input.length() + 1);
-	if (WideCharToMultiByte(CP_ACP, 0, input.c_str(), input.size(), outChars.data(), size, nullptr, nullptr) <= 0)
+	std::string output(static_cast<size_t>(size), '\0');
+	if (WideCharToMultiByte(CP_ACP, 0, input.c_str(), inputLength, output.data(), size, nullptr, nullptr) <= 0)
 	{
-		outChars.clear();
 		auto empty = std::string{};
 		return empty;
 	}
-	outChars[size] = '\0';
-	return {outChars.begin(), outChars.end()};
+	return output;
 }
 
 CUnknown* CSignalInfoProp::CreateInstance(LPUNKNOWN punk, HRESULT* phr)
