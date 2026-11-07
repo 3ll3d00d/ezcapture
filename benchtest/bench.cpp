@@ -888,9 +888,9 @@ namespace
 				// r210 is simply BGR once swapped to little endian
 				const auto srcPixel = _byteswap_ulong(srcPixelBE[x]);
 
-				const uint16_t red_16 = (srcPixel & 0x3FF00000) >> 14;
-				const uint16_t green_16 = (srcPixel & 0xFFC00) >> 4;
-				const uint16_t blue_16 = (srcPixel & 0x3FF) << 6;
+				const uint16_t red_16 = static_cast<uint16_t>((srcPixel & 0x3FF00000) >> 14);
+				const uint16_t green_16 = static_cast<uint16_t>((srcPixel & 0xFFC00) >> 4);
+				const uint16_t blue_16 = static_cast<uint16_t>((srcPixel & 0x3FF) << 6);
 
 				dstPix[0] = red_16;
 				dstPix[1] = green_16;
@@ -933,18 +933,18 @@ namespace
 				__m128i pixelBlockLE = _mm_shuffle_epi8(pixelBlockBE, pixelEndianSwap);
 				const uint32_t* p = reinterpret_cast<const uint32_t*>(&pixelBlockLE);
 
-				dstPix[0] = (p[0] & 0x3FF00000) >> 14; // red
-				dstPix[1] = (p[0] & 0xFFC00) >> 4; // green
-				dstPix[2] = (p[0] & 0x3FF) << 6; // blue
-				dstPix[3] = (p[1] & 0x3FF00000) >> 14;
-				dstPix[4] = (p[1] & 0xFFC00) >> 4;
-				dstPix[5] = (p[1] & 0x3FF) << 6;
-				dstPix[6] = (p[2] & 0x3FF00000) >> 14;
-				dstPix[7] = (p[2] & 0xFFC00) >> 4;
-				dstPix[8] = (p[2] & 0x3FF) << 6;
-				dstPix[9] = (p[3] & 0x3FF00000) >> 14;
-				dstPix[10] = (p[3] & 0xFFC00) >> 4;
-				dstPix[11] = (p[3] & 0x3FF) << 6;
+				dstPix[0] = static_cast<uint16_t>((p[0] & 0x3FF00000) >> 14); // red
+				dstPix[1] = static_cast<uint16_t>((p[0] & 0xFFC00) >> 4); // green
+				dstPix[2] = static_cast<uint16_t>((p[0] & 0x3FF) << 6); // blue
+				dstPix[3] = static_cast<uint16_t>((p[1] & 0x3FF00000) >> 14);
+				dstPix[4] = static_cast<uint16_t>((p[1] & 0xFFC00) >> 4);
+				dstPix[5] = static_cast<uint16_t>((p[1] & 0x3FF) << 6);
+				dstPix[6] = static_cast<uint16_t>((p[2] & 0x3FF00000) >> 14);
+				dstPix[7] = static_cast<uint16_t>((p[2] & 0xFFC00) >> 4);
+				dstPix[8] = static_cast<uint16_t>((p[2] & 0x3FF) << 6);
+				dstPix[9] = static_cast<uint16_t>((p[3] & 0x3FF00000) >> 14);
+				dstPix[10] = static_cast<uint16_t>((p[3] & 0xFFC00) >> 4);
+				dstPix[11] = static_cast<uint16_t>((p[3] & 0x3FF) << 6);
 				dstPix += 12;
 				srcPixelBE += 4;
 			}
@@ -980,7 +980,7 @@ namespace
 		const int dstPadding = padWidth * 6;
 
 		// process in 4 pixel (128 bit) blocks which produces 192 bits of output
-		const int blocks = width / 4;
+		const int blocks = static_cast<int>(width / 4);
 		*t1 = std::chrono::high_resolution_clock::now();
 		for (size_t y = 0; y < height; ++y)
 		{
@@ -1033,7 +1033,7 @@ namespace
 		const __m256i shift_R_B = _mm256_set1_epi32(0x00040040);
 		const __m256i mask_G = _mm256_set1_epi32(0x000FFC00);
 
-		const int blocks = width / 8;
+		const int blocks = static_cast<int>(width / 8);
 		const int dstPadding = padWidth * 6;
 		*t1 = std::chrono::high_resolution_clock::now();
 		for (size_t y = 0; y < height; ++y)
