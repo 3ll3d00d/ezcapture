@@ -22,11 +22,14 @@
 #endif
 
 #include <array>
+#include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <memory>
 #include <mutex>
-#include <vector>
 #include <string>
+#include <thread>
+#include <vector>
 
 #include "logging.h"
 
@@ -43,6 +46,7 @@ struct audio_output_status;
 inline constexpr auto metricsEnabledRegKey = L"prometheusEnabled";
 inline constexpr auto metricsPortRegKey = L"prometheusPort";
 inline constexpr auto metricsBindAddressRegKey = L"prometheusBindAddress";
+inline constexpr auto metricsSignalRetentionRegKey = L"prometheusSignalRetention";
 
 inline constexpr std::string_view frameLatencyMetricName{"ezcapture_frame_latency_seconds"};
 inline constexpr std::string_view frameLatencyWindowMetricName{"ezcapture_frame_latency_window_seconds"};
@@ -59,7 +63,27 @@ struct metrics_config
 	bool enabled{false};
 	uint16_t port{0};
 	std::string bindAddress{"127.0.0.1"};
+	// how long the series of a signal that is no longer present are kept so a signal that drops out
+	// and comes back does not churn the exported series
+	std::chrono::seconds signalRetention{60};
 };
+
+/*
+ * Signal ids, a compact and stable description of a signal built only from a fixed set of known values
+ * (anything else is reported as "other") so the number of distinct ids stays small. Each is a "_"
+ * separated list of fields so they can be split into separate labels on ingest if required.
+ *
+ * video input:  <width>x<height>_<fps>_<sampling>_<bit depth>, e.g. 3840x2160_23.976_yuv422_12
+ * video output: <width>x<height>_<fps>_<pixel format>,        e.g. 3840x2160_23.976_p210
+ * audio input:  <pcm|bitstream>_<sample rate>_<bit depth>_<channel allocation>, e.g. pcm_48k_24_0x13
+ * audio output: <codec>_<sample rate>_<bit depth>_<channels>, e.g. pcm_48k_24_8ch
+ *
+ * "none" means there is no signal (input) or no format has been agreed yet (output).
+ */
+std::string video_input_signal_id(const video_input_status& in);
+std::string video_output_signal_id(const video_output_status& out);
+std::string audio_input_signal_id(const audio_input_status& in);
+std::string audio_output_signal_id(const audio_output_status& out);
 
 enum class metric_stream : uint8_t
 {
@@ -84,15 +108,20 @@ public:
 
 	/**
 	 * Publishes to an existing quill::PrometheusSink, e.g. one without an exposer in tests.
+	 * @param signalRetention how long the series of a signal that is no longer current are kept.
+	 * @param housekeeping false to not start the thread that removes expired signals, i.e. the caller
+	 *                     calls expire() itself.
 	 * @return an empty string on success, otherwise a description of the failure.
 	 */
-	std::string start(const std::string& filter, std::shared_ptr<quill::Sink> sink);
+	std::string start(const std::string& filter, std::shared_ptr<quill::Sink> sink,
+	                  std::chrono::seconds signalRetention = std::chrono::seconds{60}, bool housekeeping = true);
 
 	// Removes the metrics logger, must be called while the quill backend is still running.
 	void stop();
 
 	bool active() const
 	{
+		std::lock_guard lock{mLock};
 		return mLogger != nullptr;
 	}
 
@@ -116,18 +145,10 @@ public:
 	// called whenever the audio input or output may have changed
 	void on_audio_signal(const audio_input_status& in, const audio_output_status& out);
 
+	// removes the series of any signal that has not been current for at least the retention period
+	void expire(std::chrono::steady_clock::time_point now);
+
 private:
-	// an "info" style series, always 1, whose labels describe the current state; the previous series
-	// is removed when the labels change so only the current state is ever exported
-	struct info_series
-	{
-		std::string key{};
-		const quill::MetricMetadata* meta{nullptr};
-	};
-
-	void set_info(info_series& info, std::string_view name, const std::vector<quill::MetricLabel>& labels);
-	void clear_info(info_series& info);
-
 	struct stage_series
 	{
 		std::string stage{};
@@ -137,20 +158,44 @@ private:
 		const quill::MetricMetadata* max{nullptr};
 	};
 
-	using stream_series = std::array<stage_series, 3>;
+	// every series published while a particular in/out signal pair was current
+	struct signal_series
+	{
+		std::string inSig{};
+		std::string outSig{};
+		// the info series, 1 while current else 0, its labels carry the detail behind the ids
+		const quill::MetricMetadata* info{nullptr};
+		std::array<stage_series, 3> stages{};
+		const quill::MetricMetadata* fps{nullptr};
+		bool hasFrames{false};
+		std::chrono::steady_clock::time_point lastCurrent{};
+	};
 
-	stage_series* resolve(metric_stream stream, size_t slot, const std::string& stage);
+	struct stream_state
+	{
+		std::vector<std::unique_ptr<signal_series>> signals{};
+		signal_series* current{nullptr};
+	};
+
+	void set_signal(metric_stream stream, std::string inSig, std::string outSig,
+	                std::vector<quill::MetricLabel> details);
+	signal_series& current_signal(metric_stream stream);
+	stage_series* resolve(signal_series& signal, metric_stream stream, size_t slot, const std::string& stage);
+	void retire(signal_series& signal);
+	void unregister(const quill::MetricMetadata* meta);
+	std::vector<quill::MetricLabel> series_labels(metric_stream stream, const signal_series& signal) const;
 
 	std::string mFilter{};
 	std::string mEndpoint{};
 	CustomLogger* mLogger{nullptr};
 	std::shared_ptr<quill::Sink> mSink{};
-	std::array<stream_series, 2> mStreams{};
-	const quill::MetricMetadata* mFps{nullptr};
-	std::mutex mInfoLock{};
-	info_series mVideoInfo{};
-	info_series mAudioInfo{};
+	std::chrono::seconds mRetention{60};
+	mutable std::mutex mLock{};
+	std::array<stream_state, 2> mStreams{};
 	std::array<const quill::MetricMetadata*, 4> mHdr{};
+	std::mutex mWakeLock{};
+	std::condition_variable_any mWake{};
+	std::jthread mHousekeeper{};
 };
 
 #endif

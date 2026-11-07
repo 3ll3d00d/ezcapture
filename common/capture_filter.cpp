@@ -190,6 +190,10 @@ capture_filter::capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSI
 				mMetricsConfig.bindAddress = std::move(addr);
 			}
 		}
+		if (auto res = key.TryGetDwordValue(metricsSignalRetentionRegKey))
+		{
+			mMetricsConfig.signalRetention = std::chrono::seconds{res.GetValue()};
+		}
 		#ifndef NO_LOGGING
 		LOG_INFO(mLogData.logger,
 		         "[{}] Loaded properties from registry [hdrProfile:{}, sdrProfile: {}, profileSwitch: {}, rateSwitch: {}, highPriority: {}, audio: {}]",
