@@ -12,8 +12,8 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-#ifndef NO_QUILL
 #include "quill/Backend.h"
+#ifndef NO_LOGGING
 #include "quill/Frontend.h"
 #include "quill/LogMacros.h"
 #include "quill/Logger.h"
@@ -21,6 +21,7 @@
 #include <string_view>
 #include <utility>
 #endif
+#include <mutex>
 
 #include "capture_filter.h"
 #include "runtime_aware.h"
@@ -33,19 +34,61 @@
 #define MIN_LOG_LEVEL quill::LogLevel::TraceL2
 #endif
 
+namespace
+{
+	std::mutex quillBackendLock;
+	uint32_t quillBackendUsers{0};
+
+	std::string to_narrow(const std::wstring& in)
+	{
+		std::string out;
+		out.reserve(in.size());
+		for (const auto c : in)
+		{
+			out.push_back(c < 0x80 ? static_cast<char>(c) : '?');
+		}
+		return out;
+	}
+}
+
+void capture_filter::AcquireQuillBackend(const std::string& logPrefix)
+{
+	std::lock_guard lock{quillBackendLock};
+	if (quillBackendUsers++ == 0)
+	{
+		quill::BackendOptions bopt;
+		bopt.thread_name = "QuillBackend_" + logPrefix;
+		#ifdef NO_LOGGING
+		// only metric samples to process and those are scraped every few seconds at most
+		bopt.sleep_duration = std::chrono::milliseconds(50);
+		#else
+		bopt.enable_yield_when_idle = true;
+		bopt.sleep_duration = std::chrono::nanoseconds(0);
+		#endif
+		quill::Backend::start(bopt);
+	}
+}
+
+void capture_filter::ReleaseQuillBackend()
+{
+	std::lock_guard lock{quillBackendLock};
+	if (quillBackendUsers > 0 && --quillBackendUsers == 0)
+	{
+		quill::Backend::stop();
+	}
+}
+
 capture_filter::capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID clsid, const std::string& pLogPrefix,
-                               std::wstring pRegKeyBase) :
+                               std::wstring pRegKeyBase, uint16_t pDefaultMetricsPort) :
 	CSource(pName, punk, clsid),
 	mRegKeyBase(ROOT_REG_KEY + std::move(pRegKeyBase))
 {
 	mLogData.prefix = pLogPrefix;
+	mMetricsConfig.port = pDefaultMetricsPort;
 
-	#ifndef NO_QUILL
-	quill::BackendOptions bopt;
-	bopt.thread_name = "QuillBackend_" + pLogPrefix;
-	bopt.enable_yield_when_idle = true;
-	bopt.sleep_duration = std::chrono::nanoseconds(0);
-	quill::Backend::start(bopt);
+	#ifndef NO_LOGGING
+	AcquireQuillBackend(pLogPrefix);
+	mQuillBackendAcquired = true;
 	auto now = std::chrono::system_clock::now();
 	auto epochSeconds = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
 	auto filterFileSink = CustomFrontend::create_or_get_sink<quill::RotatingFileSink>(
@@ -97,7 +140,7 @@ capture_filter::capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSI
 
 	auto monitorConfig = mode_switch::GetAllSupportedRefreshRates();
 	mRefreshRates = std::move(monitorConfig.refreshRates);
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	LOG_INFO(mLogData.logger, "[{}] Initialised filter v{}", mLogData.prefix, EZ_VERSION_STR);
 	LOG_INFO(mLogData.logger, "[{}] Monitor {} supported {} ignored {}", mLogData.prefix,
 	         monitorConfig.name, monitorConfig.supportedModes, monitorConfig.ignoredModes);
@@ -129,7 +172,25 @@ capture_filter::capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSI
 		{
 			mAudioCaptureEnabled = res.GetValue() == 1;
 		}
-		#ifndef NO_QUILL
+		if (auto res = key.TryGetDwordValue(metricsEnabledRegKey))
+		{
+			mMetricsConfig.enabled = res.GetValue() == 1;
+		}
+		if (auto res = key.TryGetDwordValue(metricsPortRegKey))
+		{
+			if (const auto port = res.GetValue(); port > 0 && port <= 65535)
+			{
+				mMetricsConfig.port = static_cast<uint16_t>(port);
+			}
+		}
+		if (auto res = key.TryGetStringValue(metricsBindAddressRegKey))
+		{
+			if (auto addr = to_narrow(res.GetValue()); !addr.empty())
+			{
+				mMetricsConfig.bindAddress = std::move(addr);
+			}
+		}
+		#ifndef NO_LOGGING
 		LOG_INFO(mLogData.logger,
 		         "[{}] Loaded properties from registry [hdrProfile:{}, sdrProfile: {}, profileSwitch: {}, rateSwitch: {}, highPriority: {}, audio: {}]",
 		         mLogData.prefix, mHdrProfile, mSdrProfile, mHdrProfileSwitchEnabled, mRefreshRateSwitchEnabled,
@@ -138,7 +199,7 @@ capture_filter::capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSI
 
 		if (mAudioCaptureEnabled)
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			auto audioLatencySink = CustomFrontend::create_or_get_sink<quill::RotatingFileSink>(
 				(std::filesystem::temp_directory_path() / std::format("{}_audio_{}.csv", pLogPrefix, epochSeconds)).string(),
 				[]()
@@ -162,6 +223,47 @@ capture_filter::capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSI
 			mLogData.audioLat->set_log_level(MIN_LOG_LEVEL);
 			#endif
 		}
+	}
+
+	if (mMetricsConfig.enabled)
+	{
+		if (!mQuillBackendAcquired)
+		{
+			AcquireQuillBackend(pLogPrefix);
+			mQuillBackendAcquired = true;
+		}
+		if (auto err = mMetrics.start(pLogPrefix, mMetricsConfig); err.empty())
+		{
+			mMetricsStatus = "Serving " + mMetrics.endpoint();
+			#ifndef NO_LOGGING
+			LOG_INFO(mLogData.logger, "[{}] Prometheus metrics available at {}", mLogData.prefix, mMetrics.endpoint());
+			#endif
+		}
+		else
+		{
+			mMetricsStatus = err;
+			#ifndef NO_LOGGING
+			LOG_ERROR(mLogData.logger, "[{}] Prometheus metrics are unavailable: {}", mLogData.prefix, err);
+			#else
+			ReleaseQuillBackend();
+			mQuillBackendAcquired = false;
+			#endif
+		}
+	}
+}
+
+capture_filter::~capture_filter()
+{
+	mMetrics.stop();
+	#ifndef NO_LOGGING
+	LOG_INFO(mLogData.logger, "[{}] Shutting down logging system", mLogData.prefix);
+	quill::Frontend::remove_logger(mLogData.logger);
+	quill::Frontend::remove_logger(mLogData.audioLat);
+	quill::Frontend::remove_logger(mLogData.videoLat);
+	#endif
+	if (mQuillBackendAcquired)
+	{
+		ReleaseQuillBackend();
 	}
 }
 
@@ -240,7 +342,7 @@ STDMETHODIMP capture_filter::SetSyncSource(IReferenceClock* pClock)
 			stream->SetSyncSource(pClock);
 		else
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_ERROR(mLogData.logger, "[{}] pin {} is not a CBaseStreamControl!", mLogData.prefix, i);
 			#endif
 		}
@@ -268,7 +370,7 @@ STDMETHODIMP capture_filter::Run(REFERENCE_TIME tStart)
 	GetReferenceTime(&rt);
 	int64_t hrt = high_res_now();
 
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	LOG_INFO(mLogData.logger, "[{}] Filter has started running at {} / {}", mLogData.prefix, rt, hrt);
 	#endif
 
@@ -297,7 +399,7 @@ STDMETHODIMP capture_filter::Stop()
 	REFERENCE_TIME rt;
 	GetReferenceTime(&rt);
 
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	LOG_INFO(mLogData.logger, "[{}] Filter has stopped running at {}", mLogData.prefix, rt);
 	#endif
 
@@ -402,6 +504,44 @@ HRESULT capture_filter::SetAudioCaptureEnabled(bool enabled)
 				mAudioCaptureEnabled = enabled;
 				return S_OK;
 			}
+		}
+	}
+	return E_FAIL;
+}
+
+HRESULT capture_filter::SetMetricsEnabled(bool enabled)
+{
+	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
+	{
+		if (const auto res = key.TrySetDwordValue(metricsEnabledRegKey, enabled ? 1 : 0))
+		{
+			if (mMetricsConfig.enabled != enabled)
+			{
+				mMetricsConfig.enabled = enabled;
+				mMetricsStatus = "Applies when the filter is next loaded";
+			}
+			return S_OK;
+		}
+	}
+	return E_FAIL;
+}
+
+HRESULT capture_filter::SetMetricsPort(DWORD port)
+{
+	if (port == 0 || port > 65535)
+	{
+		return E_INVALIDARG;
+	}
+	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
+	{
+		if (const auto res = key.TrySetDwordValue(metricsPortRegKey, port))
+		{
+			if (mMetricsConfig.port != port)
+			{
+				mMetricsConfig.port = static_cast<uint16_t>(port);
+				mMetricsStatus = "Applies when the filter is next loaded";
+			}
+			return S_OK;
 		}
 	}
 	return E_FAIL;
@@ -560,6 +700,8 @@ void capture_filter::OnVideoFormatLoaded(video_format* vf)
 		break;
 	}
 
+	PublishVideoSignalMetrics();
+
 	if (mInfoCallback != nullptr)
 	{
 		mInfoCallback->Reload(&mVideoOutputStatus);
@@ -589,6 +731,8 @@ void capture_filter::OnHdrUpdated(MediaSideDataHDR* hdr, MediaSideDataHDRContent
 		mHdrStatus.hdrMaxFALL = light->MaxFALL;
 	}
 
+	PublishVideoSignalMetrics();
+
 	if (mInfoCallback != nullptr)
 	{
 		mInfoCallback->Reload(&mHdrStatus);
@@ -616,6 +760,8 @@ void capture_filter::OnAudioFormatLoaded(audio_format* af)
 	}
 	mAudioOutputStatus.audioOutChannelCount = af->outputChannelCount;
 	mAudioOutputStatus.audioOutDataBurstSize = af->dataBurstSize;
+
+	PublishAudioSignalMetrics();
 
 	if (mInfoCallback != nullptr)
 	{

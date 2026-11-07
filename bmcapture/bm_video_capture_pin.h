@@ -69,7 +69,7 @@ private:
 		case Y210_P210:
 		case UYVY_YV16:
 		case BGR10_BGR48:
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_ERROR(mLogData.logger, "[{}] Conversion strategy {} is not supported by bmcapture",
 				mLogData.prefix, to_string(mFrameWriterStrategy));
 			#endif

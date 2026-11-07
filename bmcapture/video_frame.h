@@ -41,7 +41,7 @@ public:
 	{
 		frame->QueryInterface(IID_IDeckLinkVideoBuffer, reinterpret_cast<void**>(&mBuffer));
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		// hack to get current ref count
 		frame->AddRef();
 		auto ct = frame->Release();
@@ -54,7 +54,7 @@ public:
 	~video_frame()
 	{
 		auto ct = mBuffer->Release();
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_TRACE_L3(mLogData.logger, "[{}] VideoFrame Access (del) {} {}", mLogData.prefix, mFrameIndex, ct);
 		#endif
 	}
@@ -65,7 +65,7 @@ public:
 		auto hr = dst->GetPointer(&out);
 		if (FAILED(hr))
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_WARNING(mLogData.logger, "[{}] Unable to fill buffer , can't get pointer to output buffer [{:#08x}]",
 			            mLogData.prefix, hr);
 			#endif

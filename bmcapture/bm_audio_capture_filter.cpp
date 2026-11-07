@@ -46,7 +46,7 @@ HRESULT blackmagic_audio_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample,
 	{
 		if (CheckStreamState(nullptr) == STREAM_DISCARDING)
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_TRACE_L1(mLogData.logger, "[{}] Stream is discarding", mLogData.prefix);
 			#endif
 
@@ -55,7 +55,7 @@ HRESULT blackmagic_audio_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample,
 
 		if (IsStopped())
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_TRACE_L1(mLogData.logger, "[{}] Stream has not started, retry after backoff", mLogData.prefix);
 			#endif
 
@@ -69,7 +69,7 @@ HRESULT blackmagic_audio_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample,
 		// unknown, try again
 		if (dwRet == WAIT_FAILED)
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_TRACE_L1(mLogData.logger, "[{}] Wait for frame failed, retrying", mLogData.prefix);
 			#endif
 			continue;
@@ -81,7 +81,7 @@ HRESULT blackmagic_audio_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample,
 			auto newAudioFormat = mCurrentFrame->GetFormat();
 			if (newAudioFormat.outputChannelCount == 0)
 			{
-				#ifndef NO_QUILL
+				#ifndef NO_LOGGING
 				LOG_TRACE_L1(mLogData.logger, "[{}] No output channels in signal, retry after backoff",
 				             mLogData.prefix);
 				#endif
@@ -95,7 +95,7 @@ HRESULT blackmagic_audio_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample,
 			// detect format changes
 			if (ShouldChangeMediaType(&newAudioFormat))
 			{
-				#ifndef NO_QUILL
+				#ifndef NO_LOGGING
 				LOG_WARNING(mLogData.logger, "[{}] AudioFormat changed! Attempting to reconnect", mLogData.prefix);
 				#endif
 
@@ -104,7 +104,7 @@ HRESULT blackmagic_audio_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample,
 				auto hr = DoChangeMediaType(&proposedMediaType, &newAudioFormat);
 				if (FAILED(hr))
 				{
-					#ifndef NO_QUILL
+					#ifndef NO_LOGGING
 					LOG_WARNING(mLogData.logger,
 					            "[{}] AudioFormat changed but not able to reconnect ({:#08x}) retry after backoff",
 					            mLogData.prefix, static_cast<unsigned long>(hr));
@@ -129,7 +129,7 @@ HRESULT blackmagic_audio_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample,
 			}
 			else
 			{
-				#ifndef NO_QUILL
+				#ifndef NO_LOGGING
 				LOG_WARNING(mLogData.logger,
 				            "[{}] Audio frame buffered but unable to get delivery buffer, retry after backoff",
 				            mLogData.prefix);
@@ -152,7 +152,7 @@ HRESULT blackmagic_audio_capture_pin::OnThreadCreate()
 		BumpThreadPriority();
 	}
 
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	CustomFrontend::preallocate();
 
 	LOG_INFO(mLogData.logger, "[{}] blackmagic_audio_capture_pin::OnThreadCreate", mLogData.prefix);
@@ -167,7 +167,7 @@ HRESULT blackmagic_audio_capture_pin::FillBuffer(IMediaSample* pms)
 
 	if (CheckStreamState(nullptr) == STREAM_DISCARDING)
 	{
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_TRACE_L1(mLogData.logger, "[{}] Stream is discarding", mLogData.prefix);
 		#endif
 
@@ -187,7 +187,7 @@ HRESULT blackmagic_audio_capture_pin::FillBuffer(IMediaSample* pms)
 	long maxSize = pms->GetSize();
 	if (size > maxSize)
 	{
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_WARNING(mLogData.logger, "[{}] Audio frame is larger than expected {} vs {}", mLogData.prefix, size,
 		            maxSize);
 		#endif
@@ -291,7 +291,7 @@ HRESULT blackmagic_audio_capture_pin::FillBuffer(IMediaSample* pms)
 	mFrameTs.end();
 	RecordLatency();
 
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	if (!mLoggedLatencyHeader)
 	{
 		LOG_TRACE_L1(mLogData.audioLat,
@@ -330,7 +330,7 @@ HRESULT blackmagic_audio_capture_pin::FillBuffer(IMediaSample* pms)
 
 HRESULT blackmagic_audio_capture_pin::DoChangeMediaType(const CMediaType* pmt, const audio_format* newAudioFormat)
 {
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	LOG_WARNING(mLogData.logger, "[{}] Proposing new audio format Fs: {} Bits: {} Channels: {} Codec: {}",
 	            mLogData.prefix,
 	            newAudioFormat->fs, newAudioFormat->bitDepth, newAudioFormat->outputChannelCount,
@@ -360,7 +360,7 @@ bool blackmagic_audio_capture_pin::ProposeBuffers(ALLOCATOR_PROPERTIES* pPropert
 
 void blackmagic_audio_capture_pin::DoThreadDestroy()
 {
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	LOG_INFO(mLogData.logger, "[{}] blackmagic_audio_capture_pin::DoThreadDestroy", mLogData.prefix);
 	#endif
 

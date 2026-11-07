@@ -19,7 +19,7 @@
 #include "conversion_kernels.h"
 #include <span>
 
-#ifndef NO_QUILL
+#ifndef NO_LOGGING
 #include <quill/StopWatch.h>
 #endif
 
@@ -63,13 +63,13 @@ public:
 		uint8_t* vPlane = outSpan.subspan(ySize, uvSize).data();
 		uint8_t* uPlane = outSpan.subspan(ySize + uvSize, uvSize).data();
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		const quill::StopWatchTsc swt;
 		#endif
 
 		conversion::uyvy_to_yv16(sourceData, yPlane, uPlane, vPlane, width, srcFrame->GetHeight(), this->mPixelsToPad);
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		auto execTime = swt.elapsed_as<std::chrono::microseconds>().count() / 1000.0;
 		LOG_TRACE_L3(this->mLogData.logger, "[{}] Converted frame to YV16 in {:.3f} ms", this->mLogData.prefix, execTime);
 		#endif

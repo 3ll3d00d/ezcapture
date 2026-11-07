@@ -203,7 +203,7 @@ bool audio_capture_pin::ShouldChangeMediaType(audio_format* newAudioFormat)
 	{
 		reconnect = true;
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_INFO(mLogData.logger, "[{}] Input channel count change {} to {}", mLogData.prefix,
 			mAudioFormat.inputChannelCount,
 			newAudioFormat->inputChannelCount);
@@ -213,7 +213,7 @@ bool audio_capture_pin::ShouldChangeMediaType(audio_format* newAudioFormat)
 	{
 		reconnect = true;
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_INFO(mLogData.logger, "[{}] Output channel count change {} to {}", mLogData.prefix,
 			mAudioFormat.outputChannelCount,
 			newAudioFormat->outputChannelCount);
@@ -223,7 +223,7 @@ bool audio_capture_pin::ShouldChangeMediaType(audio_format* newAudioFormat)
 	{
 		reconnect = true;
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_INFO(mLogData.logger, "[{}] Bit depth change {} to {}", mLogData.prefix, mAudioFormat.bitDepthInBytes,
 			newAudioFormat->bitDepthInBytes);
 		#endif
@@ -232,7 +232,7 @@ bool audio_capture_pin::ShouldChangeMediaType(audio_format* newAudioFormat)
 	{
 		reconnect = true;
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_INFO(mLogData.logger, "[{}] Fs change {} to {}", mLogData.prefix, mAudioFormat.fs, newAudioFormat->fs);
 		#endif
 	}
@@ -240,7 +240,7 @@ bool audio_capture_pin::ShouldChangeMediaType(audio_format* newAudioFormat)
 	{
 		reconnect = true;
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_INFO(mLogData.logger, "[{}] Codec change {} to {}", mLogData.prefix, codecNames[mAudioFormat.codec],
 			codecNames[newAudioFormat->codec]);
 		#endif
@@ -248,7 +248,7 @@ bool audio_capture_pin::ShouldChangeMediaType(audio_format* newAudioFormat)
 	if (mAudioFormat.channelAllocation != newAudioFormat->channelAllocation)
 	{
 		reconnect = true;
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_INFO(mLogData.logger, "[{}] Channel allocation change {} to {}", mLogData.prefix,
 			mAudioFormat.channelAllocation,
 			newAudioFormat->channelAllocation);
@@ -258,7 +258,7 @@ bool audio_capture_pin::ShouldChangeMediaType(audio_format* newAudioFormat)
 		dataBurstSize)
 	{
 		reconnect = true;
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_INFO(mLogData.logger, "[{}] Bitstream databurst change {} to {}", mLogData.prefix,
 			mAudioFormat.dataBurstSize,
 			newAudioFormat->dataBurstSize);

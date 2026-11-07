@@ -56,7 +56,7 @@ void video_capture_pin::VideoFormatToMediaType(CMediaType* pmt, video_format* vi
 	// 0 = unknown, 1 = 0-255, 2 = 16-235
 	colorimetry->NominalRange = static_cast<DXVA_NominalRange>(videoFormat->quantisation);
 
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	LOG_TRACE_L3(mLogData.logger, "[{}] DXVA_ExtendedFormat {} {} {} {}", mLogData.prefix,
 		static_cast<int>(colorimetry->VideoTransferMatrix),
 		static_cast<int>(colorimetry->VideoPrimaries), static_cast<int>(colorimetry->VideoTransferFunction),
@@ -92,7 +92,7 @@ bool video_capture_pin::ShouldChangeMediaType(video_format* newVideoFormat, bool
 	{
 		reconnect = true;
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_INFO(mLogData.logger, "[{}] Video dimension change {}x{} to {}x{}",
 			mLogData.prefix, mVideoFormat.cx, mVideoFormat.cy,
 			newVideoFormat->cx, newVideoFormat->cy);
@@ -102,7 +102,7 @@ bool video_capture_pin::ShouldChangeMediaType(video_format* newVideoFormat, bool
 	{
 		reconnect = true;
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_INFO(mLogData.logger, "[{}] Video AR change {}x{} to {}x{}",
 			mLogData.prefix, mVideoFormat.aspectX, mVideoFormat.aspectY,
 			newVideoFormat->aspectX, newVideoFormat->aspectY);
@@ -112,7 +112,7 @@ bool video_capture_pin::ShouldChangeMediaType(video_format* newVideoFormat, bool
 	{
 		reconnect = true;
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_INFO(mLogData.logger, "[{}] Video FPS change {:.3f} to {:.3f}",
 			mLogData.prefix, mVideoFormat.fps, newVideoFormat->fps);
 		#endif
@@ -121,7 +121,7 @@ bool video_capture_pin::ShouldChangeMediaType(video_format* newVideoFormat, bool
 	{
 		reconnect = true;
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_INFO(mLogData.logger, "[{}] Video pixel format change {} to {}",
 			mLogData.prefix, mVideoFormat.pixelFormat.name, newVideoFormat->pixelFormat.name);
 		#endif
@@ -130,7 +130,7 @@ bool video_capture_pin::ShouldChangeMediaType(video_format* newVideoFormat, bool
 	{
 		reconnect = true;
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_INFO(mLogData.logger, "[{}] Video colour format change {} to {}",
 			mLogData.prefix, mVideoFormat.colourFormatName, newVideoFormat->colourFormatName);
 		#endif
@@ -140,7 +140,7 @@ bool video_capture_pin::ShouldChangeMediaType(video_format* newVideoFormat, bool
 	{
 		reconnect = true;
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_INFO(mLogData.logger, "[{}] Video colorimetry change quant {} to {} sat {} to {}",
 			mLogData.prefix,
 			static_cast<int>(mVideoFormat.quantisation), static_cast<int>(newVideoFormat->quantisation),
@@ -153,7 +153,7 @@ bool video_capture_pin::ShouldChangeMediaType(video_format* newVideoFormat, bool
 	{
 		reconnect = true;
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		auto formatFrom = mVideoFormat.hdrMeta.transferFunction == 0
 			? "?"
 			: mVideoFormat.hdrMeta.transferFunction == 4
@@ -179,7 +179,7 @@ bool video_capture_pin::ShouldChangeMediaType(video_format* newVideoFormat, bool
 
 HRESULT video_capture_pin::DoChangeMediaType(const CMediaType* pNewMt, const video_format* newVideoFormat)
 {
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	LOG_WARNING(mLogData.logger,
 		"[{}] Proposing new video format {} x {} ({}:{}) @ {:.3f} Hz in {} bits ({} {} tf: {}) size {} bytes",
 		mLogData.prefix, newVideoFormat->cx, newVideoFormat->cy, newVideoFormat->aspectX,

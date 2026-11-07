@@ -58,7 +58,7 @@ public:
 		mStreamStartTime = -1LL;
 		mStreamStopTime = -1LL;
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_WARNING(mLogData.logger, "[{}] MagewellAudioCapturePin::SetStopTime at {}", mLogData.prefix,
 		            streamStopTime);
 		#endif

@@ -1,6 +1,13 @@
 {
   "dependencies": [
     "quill",
-	"winreg"
+    "winreg",
+    {
+      "name": "prometheus-cpp",
+      "default-features": false,
+      "features": [
+        "pull"
+      ]
+    }
   ]
 }

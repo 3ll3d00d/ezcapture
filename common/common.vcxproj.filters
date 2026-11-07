@@ -18,6 +18,9 @@
     <ClCompile Include="signalinfo.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="metrics.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="modeswitcher.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -72,6 +75,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="metric.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="metrics.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="y210_p210.h">

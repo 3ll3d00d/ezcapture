@@ -19,7 +19,7 @@
 #include "conversion_kernels.h"
 #include <span>
 
-#ifndef NO_QUILL
+#ifndef NO_LOGGING
 #include <quill/StopWatch.h>
 #endif
 
@@ -77,13 +77,13 @@ public:
 		}
 		#endif
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		const quill::StopWatchTsc swt;
 		#endif
 
 		conversion::r210_to_rgb48(sourceData, reinterpret_cast<uint16_t*>(outData), width, height, this->mPixelsToPad);
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		auto execTime = swt.elapsed_as<std::chrono::microseconds>().count() / 1000.0;
 		LOG_TRACE_L3(this->mLogData.logger, "[{}] Converted frame to RGB48 in {:.3f} ms", this->mLogData.prefix, execTime);
 		#endif

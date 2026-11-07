@@ -28,13 +28,13 @@ public:
 		auto result = mConverter.CoCreateInstance(CLSID_CDeckLinkVideoConversion, nullptr);
 		if (S_OK == result)
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_INFO(mLogData.logger, "[{}] Created Frame Converter for frame {} x {}", mLogData.prefix, pX, pY);
 			#endif
 		}
 		else
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_ERROR(mLogData.logger, "[{}] Failed to create Frame Converter {:#08x}", mLogData.prefix, result);
 			#endif
 		}

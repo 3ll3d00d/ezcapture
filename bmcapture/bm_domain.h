@@ -86,7 +86,7 @@ public:
 	{
 		auto ct = packet->AddRef();
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_TRACE_L3(mLogData.logger, "[{}] AudioFrame Access (new) {} {}", mLogData.prefix, mFrameIndex, ct);
 		#endif
 	}
@@ -95,7 +95,7 @@ public:
 	{
 		auto ct = mPacket->Release();
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_TRACE_L3(mLogData.logger, "[{}] AudioFrame Access (del) {} {}", mLogData.prefix, mFrameIndex, ct);
 		#endif
 	}
@@ -108,7 +108,7 @@ public:
 		mPacket = rhs.mPacket;
 		auto ct = mPacket->AddRef();
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_TRACE_L3(mLogData.logger, "[{}] AudioFrame Access (assign) {} {}", mLogData.prefix, mFrameIndex, ct);
 		#endif
 

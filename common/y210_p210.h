@@ -19,7 +19,7 @@
 #include "conversion_kernels.h"
 #include <span>
 
-#ifndef NO_QUILL
+#ifndef NO_LOGGING
 #include <quill/StopWatch.h>
 #endif
 
@@ -63,13 +63,13 @@ public:
 		// Y210 stores 2 pixels in 4 16-bit LE words (Y0 U Y1 V), i.e. 4 bytes per pixel
 		auto srcStride = width * 4;
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		const quill::StopWatchTsc swt;
 		#endif
 
 		conversion::y210_to_p210(sourceData, srcStride, yPlane, uvPlane, width, height, this->mPixelsToPad);
 
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		auto execTime = swt.elapsed_as<std::chrono::microseconds>().count() / 1000.0;
 		LOG_TRACE_L3(this->mLogData.logger, "[{}] Converted frame to P210 in {:.3f} ms", this->mLogData.prefix,
 		             execTime);

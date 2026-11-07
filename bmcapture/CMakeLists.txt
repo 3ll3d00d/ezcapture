@@ -35,7 +35,7 @@ target_compile_definitions(bmcapture PRIVATE
     $<$<CONFIG:Debug>:_DEBUG>
     $<$<CONFIG:Debug>:RECORD_RAW>
     $<$<CONFIG:Release>:NDEBUG>
-    $<$<AND:$<CONFIG:Release>,$<NOT:$<BOOL:${EZ_ENABLE_TRACE}>>>:NO_QUILL>
+    $<$<AND:$<CONFIG:Release>,$<NOT:$<BOOL:${EZ_ENABLE_TRACE}>>>:NO_LOGGING>
     $<$<AND:$<CONFIG:Release>,$<BOOL:${EZ_ENABLE_TRACE}>>:CAPTURE_NAME_SUFFIX=1>
 )
 

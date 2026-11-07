@@ -66,7 +66,7 @@ HRESULT blackmagic_video_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample,
 	{
 		if (CheckStreamState(nullptr) == STREAM_DISCARDING)
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_TRACE_L1(mLogData.logger, "[{}] Stream is discarding", mLogData.prefix);
 			#endif
 
@@ -75,7 +75,7 @@ HRESULT blackmagic_video_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample,
 		}
 		if (IsStreamStopped())
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_TRACE_L1(mLogData.logger, "[{}] Stream has not started, retry after backoff", mLogData.prefix);
 			#endif
 
@@ -89,7 +89,7 @@ HRESULT blackmagic_video_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample,
 		// unknown, try again
 		if (dwRet == WAIT_FAILED)
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_TRACE_L1(mLogData.logger, "[{}] Wait for frame failed, retrying", mLogData.prefix);
 			#endif
 
@@ -119,7 +119,7 @@ HRESULT blackmagic_video_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample,
 			{
 				hasFrame = false;
 
-				#ifndef NO_QUILL
+				#ifndef NO_LOGGING
 				LOG_WARNING(mLogData.logger,
 				            "[{}] Video frame buffered but unable to get delivery buffer, retry after backoff",
 				            mLogData.prefix);
@@ -180,7 +180,7 @@ HRESULT blackmagic_video_capture_pin::FillBuffer(IMediaSample* pms)
 
 	RecordLatency();
 
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	if (!mLoggedLatencyHeader)
 	{
 		LOG_TRACE_L1(mLogData.videoLat,
@@ -223,7 +223,7 @@ HRESULT blackmagic_video_capture_pin::OnThreadCreate()
 		BumpThreadPriority();
 	}
 
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	CustomFrontend::preallocate();
 
 	LOG_INFO(mLogData.logger, "[{}] blackmagic_video_capture_pin::OnThreadCreate", mLogData.prefix);
@@ -238,7 +238,7 @@ HRESULT blackmagic_video_capture_pin::OnThreadCreate()
 
 void blackmagic_video_capture_pin::DoThreadDestroy()
 {
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	LOG_INFO(mLogData.logger, "[{}] blackmagic_video_capture_pin::DoThreadDestroy", mLogData.prefix);
 	#endif
 
@@ -257,7 +257,7 @@ void blackmagic_video_capture_pin::OnChangeMediaType()
 	auto frameSize = mVideoFormat.imageSize;
 	if (std::cmp_greater(bufferSize, frameSize))
 	{
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_TRACE_L1(mLogData.logger,
 		             "[{}] Likely padding requested by renderer, frame size is {} but buffer allocated is {}",
 		             mLogData.prefix, frameSize, bufferSize);

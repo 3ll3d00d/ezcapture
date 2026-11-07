@@ -31,7 +31,7 @@ LRESULT AsyncModeSwitcher::ThreadMessageProc(UINT uMsg, DWORD dwFlags, LPVOID lp
 	switch (uMsg)
 	{
 	case REFRESH_RATE:
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_INFO(mLogData.logger, "[{}] Processing REFRESH_RATE switch to {} Hz", mLogData.prefix, dwFlags);
 		#endif
 		if (S_OK == mode_switch::ChangeResolution(mLogData, dwFlags) && mOnModeSwitch)
@@ -48,13 +48,13 @@ LRESULT AsyncModeSwitcher::ThreadMessageProc(UINT uMsg, DWORD dwFlags, LPVOID lp
 		}
 		break;
 	case MC_PROFILE:
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_INFO(mLogData.logger, "[{}] Processing MC_PROFILE switch : {}", mLogData.prefix, dwFlags);
 		#endif
 
 		if (HWND mcWnd = FindWindow(_T("MJFrame"), nullptr))
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_TRACE_L2(mLogData.logger, "[{}] Sending MCC_JRVR_PROFILE_OUTPUT {}", mLogData.prefix, dwFlags);
 			#endif
 			if (dwFlags == 0)
@@ -66,25 +66,25 @@ LRESULT AsyncModeSwitcher::ThreadMessageProc(UINT uMsg, DWORD dwFlags, LPVOID lp
 				PostMessage(mcWnd, WM_MC_COMMAND, MCC_JRVR_PROFILE_OUTPUT, dwFlags);
 			}
 
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_TRACE_L2(mLogData.logger, "[{}] Sent MCC_JRVR_PROFILE_OUTPUT {}", mLogData.prefix, dwFlags);
 			#endif
 		}
 		else
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_WARNING(mLogData.logger, "[{}] Unable to find MJFrame, command not sent", mLogData.prefix);
 			#endif
 		}
 		break;
 	case SHUTDOWN_NOW:
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_TRACE_L2(mLogData.logger, "[{}] Shutting down now", mLogData.prefix);
 		#endif
 		hr = E_ABORT;
 		break;
 	default:
-		#ifndef NO_QUILL
+		#ifndef NO_LOGGING
 		LOG_WARNING(mLogData.logger, "[{}] Ignoring unknown mode switch request {} {}", mLogData.prefix, uMsg, dwFlags);
 		#endif
 		break;
@@ -95,7 +95,7 @@ LRESULT AsyncModeSwitcher::ThreadMessageProc(UINT uMsg, DWORD dwFlags, LPVOID lp
 
 void AsyncModeSwitcher::OnThreadInit()
 {
-	#ifndef NO_QUILL
+	#ifndef NO_LOGGING
 	CustomFrontend::preallocate();
 
 	LOG_INFO(mLogData.logger, "[{}] AsyncModeSwitcher::OnThreadInit", mLogData.prefix);
@@ -108,14 +108,14 @@ void AsyncModeSwitcher::InitIfNecessary()
 	{
 		if (CreateThread())
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_INFO(mLogData.logger, "[{}] Initialised refresh rate switcher thread with id {}", mLogData.prefix,
 			         GetThreadId());
 			#endif
 		}
 		else
 		{
-			#ifndef NO_QUILL
+			#ifndef NO_LOGGING
 			LOG_ERROR(mLogData.logger, "[{}] Failed to initialise refresh rate switcher thread", mLogData.prefix);
 			#endif
 		}

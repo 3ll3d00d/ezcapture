@@ -1,5 +1,12 @@
 {
   "dependencies": [
-    "quill"
+    "quill",
+    {
+      "name": "prometheus-cpp",
+      "default-features": false,
+      "features": [
+        "pull"
+      ]
+    }
   ]
 }
