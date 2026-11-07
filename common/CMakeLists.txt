@@ -25,10 +25,11 @@ target_compile_definitions(common PRIVATE
     # -- see EZ_ENABLE_TRACE.
     $<$<AND:$<CONFIG:Release>,$<NOT:$<BOOL:${EZ_ENABLE_TRACE}>>>:NO_LOGGING>
     $<$<AND:$<CONFIG:Release>,$<BOOL:${EZ_ENABLE_TRACE}>>:CAPTURE_NAME_SUFFIX=1>
-    $<$<AND:$<CONFIG:Release>,$<BOOL:${EZ_VERSION_MAJOR}>>:EZ_VERSION_MAJOR=${EZ_VERSION_MAJOR}>
-    $<$<AND:$<CONFIG:Release>,$<BOOL:${EZ_VERSION_MINOR}>>:EZ_VERSION_MINOR=${EZ_VERSION_MINOR}>
-    $<$<AND:$<CONFIG:Release>,$<BOOL:${EZ_VERSION_PATCH}>>:EZ_VERSION_PATCH=${EZ_VERSION_PATCH}>
-    $<$<AND:$<CONFIG:Release>,$<BOOL:${EZ_VERSION_SUFFIX}>>:EZ_VERSION_SUFFIX=${EZ_VERSION_SUFFIX}>
+    # non-empty rather than truthy, as in common.vcxproj, so a 0 major version is kept
+    $<$<AND:$<CONFIG:Release>,$<NOT:$<STREQUAL:${EZ_VERSION_MAJOR},>>>:EZ_VERSION_MAJOR=${EZ_VERSION_MAJOR}>
+    $<$<AND:$<CONFIG:Release>,$<NOT:$<STREQUAL:${EZ_VERSION_MINOR},>>>:EZ_VERSION_MINOR=${EZ_VERSION_MINOR}>
+    $<$<AND:$<CONFIG:Release>,$<NOT:$<STREQUAL:${EZ_VERSION_PATCH},>>>:EZ_VERSION_PATCH=${EZ_VERSION_PATCH}>
+    $<$<AND:$<CONFIG:Release>,$<NOT:$<STREQUAL:${EZ_VERSION_SUFFIX},>>>:EZ_VERSION_SUFFIX=${EZ_VERSION_SUFFIX}>
 )
 
 ez_target_common(common)
