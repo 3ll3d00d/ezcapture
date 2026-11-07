@@ -118,11 +118,12 @@ Open the filter property page, tick `Prometheus Port?`, optionally change the po
 
 The settings are stored in the registry under `HKEY_CURRENT_USER\Software\3ll3d00d\MWCapture` (Magewell) or `HKEY_CURRENT_USER\Software\3ll3d00d\BMCapture` (Blackmagic):
 
-| Value                   | Type      | Default                            | Meaning                             |
-|-------------------------|-----------|------------------------------------|-------------------------------------|
-| `prometheusEnabled`     | REG_DWORD | 0                                  | 1 to serve metrics                  |
-| `prometheusPort`        | REG_DWORD | 9464 (Magewell), 9465 (Blackmagic) | port to listen on                   |
-| `prometheusBindAddress` | REG_SZ    | `127.0.0.1`                        | address to listen on, registry only |
+| Value                       | Type      | Default                            | Meaning                                                                          |
+|-----------------------------|-----------|------------------------------------|----------------------------------------------------------------------------------|
+| `prometheusEnabled`         | REG_DWORD | 0                                  | 1 to serve metrics                                                               |
+| `prometheusPort`            | REG_DWORD | 9464 (Magewell), 9465 (Blackmagic) | port to listen on                                                                |
+| `prometheusBindAddress`     | REG_SZ    | `127.0.0.1`                        | address to listen on, registry only                                              |
+| `prometheusSignalRetention` | REG_DWORD | 60                                 | seconds to keep the series of a signal that is no longer present, registry only |
 
 By default the endpoint is only reachable from the same PC. To scrape from another machine set `prometheusBindAddress` to `0.0.0.0` (or a specific interface address) and allow the port through the Windows firewall. There is no authentication so only do this on a trusted network.
 
@@ -143,17 +144,17 @@ scrape_configs:
 
 ### Metrics
 
-| Metric                                       | Type      | Labels                              | Meaning                                                                       |
-|----------------------------------------------|-----------|-------------------------------------|-------------------------------------------------------------------------------|
-| `ezcapture_frame_latency_seconds`            | histogram | `filter`, `stream`, `stage`         | time spent in each stage of capture, one observation per frame                |
-| `ezcapture_frame_latency_window_seconds`     | gauge     | `filter`, `stream`, `stage`, `stat` | min/mean/max of each stage over the ~1.5s window shown on the property page   |
-| `ezcapture_video_measured_fps`               | gauge     | `filter`                            | video frame rate actually delivered, measured over the same window            |
-| `ezcapture_video_signal_info`                | gauge     | `filter` + see below                | always 1, the labels describe the current video input and output              |
-| `ezcapture_audio_signal_info`                | gauge     | `filter` + see below                | always 1, the labels describe the current audio input and output              |
-| `ezcapture_hdr_max_cll_nits`                 | gauge     | `filter`                            | MaxCLL of the current content, 0 if there is no HDR metadata                  |
-| `ezcapture_hdr_max_fall_nits`                | gauge     | `filter`                            | MaxFALL of the current content, 0 if there is no HDR metadata                 |
-| `ezcapture_hdr_max_mastering_luminance_nits` | gauge     | `filter`                            | max mastering display luminance, 0 if there is no HDR metadata                |
-| `ezcapture_hdr_min_mastering_luminance_nits` | gauge     | `filter`                            | min mastering display luminance, 0 if there is no HDR metadata                |
+| Metric                                       | Type      | Labels                                                   | Meaning                                                                         |
+|----------------------------------------------|-----------|----------------------------------------------------------|---------------------------------------------------------------------------------|
+| `ezcapture_frame_latency_seconds`            | histogram | `filter`, `stream`, `stage`, `in_sig`, `out_sig`         | time spent in each stage of capture, one observation per frame                  |
+| `ezcapture_frame_latency_window_seconds`     | gauge     | `filter`, `stream`, `stage`, `stat`, `in_sig`, `out_sig` | min/mean/max of each stage over the ~1.5s window shown on the property page     |
+| `ezcapture_video_measured_fps`               | gauge     | `filter`, `in_sig`, `out_sig`                            | video frame rate actually delivered, measured over the same window              |
+| `ezcapture_video_signal_info`                | gauge     | `filter`, `in_sig`, `out_sig` + see below                | 1 for the current video signal, 0 for a recent one, labels describe the signal  |
+| `ezcapture_audio_signal_info`                | gauge     | `filter`, `in_sig`, `out_sig` + see below                | 1 for the current audio signal, 0 for a recent one, labels describe the signal  |
+| `ezcapture_hdr_max_cll_nits`                 | gauge     | `filter`                                                 | MaxCLL of the current content, 0 if there is no HDR metadata                    |
+| `ezcapture_hdr_max_fall_nits`                | gauge     | `filter`                                                 | MaxFALL of the current content, 0 if there is no HDR metadata                   |
+| `ezcapture_hdr_max_mastering_luminance_nits` | gauge     | `filter`                                                 | max mastering display luminance, 0 if there is no HDR metadata                  |
+| `ezcapture_hdr_min_mastering_luminance_nits` | gauge     | `filter`                                                 | min mastering display luminance, 0 if there is no HDR metadata                  |
 
 All latencies are in seconds. The histogram buckets double from 0.1ms to 204.8ms, its `_count` series is the number of frames delivered and `_sum` the total time spent in that stage.
 
@@ -162,23 +163,72 @@ Common labels:
 * `filter` is the filter name, `Magewell` or `Blackmagic` (`MagewellTrace` or `BlackmagicTrace` for the with-logging variants)
 * `stream` is `video` or `audio`
 * `stat` is `min`, `mean` or `max`
+* `in_sig` and `out_sig` identify the input signal and the output format of that stream, see [Signal ids](#signal-ids)
 * `stage` is one of the following, these are the same stages shown in the Stats section of the property page
 
 | `stage`      | Device                 | Measures                                                                                                        |
 |--------------|------------------------|-----------------------------------------------------------------------------------------------------------------|
 | `capture`    | Magewell Pro video     | from the frame starting to arrive on the card until the filter has the complete frame                           |
-| `capture`    | Magewell Pro audio     | from the audio frame starting to arrive on the card until it has been read and a downstream buffer allocated   |
+| `capture`    | Magewell Pro audio     | from the audio frame starting to arrive on the card until a buffer is ready to receive it                       |
 | `capture`    | Magewell USB           | from the frame starting to arrive until the filter has the complete frame                                       |
 | `capture`    | Blackmagic             | from the card signalling a frame is available until the filter has the complete frame                           |
 | `conversion` | all                    | converting the captured frame into the output format, i.e. the time spent in the filter itself                  |
 | `host`       | Magewell Pro video     | from the frame being completely buffered on the card until the filter has it                                    |
 | `handoff`    | Blackmagic video       | from the card signalling a frame is available until a buffer from the downstream allocator is available         |
 
+### Signal ids
+
+Every per-frame series is labelled with the signal it was measured against, so latency can be compared across signal types directly, or aggregated across them by leaving the labels out of the query.
+
+The ids are built only from a fixed list of known values, anything else is reported as `other`, so there are only ever a small number of distinct ids. Each id is a `_` separated list of fields:
+
+| Id                | Format                                                       | Example                      |
+|-------------------|--------------------------------------------------------------|------------------------------|
+| video `in_sig`    | `<width>x<height>_<fps>_<sampling>_<bit depth>`              | `3840x2160_23.976_yuv422_12` |
+| video `out_sig`   | `<width>x<height>_<fps>_<pixel format>`                      | `3840x2160_23.976_p210`      |
+| audio `in_sig`    | `<pcm\|bitstream>_<sample rate>_<bit depth>_<HDMI channel allocation>` | `pcm_48k_24_0x13`  |
+| audio `out_sig`   | `<codec>_<sample rate>_<bit depth>_<channels>`               | `truehd_192k_24_8ch`         |
+
+The known values are:
+
+* resolution: `720x480`, `720x576`, `1280x720`, `1920x1080`, `2560x1440`, `3840x2160`, `4096x2160`
+* fps: `23.976`, `24`, `25`, `29.97`, `30`, `47.952`, `48`, `50`, `59.94`, `60`, `100`, `119.88`, `120`
+* sampling: `rgb`, `yuv444`, `yuv422`, `yuv420`
+* video bit depth: `8`, `10`, `12`, `16`
+* pixel format: the formats the filters output, lower case, e.g. `nv12`, `p010`, `p210`, `ayuv`, `bgr`, `bg10`, `rgb0`, `yv16`, `v210`
+* sample rate: `32k`, `44.1k`, `48k`, `88.2k`, `96k`, `176.4k`, `192k`
+* audio bit depth: `16`, `20`, `24`, `32`
+* codec: `pcm`, `ac3`, `eac3`, `dts`, `dtshd`, `truehd`, `bitstream` (unidentified), `null`
+* channels: `1ch` to `8ch`
+
+`none` means there is no input signal, or no output format has been agreed yet. `unknown` is only seen if frames arrive before the signal has been described.
+
+If separate labels are more convenient, the fields can be split on ingest, e.g. for the video input:
+
+```yaml
+    metric_relabel_configs:
+      - source_labels: [stream, in_sig]
+        regex: 'video;(\d+x\d+|other)_([^_]+)_([^_]+)_([^_]+)'
+        target_label: in_resolution
+        replacement: '$1'
+      - source_labels: [stream, in_sig]
+        regex: 'video;(\d+x\d+|other)_([^_]+)_([^_]+)_([^_]+)'
+        target_label: in_fps
+        replacement: '$2'
+```
+
+### Signal info
+
+`ezcapture_video_signal_info` and `ezcapture_audio_signal_info` carry the same `in_sig` and `out_sig` labels plus the full detail of the signal, so they can be joined onto the latency series for anything not in the ids.
+
+When the signal changes, or goes away, the series of the previous signal are not removed immediately. Its info series drops to 0 and everything published for it (latency histograms, window stats, fps) is kept for `prometheusSignalRetention` seconds. If the same signal comes back within that time, e.g. the source briefly drops the signal when starting playback, the same series simply continue. A signal that never delivered a frame (e.g. `none`, or a transient state while the input and output are both changing) is removed as soon as it is replaced. Note that the window stats of a retained signal hold their last value until it is removed.
+
+Within one stream there is at most one info series per `in_sig`/`out_sig` pair and exactly one has the value 1, so the current signal is `ezcapture_video_signal_info == 1`.
+
 `ezcapture_video_signal_info` labels, each is empty when unknown:
 
 | Label                   | Example              | Meaning                                                     |
 |-------------------------|----------------------|-------------------------------------------------------------|
-| `signal`                | `locked`             | `locked` when there is a valid input signal, else `none`    |
 | `in_resolution`         | `3840x2160`          | input resolution                                            |
 | `in_fps`                | `23.976`             | input frame rate                                            |
 | `in_colour_format`      | `BT2020`             | input colour space                                          |
@@ -199,7 +249,6 @@ Common labels:
 
 | Label                | Example                    | Meaning                                                   |
 |----------------------|----------------------------|-----------------------------------------------------------|
-| `signal`             | `locked`                   | `locked` when there is an audio input signal, else `none` |
 | `in_pcm`             | `true`                     | whether the input is LPCM                                 |
 | `in_sample_rate`     | `48000`                    | input sample rate                                         |
 | `in_bit_depth`       | `24`                       | input bit depth                                           |
@@ -210,48 +259,53 @@ Common labels:
 | `out_channels`       | `8`                        | channel count sent downstream                             |
 | `out_channel_layout` | `FL FR FC LFE BL BR SL SR` | channel layout sent downstream                            |
 
-The signal is reported as separate "info" metrics rather than labels on the latency metrics so that a change of signal does not create a new set of latency series. When the signal changes, the previous info series is removed so exactly one series describes the current state.
-
 ### Example queries
 
-p99 capture latency by stream over the last 5 minutes:
+p99 capture latency by stream over the last 5 minutes, across every signal:
 
 ```promql
 histogram_quantile(0.99, sum by (le, filter, stream) (rate(ezcapture_frame_latency_seconds_bucket{stage="capture"}[5m])))
 ```
 
-Mean time spent converting each video frame:
+The same broken down by input signal:
 
 ```promql
-rate(ezcapture_frame_latency_seconds_sum{stream="video",stage="conversion"}[1m])
-  / rate(ezcapture_frame_latency_seconds_count{stream="video",stage="conversion"}[1m])
+histogram_quantile(0.99, sum by (le, filter, in_sig) (rate(ezcapture_frame_latency_seconds_bucket{stream="video",stage="capture"}[5m])))
 ```
 
-Frames delivered per second, compare with `in_fps` on `ezcapture_video_signal_info`; a persistent gap means frames are being dropped:
+Mean time spent converting each video frame, per output format:
 
 ```promql
-rate(ezcapture_frame_latency_seconds_count{stream="video",stage="capture"}[1m])
+sum by (filter, out_sig) (rate(ezcapture_frame_latency_seconds_sum{stream="video",stage="conversion"}[1m]))
+  / sum by (filter, out_sig) (rate(ezcapture_frame_latency_seconds_count{stream="video",stage="conversion"}[1m]))
+```
+
+Frames delivered per second, compare with the fps in `in_sig`, a persistent gap means frames are being dropped:
+
+```promql
+sum by (filter, in_sig) (rate(ezcapture_frame_latency_seconds_count{stream="video",stage="capture"}[1m]))
 ```
 
 The current signal, e.g. for a Grafana table or stat panel (set the panel to show labels):
 
 ```promql
-ezcapture_video_signal_info
+ezcapture_video_signal_info == 1
 ```
 
-Latency broken down by the signal being received, by copying labels from the info metric onto the latency series:
+Latency with extra detail copied from the info metric (`0 *` so a retained signal, whose info is 0, does not zero the result):
 
 ```promql
 ezcapture_frame_latency_window_seconds{stream="video",stat="max"}
-  * on (filter) group_left (in_resolution, in_fps, hdr, out_pixel_format)
-  ezcapture_video_signal_info
+  + on (filter, in_sig, out_sig) group_left (hdr, in_colour_format, out_transfer_function)
+  0 * ezcapture_video_signal_info
 ```
 
-Alert when conversion takes more than half the frame interval (the frame rate comes from the measured fps):
+Alert when conversion takes more than half the frame interval of the signal currently being received:
 
 ```promql
 ezcapture_frame_latency_window_seconds{stream="video",stage="conversion",stat="max"}
-  > on (filter) group_left () (0.5 / ezcapture_video_measured_fps)
+  > on (filter, in_sig, out_sig) group_left ()
+  (0.5 / ezcapture_video_measured_fps and on (filter, in_sig, out_sig) ezcapture_video_signal_info == 1)
 ```
 
 ## Investigating Issues
