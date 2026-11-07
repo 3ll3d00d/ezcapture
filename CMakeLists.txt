@@ -1,4 +1,22 @@
 cmake_minimum_required(VERSION 3.24)
+
+# Dependencies (quill, gtest, winreg) come from vcpkg manifest mode. The presets
+# set the toolchain, but IDE profiles that bypass CMakePresets.json (e.g.
+# CLion's default "Debug" profile) would otherwise fail at find_package(quill).
+# Must be set before project(). Prefer C:/vcpkg to match CMakePresets.json;
+# VCPKG_ROOT is only a fallback because vcvars points it at the VS-bundled vcpkg.
+if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+    foreach(_ez_vcpkg_root IN ITEMS "C:/vcpkg" "$ENV{VCPKG_ROOT}")
+        if(_ez_vcpkg_root AND EXISTS "${_ez_vcpkg_root}/scripts/buildsystems/vcpkg.cmake")
+            set(CMAKE_TOOLCHAIN_FILE "${_ez_vcpkg_root}/scripts/buildsystems/vcpkg.cmake" CACHE FILEPATH "vcpkg toolchain")
+            break()
+        endif()
+    endforeach()
+endif()
+if(NOT DEFINED VCPKG_TARGET_TRIPLET)
+    set(VCPKG_TARGET_TRIPLET x64-windows CACHE STRING "")
+endif()
+
 project(ezcapture LANGUAGES CXX C)
 
 if(NOT WIN32 OR NOT MSVC)
