@@ -13,6 +13,7 @@ Supports
 * Linear PCM audio
 * Non linear PCM audio (magewell pro pcie only)
 * SDR and HDR video formats
+* Dolby Vision via the HDMI RGB tunnel (magewell pro pcie only, experimental, see [Dolby Vision](#dolby-vision))
 * automatic reaction to audio codec changes or video format changes
 * automatic refresh rate switching
 
@@ -101,6 +102,54 @@ Next, make each filter available as a channel
 To play using the filter, just start playback of the specified channel & configure JRVR as required.
 
 The same process applies for blackmagic cards except the filter will be named `Blackmagic Capture` or `Blackmagic Capture (Trace)`.
+
+## Dolby Vision
+
+Experimental, Magewell Pro (PCIe) cards only.
+
+A source sends standard (TV-led) Dolby Vision over HDMI as an "RGB tunnel": the signal is 8-bit RGB 4:4:4 with no HDR infoframe but the pixels actually carry 12-bit IPT-PQ 4:2:2 and the Dolby Vision display management metadata is hidden in the low bits of the first rows of every frame. Passed on as ordinary RGB it shows as a green/purple image.
+
+The filter watches every 8-bit RGB signal without an HDR infoframe for that metadata, it only switches when a metadata packet passes its CRC check so ordinary RGB is never affected. Once found it
+
+* reconnects the renderer with P210 (12-bit samples), BT.2020 and PQ
+* unpacks the tunnel into the original 12-bit IPT-PQ samples
+* attaches the Dolby Vision metadata to every frame in the same form LAV Video uses for decoded Dolby Vision, so a renderer that handles Dolby Vision from LAV applies it
+* outputs black, never the raw RGB, for any frame without usable metadata
+* switches back to RGB when the source ends Dolby Vision or the signal changes
+
+Only renderers that understand LAV's Dolby Vision side data show it correctly. JRVR (JRiver) is known to work, other renderers are untested.
+
+### Getting the source to send it
+
+A source only sends the tunnel when the EDID it reads says the display supports standard Dolby Vision. The Magewell card's EDID does not, and an EDID that only offers low latency Dolby Vision (LLDV) gets LLDV instead, which is a source tone mapped 12-bit YCbCr HDR signal that is captured as ordinary HDR.
+
+[docs/edid](docs/edid/README.md) has an EDID tested with an Apple TV 4K and an HDFury Vertex2, along with how it was made and how to apply it. Nothing between the source and the card may alter the picture, i.e. no scaling, no colour conversion and none of the Vertex2's HDR/LLDV options.
+
+On an Apple TV set Video and Audio > Format to SDR and enable Match Content > Match Dynamic Range (and Match Frame Rate) so Dolby Vision titles switch to the tunnel. Format must list Dolby Vision options, if not the source does not see a suitable EDID.
+
+### Checking it is working
+
+While the tunnel is locked the HDR box on the property page is titled `Dolby Vision` and shows
+
+| Row | Meaning |
+|---|---|
+| Status | `Locked`, `Locked, no metadata` (black is shown) or `Renderer rejected P210` (decoding is off until the filter is next loaded) |
+| Range | full or limited range and the signal colour space from the metadata |
+| Source | the source display range in nits from the metadata, this follows the target luminance in the EDID |
+| L1 nits | per scene min / average / max |
+| Metadata | metadata size and the number of packets it needed |
+| Rejected | frames without usable metadata out of all frames |
+| CRC | packet copies that failed their CRC and packets recovered from a later copy, anything other than 0 means the picture is being altered somewhere between source and card |
+
+For a signal that could carry the tunnel but does not, the box is titled `HDR (Dolby Vision: not detected)`.
+
+The with-logging variants also log the card's own EDID Dolby Vision support at startup (ignore it if something upstream such as a Vertex2 supplies the EDID), the switch in and out of Dolby Vision and a summary of the above every 600 frames.
+
+### Limitations
+
+* tested at 1080p50 only, the unpacking is not optimised so 4K, particularly 4K60, may not keep up
+* only the L1 (scene brightness) metadata is passed on, other levels (trims etc.) are ignored
+* Magewell Pro cards only, not USB or Blackmagic
 
 ## Logging
 
