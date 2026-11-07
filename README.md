@@ -103,6 +103,52 @@ To play using the filter, just start playback of the specified channel & configu
 
 The same process applies for blackmagic cards except the filter will be named `Blackmagic Capture` or `Blackmagic Capture (Trace)`.
 
+## Bandwidth
+
+The pixel format captured is chosen from the incoming signal, e.g. P210 for 10 or 12-bit 4:2:2 on a Magewell Pro card.
+At 2160p50/60 some of those formats need more bandwidth than the card can transfer, Magewell rate a Gen2 x4 card at
+~1600MB/s, and frames are dropped.
+
+The `Bandwidth` row of the property page shows what the current capture format uses against an estimate of what the
+link can carry, e.g. `1493 / 1600 MB/s (93%)`, and a warning is logged when the format needs more than the estimate.
+
+| Link             | Estimate    |
+|------------------|-------------|
+| PCIe Gen1 x4     | 800MB/s     |
+| PCIe Gen2 x4     | 1600MB/s    |
+| PCIe Gen3 x4     | 3151MB/s    |
+| USB 3 5Gbps      | 400MB/s     |
+| USB 3 10Gbps     | 970MB/s     |
+| USB 2            | 40MB/s      |
+
+PCIe is 80% of the link rate after line encoding, which matches Magewell's figures. The USB figures are a guide only,
+a 20Gbps USB link is reported as 10Gbps.
+
+| Format at 3840x2160p60 | Bandwidth   |
+|------------------------|-------------|
+| NV12                   | 746MB/s     |
+| NV16                   | 995MB/s     |
+| P010, BGR24            | 1493MB/s    |
+| P210, BGR10, AYUV      | 1991MB/s    |
+
+### Magewell Pro
+
+The filter captures a smaller format when the preferred one does not fit in the estimate for the card's PCIe link:
+
+* 10/12-bit 4:2:2 (P210) or RGB (BGR10) are captured as P010, i.e. the vertical chroma resolution is halved, bit depth is never reduced
+* 8-bit formats fall back through BGR24, NV16 and NV12
+
+A warning is logged when this happens. Formats that fit, e.g. anything at 2160p24/30, are unchanged.
+
+### Magewell USB and Blackmagic
+
+The format is not changed automatically:
+
+* Magewell USB devices can only output the formats and frame rates configured on the device (via the Magewell USB Capture Utility) and the device already limits these to what its USB connection supports
+* Blackmagic cards capture in the format the card detects on the input
+
+Use the `Bandwidth` row and the log to check whether the configured or detected format fits.
+
 ## Dolby Vision
 
 Experimental, Magewell Pro (PCIe) cards only.

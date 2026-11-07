@@ -71,6 +71,9 @@ public:
 
 	device_type GetDeviceType() const;
 
+	// estimated usable capture bandwidth of the card's PCIe or USB link in bytes per second, 0 if unknown
+	double GetCaptureBandwidth() const;
+
 	void SnapHardwareDetails();
 
 	// Callbacks to update the prop page data

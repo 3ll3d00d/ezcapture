@@ -156,6 +156,8 @@ protected:
 	dv_state mDvPublishedState{DV_INACTIVE};
 	uint64_t mDvStatusPublishedAt{0};
 	uint64_t mDvStatsLoggedAt{0};
+	// the last bandwidth based format decision that was logged, so it is logged once per change
+	std::string mBandwidthDecision{};
 	std::unique_ptr<MediaSideDataDOVIMetadata> mDvSideData{std::make_unique<MediaSideDataDOVIMetadata>()};
 	// USB only
 	uint16_t mCaptureSessionId{0};

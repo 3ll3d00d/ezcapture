@@ -79,6 +79,38 @@ const std::map<device_type, pixel_format_alternatives> formatAlternativesByDevic
 	{MW_USB_PRO, usbProPixelFormatAlternatives}
 };
 
+// What to capture instead, in order of preference, when a format needs more bandwidth than the link provides. Chroma
+// resolution is given up before bit depth, 10/12-bit formats never fall back to 8-bit.
+const pixel_format_alternatives proBandwidthFallbacks = {
+	{P210, {P010}},
+	{BGR10, {P010}},
+	{AYUV, {BGR24, NV16, NV12}},
+	{BGR24, {NV16, NV12}},
+	{NV16, {NV12}},
+};
+
+// the first of the preferred format and its fallbacks that fits in the bandwidth, the last fallback if none do
+inline pixel_format fitToBandwidth(const pixel_format& preferred, int cx, int cy, double fps, double bandwidth)
+{
+	if (bandwidth <= 0.0 || fps <= 0.0 || captureBytesPerSecond(preferred, cx, cy, fps) <= bandwidth)
+	{
+		return preferred;
+	}
+	const auto fallbacks = proBandwidthFallbacks.find(preferred);
+	if (fallbacks == proBandwidthFallbacks.end())
+	{
+		return preferred;
+	}
+	for (const auto& fallback : fallbacks->second)
+	{
+		if (captureBytesPerSecond(fallback, cx, cy, fps) <= bandwidth)
+		{
+			return fallback;
+		}
+	}
+	return fallbacks->second.back();
+}
+
 inline pixel_format_by_bit_depth_subsampling generatePixelFormatMatrix(device_type deviceType,
                                                                        const std::vector<DWORD>& fourccs)
 {

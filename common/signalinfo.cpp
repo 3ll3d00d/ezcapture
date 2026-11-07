@@ -584,7 +584,7 @@ HRESULT CSignalInfoProp::Reload(device_status* payload)
 	}
 	if (payload->maxPayloadSize > 0)
 	{
-		_snwprintf_s(buffer, _TRUNCATE, L"%d", payload->maxPayloadSize);
+		_snwprintf_s(buffer, _TRUNCATE, L"%d / %d", payload->maxPayloadSize, payload->maxReadRequestSize);
 		SendDlgItemMessage(m_Dlg, IDC_PCIE_MPS, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 		ShowWindow(GetDlgItem(m_Dlg, IDC_PCIE_MPS_LABEL), SW_SHOW);
 		ShowWindow(GetDlgItem(m_Dlg, IDC_PCIE_MPS), SW_SHOW);
@@ -594,18 +594,24 @@ HRESULT CSignalInfoProp::Reload(device_status* payload)
 		ShowWindow(GetDlgItem(m_Dlg, IDC_PCIE_MPS_LABEL), SW_HIDE);
 		ShowWindow(GetDlgItem(m_Dlg, IDC_PCIE_MPS), SW_HIDE);
 	}
-	if (payload->maxReadRequestSize > 0)
+	if (payload->bandwidth > 0.0 && payload->bandwidthUsed > 0.0)
 	{
-		_snwprintf_s(buffer, _TRUNCATE, L"%d", payload->maxReadRequestSize);
-		SendDlgItemMessage(m_Dlg, IDC_PCIE_MRRS, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
-		ShowWindow(GetDlgItem(m_Dlg, IDC_PCIE_MRRS_LABEL), SW_SHOW);
-		ShowWindow(GetDlgItem(m_Dlg, IDC_PCIE_MRRS), SW_SHOW);
+		_snwprintf_s(buffer, _TRUNCATE, L"%.0f / %.0f MB/s (%.0f%%)", payload->bandwidthUsed / 1e6,
+		             payload->bandwidth / 1e6, 100.0 * payload->bandwidthUsed / payload->bandwidth);
+	}
+	else if (payload->bandwidth > 0.0)
+	{
+		_snwprintf_s(buffer, _TRUNCATE, L"%.0f MB/s available", payload->bandwidth / 1e6);
+	}
+	else if (payload->bandwidthUsed > 0.0)
+	{
+		_snwprintf_s(buffer, _TRUNCATE, L"%.0f MB/s", payload->bandwidthUsed / 1e6);
 	}
 	else
 	{
-		ShowWindow(GetDlgItem(m_Dlg, IDC_PCIE_MRRS_LABEL), SW_HIDE);
-		ShowWindow(GetDlgItem(m_Dlg, IDC_PCIE_MRRS), SW_HIDE);
+		_snwprintf_s(buffer, _TRUNCATE, L"?");
 	}
+	SendDlgItemMessage(m_Dlg, IDC_BANDWIDTH, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 	if (payload->fanSpeed > 0)
 	{
 		_snwprintf_s(buffer, _TRUNCATE, L"%d", payload->fanSpeed);

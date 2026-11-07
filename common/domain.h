@@ -284,6 +284,57 @@ const std::array all_pixel_formats = {
 	RGB48
 };
 
+// Estimated usable capture bandwidth of a PCIe link in bytes per second, 0 if unknown. Magewell rate their Gen2 x4
+// cards at ~1600MB/s per channel and ~800MB/s in a Gen1 slot, i.e. 80% of the link rate after line encoding.
+inline double pcieCaptureBandwidth(int64_t gen, int64_t lanes)
+{
+	double perLane; // bytes per second after line encoding
+	switch (gen)
+	{
+	case 1:
+		perLane = 250e6;
+		break;
+	case 2:
+		perLane = 500e6;
+		break;
+	case 3:
+		perLane = 8e9 / 8 * 128 / 130;
+		break;
+	case 4:
+		perLane = 16e9 / 8 * 128 / 130;
+		break;
+	default:
+		return 0.0;
+	}
+	return lanes > 0 ? perLane * static_cast<double>(lanes) * 0.8 : 0.0;
+}
+
+// Estimated usable capture bandwidth of a USB link in bytes per second, 0 if unknown, using the Magewell USB speed
+// values (2 = high speed, 3 = 5Gbps, 4 = 10Gbps). 80% of the link rate after line encoding, USB 2 is ~40MB/s in practice.
+inline double usbCaptureBandwidth(int64_t speed)
+{
+	switch (speed)
+	{
+	case 2:
+		return 40e6;
+	case 3:
+		return 5e9 / 10 * 0.8;
+	case 4:
+		return 10e9 / 8 * 128 / 132 * 0.8;
+	default:
+		return 0.0;
+	}
+}
+
+// bytes per second transferred when capturing pf at the given size and rate
+inline double captureBytesPerSecond(const pixel_format& pf, int cx, int cy, double fps)
+{
+	DWORD rowBytes;
+	DWORD imageBytes;
+	pf.GetImageDimensions(cx, cy, &rowBytes, &imageBytes);
+	return static_cast<double>(imageBytes) * fps;
+}
+
 inline std::optional<pixel_format> findByFourCC(uint32_t fourcc)
 {
 	const auto match = std::ranges::find_if(all_pixel_formats,
@@ -311,6 +362,9 @@ struct device_status
 	int64_t linkWidth{-1};
 	int16_t maxPayloadSize{-1};
 	int16_t maxReadRequestSize{-1};
+	// estimated usable capture bandwidth of the link and what the current capture format uses, bytes per second, 0 if unknown
+	double bandwidth{0.0};
+	double bandwidthUsed{0.0};
 };
 
 struct hdr_meta

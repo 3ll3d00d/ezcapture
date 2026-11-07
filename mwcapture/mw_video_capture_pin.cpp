@@ -293,7 +293,8 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 					};
 					pin->mFrameWriter->WriteTo(&buffer, pms);
 				}
-				else if (pin->mHasSignal && pin->IsDvTunnelCandidate())
+				else if (pin->mHasSignal && pin->mVideoFormat.pixelFormat.format == pixel_format::BGR24
+					&& pin->IsDvTunnelCandidate())
 				{
 					pin->ProbeDvTunnel(pmsData, pin->mVideoFormat.lineLength);
 				}
@@ -677,6 +678,37 @@ void magewell_video_capture_pin::LoadFormat(video_format* videoFormat, video_sig
 	auto deviceType = mFilter->GetDeviceType();
 	videoFormat->bottomUpDib = deviceType == MW_PRO;
 	videoFormat->pixelFormat = mPixelFormatMatrix[pfIdx][subsampling];
+	if (deviceType == MW_PRO && videoSignal->signalStatus.state == MWCAP_VIDEO_SIGNAL_LOCKED)
+	{
+		// e.g. P210 at 2160p60 needs ~2GB/s which is more than a Gen2 x4 card can transfer
+		const auto bandwidth = mFilter->GetCaptureBandwidth();
+		const auto preferred = videoFormat->pixelFormat;
+		videoFormat->pixelFormat = fitToBandwidth(preferred, videoFormat->cx, videoFormat->cy, videoFormat->fps,
+		                                          bandwidth);
+		#ifndef NO_LOGGING
+		// LoadFormat runs on every signal check so only log when the decision changes
+		std::string decision;
+		if (videoFormat->pixelFormat.format != preferred.format)
+		{
+			decision = std::format("{}x{}@{:.3f} {} -> {}", videoFormat->cx, videoFormat->cy, videoFormat->fps,
+			                       preferred.name, videoFormat->pixelFormat.name);
+		}
+		if (decision != mBandwidthDecision)
+		{
+			mBandwidthDecision = decision;
+			if (!decision.empty())
+			{
+				LOG_WARNING(mLogData.logger,
+				            "[{}] {} needs {:.0f}MB/s, more than the estimated {:.0f}MB/s the card can transfer on its PCIe link, capturing {} ({:.0f}MB/s) instead",
+				            mLogData.prefix, preferred.name,
+				            captureBytesPerSecond(preferred, videoFormat->cx, videoFormat->cy, videoFormat->fps) / 1e6,
+				            bandwidth / 1e6, videoFormat->pixelFormat.name,
+				            captureBytesPerSecond(videoFormat->pixelFormat, videoFormat->cx, videoFormat->cy,
+				                                  videoFormat->fps) / 1e6);
+			}
+		}
+		#endif
+	}
 	if (videoFormat->colourFormat == REC709)
 	{
 		videoFormat->colourFormatName = "REC709";

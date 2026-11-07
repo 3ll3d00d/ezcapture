@@ -406,6 +406,7 @@ void magewell_capture_filter::OnDeviceUpdated()
 	{
 		mDeviceStatus.protocol = USB;
 	}
+	mDeviceStatus.bandwidth = GetCaptureBandwidth();
 
 	#ifndef NO_LOGGING
 	if (oldDesc != mDeviceStatus.deviceDesc)
@@ -428,4 +429,11 @@ HCHANNEL magewell_capture_filter::GetChannelHandle() const
 device_type magewell_capture_filter::GetDeviceType() const
 {
 	return mDeviceInfo.deviceType;
+}
+
+double magewell_capture_filter::GetCaptureBandwidth() const
+{
+	return mDeviceInfo.deviceType == MW_PRO
+		       ? pcieCaptureBandwidth(mDeviceInfo.linkSpeed, mDeviceInfo.linkWidth)
+		       : usbCaptureBandwidth(mDeviceInfo.linkSpeed);
 }
