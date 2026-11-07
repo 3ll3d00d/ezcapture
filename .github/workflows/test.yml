@@ -51,6 +51,19 @@ jobs:
         path: x64/${{ matrix.configuration }}/**
         if-no-files-found: warn
 
+    # The solution builds mwcapture-test in Debug/Release/ReleaseNoArch only; the
+    # *Trace* solution configs map onto the matching non-trace test build.
+    - name: Run tests
+      shell: pwsh
+      run: |
+        $cfg = switch ('${{ matrix.configuration }}') {
+          'ReleaseTrace'       { 'Release' }
+          'ReleaseTraceNoArch' { 'ReleaseNoArch' }
+          default              { '${{ matrix.configuration }}' }
+        }
+        & "x64\$cfg\mwcapture-test.exe"
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
   build-cmake:
     runs-on: windows-latest
     strategy:
@@ -86,3 +99,10 @@ jobs:
         name: cmake-${{ matrix.preset }}
         path: out/build/${{ matrix.preset }}/x64/**
         if-no-files-found: warn
+
+    - name: Run tests (${{ matrix.preset }})
+      shell: pwsh
+      run: |
+        $cfg = if ('${{ matrix.preset }}' -eq 'debug') { 'Debug' } else { 'Release' }
+        & "out\build\${{ matrix.preset }}\x64\$cfg\mwcapture-test.exe"
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
