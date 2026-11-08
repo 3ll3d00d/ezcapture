@@ -270,6 +270,10 @@ void magewell_capture_filter::OnVideoSignalLoaded(video_signal* vs)
 		? static_cast<double>(dshowTicksPerSecond) / vs->signalStatus.dwFrameDuration
 		: 0.0;
 	mVideoInputStatus.inFrameDuration = vs->signalStatus.dwFrameDuration;
+	mVideoInputStatus.inTotalX = vs->signalStatus.cxTotal;
+	mVideoInputStatus.inTotalY = vs->signalStatus.cyTotal;
+	mVideoInputStatus.inPixelClockMhz = vs->signalStatus.cxTotal * static_cast<double>(vs->signalStatus.cyTotal)
+		* mVideoInputStatus.inFps / 1000000.0;
 
 	switch (vs->signalStatus.state)
 	{
