@@ -152,11 +152,15 @@ HRESULT CSignalInfoProp::OnApplyChanges()
 	DWORD metricsPort = _wtoi(b1);
 	auto hr8 = mSignalInfo->SetMetricsPort(metricsPort);
 
+	WCHAR bindAddress[64];
+	SendDlgItemMessage(m_Dlg, IDC_METRICS_BIND_ADDRESS, WM_GETTEXT, 64, reinterpret_cast<LPARAM>(&bindAddress));
+	auto hr9 = mSignalInfo->SetMetricsBindAddress(bindAddress);
+
 	// show the outcome (e.g. that a restart is required)
 	mSignalInfo->Reload();
 
 	return hr1 == S_OK && hr2 == S_OK && hr3 == S_OK && hr4 == S_OK && hr5 == S_OK && hr6 == S_OK && hr7 == S_OK
-	       && hr8 == S_OK
+	       && hr8 == S_OK && hr9 == S_OK
 		       ? S_OK
 		       : E_FAIL;
 }
@@ -227,6 +231,7 @@ INT_PTR CSignalInfoProp::OnReceiveMessage(HWND hwnd, UINT uMsg, WPARAM wParam, L
 			mSignalInfo->IsMetricsEnabled(&existing);
 
 			EnableWindow(GetDlgItem(m_Dlg, IDC_METRICS_PORT), bFlag);
+			EnableWindow(GetDlgItem(m_Dlg, IDC_METRICS_BIND_ADDRESS), bFlag);
 			if (bFlag != existing)
 			{
 				SetDirty();
@@ -247,6 +252,19 @@ INT_PTR CSignalInfoProp::OnReceiveMessage(HWND hwnd, UINT uMsg, WPARAM wParam, L
 			DWORD existing;
 			mSignalInfo->GetMetricsPort(&existing);
 			if (port != 0 && port != existing)
+			{
+				SetDirty();
+				return TRUE;
+			}
+			return FALSE;
+		}
+		if (LOWORD(wParam) == IDC_METRICS_BIND_ADDRESS && HIWORD(wParam) == EN_CHANGE)
+		{
+			WCHAR bindAddress[64];
+			SendDlgItemMessage(m_Dlg, IDC_METRICS_BIND_ADDRESS, WM_GETTEXT, 64, reinterpret_cast<LPARAM>(&bindAddress));
+			std::wstring existing;
+			mSignalInfo->GetMetricsBindAddress(&existing);
+			if (bindAddress[0] != L'\0' && existing != bindAddress)
 			{
 				SetDirty();
 				return TRUE;
@@ -751,8 +769,15 @@ HRESULT CSignalInfoProp::ReloadControls(const bool& rateEnabled, const bool& pro
 	return S_OK;
 }
 
-HRESULT CSignalInfoProp::ReloadMetricsControls(const bool& enabled, const DWORD& port, const std::string& status)
+HRESULT CSignalInfoProp::ReloadMetricsControls(const bool& enabled, const std::string& bindAddress, const DWORD& port,
+                                               const std::string& status)
 {
+	WCHAR addressBuffer[64];
+	_snwprintf_s(addressBuffer, _TRUNCATE, L"%hs", bindAddress.c_str());
+	SendDlgItemMessage(m_Dlg, IDC_METRICS_BIND_ADDRESS, EM_SETLIMITTEXT, 63, 0);
+	SendDlgItemMessage(m_Dlg, IDC_METRICS_BIND_ADDRESS, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(addressBuffer));
+	EnableWindow(GetDlgItem(m_Dlg, IDC_METRICS_BIND_ADDRESS), enabled);
+
 	WCHAR buffer[8];
 	_snwprintf_s(buffer, _TRUNCATE, L"%d", port);
 	SendDlgItemMessage(m_Dlg, IDC_METRICS_PORT, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
