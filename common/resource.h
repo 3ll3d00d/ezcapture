@@ -129,6 +129,8 @@
 #define IDC_METRICS_STATUS              1125
 #define IDC_BANDWIDTH_LABEL             1126
 #define IDC_BANDWIDTH                   1127
+#define IDC_IN_PIXEL_CLOCK_LABEL        1128
+#define IDC_IN_PIXEL_CLOCK              1129
 
 // Next default values for new objects
 // 
@@ -136,7 +138,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        103
 #define _APS_NEXT_COMMAND_VALUE         40001
-#define _APS_NEXT_CONTROL_VALUE         1128
+#define _APS_NEXT_CONTROL_VALUE         1130
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

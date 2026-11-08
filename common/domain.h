@@ -453,6 +453,9 @@ struct video_input_status
 	std::string inSaturation;
 	double inFps{0.0};
 	uint64_t inFrameDuration{0};
+	int inTotalX{0};
+	int inTotalY{0};
+	double inPixelClockMhz{0.0};
 	int inBitDepth{0};
 	std::string inPixelLayout;
 	bool validSignal{false};

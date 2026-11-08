@@ -383,6 +383,16 @@ HRESULT CSignalInfoProp::Reload(video_input_status* payload)
 	SendDlgItemMessage(m_Dlg, IDC_IN_FPS, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 	_snwprintf_s(buffer, _TRUNCATE, L"%lld", payload->inFrameDuration);
 	SendDlgItemMessage(m_Dlg, IDC_IN_FRAME_DUR, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+	if (payload->inPixelClockMhz > 0.0)
+	{
+		_snwprintf_s(buffer, _TRUNCATE, L"%.3f MHz (%d x %d)", payload->inPixelClockMhz, payload->inTotalX,
+		             payload->inTotalY);
+	}
+	else
+	{
+		_snwprintf_s(buffer, _TRUNCATE, L"N/A");
+	}
+	SendDlgItemMessage(m_Dlg, IDC_IN_PIXEL_CLOCK, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 	_snwprintf_s(buffer, _TRUNCATE, L"%hs", payload->inColourFormat.c_str());
 	SendDlgItemMessage(m_Dlg, IDC_IN_CF, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 	_snwprintf_s(buffer, _TRUNCATE, L"%hs", payload->inQuantisation.c_str());
