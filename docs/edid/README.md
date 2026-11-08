@@ -9,15 +9,15 @@ while the same card locks 4K60 RGB directly from a PC.
 
 | File | 4K | Dolby Vision | HDR10 | Audio | Origin | Status |
 |---|---|---|---|---|---|---|
-| `vertex2-lg-dv30-4k-4000nit-no4k50-lpcm.bin` | up to 30Hz | standard, 4000 nit | yes | LPCM 7.1 only | derived from `no4k50` | **Recommended** when the link cannot lock above 340MHz. Apple TV sends 7.1 LPCM |
-| `vertex2-lg-dv30-4k-4000nit-no4k50.bin` | up to 30Hz | standard, 4000 nit | yes | LPCM + bitstream | derived from videoprocessor | Works: 4K24 Dolby Vision decoded, but the Apple TV sends an Atmos bitstream |
-| `vertex2-lg-dv-1080p-4000nit.bin` | none | standard, 4000 nit | yes | LPCM + bitstream | derived from videoprocessor | Works: Dolby Vision at up to 1080p, see below |
-| `vertex2-lg-dv-1080p.bin` | none | standard, 350 nit | yes | LPCM + bitstream | derived from videoprocessor | Superseded by the 4000 nit version, the source tone maps to 350 nits |
-| `vertex2-lg-dv30-4k-4000nit-297mhz.bin` | up to 60Hz, 300MHz limit | standard, 4000 nit | yes | LPCM + bitstream | derived from videoprocessor | Not sufficient: with 4K50 listed the Apple TV still sends 371MHz or 594MHz |
-| `vertex2-lg-dv30-4k-4000nit.bin` | up to 60Hz | standard, 4000 nit | yes | LPCM + bitstream | derived from videoprocessor | Needs a link that locks above 340MHz, 4K50 HDR at 371MHz did not lock here |
-| `vertex2-lg-dv60-4k-4000nit.bin` | up to 60Hz | standard incl. 4K60, 4000 nit | yes | LPCM + bitstream | derived from videoprocessor | Needs a link that locks above 340MHz, did not work here |
-| `vertex2-full-no-dv-approx.bin` | up to 60Hz | none | yes | LPCM + bitstream | approximation of Vertex2 **Full no DV** | Unverified, FULL + LG DV with the Dolby Vision block removed |
-| `magewell-vsdb340.bin` | up to 60Hz | none | no | LPCM + bitstream | derived from the default EDID of the card | Diagnostic, HDMI VSDB max TMDS 340MHz. It made no difference to the failure above 340MHz |
+| `vertex2-lg-dv30-4k-4000nit-no4k50-lpcm.bin` | up to 30Hz | standard, 4000 nit | yes | LPCM 7.1 only | derived from `no4k50` | 4K24 Dolby Vision, the Apple TV sends 7.1 LPCM |
+| `vertex2-lg-dv30-4k-4000nit-no4k50.bin` | up to 30Hz | standard, 4000 nit | yes | LPCM + bitstream | derived from videoprocessor | 4K24 Dolby Vision, the Apple TV sends an Atmos bitstream |
+| `vertex2-lg-dv-1080p-4000nit.bin` | none | standard, 4000 nit | yes | LPCM + bitstream | derived from videoprocessor | Dolby Vision at up to 1080p, see below |
+| `vertex2-lg-dv-1080p.bin` | none | standard, 350 nit | yes | LPCM + bitstream | derived from videoprocessor | Dolby Vision at up to 1080p, the source tone maps to 350 nits |
+| `vertex2-lg-dv30-4k-4000nit-297mhz.bin` | up to 60Hz, 300MHz limit | standard, 4000 nit | yes | LPCM + bitstream | derived from videoprocessor | With 4K50 listed the Apple TV still sends 371MHz or 594MHz |
+| `vertex2-lg-dv30-4k-4000nit.bin` | up to 60Hz | standard, 4000 nit | yes | LPCM + bitstream | derived from videoprocessor | 4K50 HDR at 371MHz did not lock on the tested chain |
+| `vertex2-lg-dv60-4k-4000nit.bin` | up to 60Hz | standard incl. 4K60, 4000 nit | yes | LPCM + bitstream | derived from videoprocessor | Did not work on the tested chain |
+| `vertex2-full-no-dv-approx.bin` | up to 60Hz | none | yes | LPCM + bitstream | approximation of Vertex2 **Full no DV** | FULL + LG DV with the Dolby Vision block removed, not verified against the original |
+| `magewell-vsdb340.bin` | up to 60Hz | none | no | LPCM + bitstream | derived from the default EDID of the card | HDMI VSDB max TMDS 340MHz, no change to the failure above 340MHz |
 
 ## SHA-256
 
@@ -102,7 +102,7 @@ outputs, even with the Vertex2's own test pattern, while the same card locks 4K6
 SHA-256: `5cd7a02dae1df3fabdc8605cfee564cb62323d4369ba851015ae54b899bd0777`
 
 `vertex2-lg-dv30-4k-4000nit-no4k50-lpcm.bin` is the same with LPCM as the only audio format. With the bitstream
-formats listed the Apple TV sends an Atmos bitstream, which can't be decoded here, so use this one for 7.1 LPCM.
+formats listed the Apple TV sends an Atmos bitstream with the same video modes. With this one it sends 7.1 LPCM.
 
 Limiting the rate in the VSDBs is not enough. With 4K50/60 still listed, an Apple TV sends them at 371MHz or 594MHz
 despite the EDID, so they are removed. Changes from the videoprocessor file:
