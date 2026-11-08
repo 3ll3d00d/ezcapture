@@ -104,7 +104,8 @@ public:
 			mInfoCallback->ReloadA2(&mAudioLatencyStats2);
 			mInfoCallback->ReloadControls(mRefreshRateSwitchEnabled, mHdrProfileSwitchEnabled, mHdrProfile,
 			                              mSdrProfile, mHighThreadPriorityEnabled, mAudioCaptureEnabled);
-			mInfoCallback->ReloadMetricsControls(mMetricsConfig.enabled, mMetricsConfig.port, mMetricsStatus);
+			mInfoCallback->ReloadMetricsControls(mMetricsConfig.enabled, mMetricsConfig.bindAddress, mMetricsConfig.port,
+			                                     mMetricsStatus);
 			return S_OK;
 		}
 		return E_FAIL;
@@ -187,6 +188,15 @@ public:
 	}
 
 	STDMETHODIMP SetMetricsPort(DWORD port) override;
+
+	STDMETHODIMP GetMetricsBindAddress(std::wstring* address) override
+	{
+		if (!address) return E_POINTER;
+		address->assign(mMetricsConfig.bindAddress.begin(), mMetricsConfig.bindAddress.end());
+		return S_OK;
+	}
+
+	STDMETHODIMP SetMetricsBindAddress(const std::wstring& address) override;
 
 	DWORD GetMCProfileId(bool hdr)
 	{

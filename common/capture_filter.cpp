@@ -606,6 +606,27 @@ HRESULT capture_filter::SetMetricsPort(DWORD port)
 	return E_FAIL;
 }
 
+HRESULT capture_filter::SetMetricsBindAddress(const std::wstring& address)
+{
+	if (address.empty())
+	{
+		return E_INVALIDARG;
+	}
+	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
+	{
+		if (const auto res = key.TrySetStringValue(metricsBindAddressRegKey, address))
+		{
+			if (auto narrow = to_narrow(address); mMetricsConfig.bindAddress != narrow)
+			{
+				mMetricsConfig.bindAddress = std::move(narrow);
+				mMetricsStatus = "Applies when the filter is next loaded";
+			}
+			return S_OK;
+		}
+	}
+	return E_FAIL;
+}
+
 STDMETHODIMP capture_filter::GetPages(CAUUID* pPages)
 {
 	CheckPointer(pPages, E_POINTER)

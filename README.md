@@ -209,7 +209,7 @@ Every variant (not just the with-logging ones) can publish its frame timing stat
 
 ### Enabling
 
-Open the filter property page, tick `Prometheus Port?`, optionally change the port and click Apply. The change takes effect the next time the filter is loaded (i.e. restart playback). The line below the port shows the scrape URL once it is running, or the reason it could not start (e.g. the port is already in use). A failure to start the endpoint never stops the filter from working.
+Open the filter property page, tick `Prometheus?`, optionally change the listen address and port, and click Apply. The change takes effect the next time the filter is loaded (i.e. restart playback). The line below them shows the scrape URL once it is running, or the reason it could not start (e.g. the port is already in use). A failure to start the endpoint never stops the filter from working.
 
 The settings are stored in the registry under `HKEY_CURRENT_USER\Software\3ll3d00d\MWCapture` (Magewell) or `HKEY_CURRENT_USER\Software\3ll3d00d\BMCapture` (Blackmagic):
 
@@ -217,10 +217,10 @@ The settings are stored in the registry under `HKEY_CURRENT_USER\Software\3ll3d0
 |-----------------------------|-----------|------------------------------------|----------------------------------------------------------------------------------|
 | `prometheusEnabled`         | REG_DWORD | 0                                  | 1 to serve metrics                                                               |
 | `prometheusPort`            | REG_DWORD | 9464 (Magewell), 9465 (Blackmagic) | port to listen on                                                                |
-| `prometheusBindAddress`     | REG_SZ    | `127.0.0.1`                        | address to listen on, registry only                                              |
+| `prometheusBindAddress`     | REG_SZ    | `127.0.0.1`                        | address to listen on                                                             |
 | `prometheusSignalRetention` | REG_DWORD | 60                                 | seconds to keep the series of a signal that is no longer present, registry only |
 
-By default the endpoint is only reachable from the same PC. To scrape from another machine set `prometheusBindAddress` to `0.0.0.0` (or a specific interface address) and allow the port through the Windows firewall. There is no authentication so only do this on a trusted network.
+By default the endpoint is only reachable from the same PC. To scrape from another machine set the listen address to `0.0.0.0` (or a specific interface address) and allow the port through the Windows firewall. There is no authentication so only do this on a trusted network.
 
 The endpoint only exists while the filter is loaded, i.e. while something is playing from the capture card, so expect the target to be reported as down at other times.
 

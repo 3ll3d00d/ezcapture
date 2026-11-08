@@ -56,7 +56,8 @@ interface __declspec(uuid("4D6B8852-06A6-4997-BC07-3507BB77F748")) ISignalInfoCB
 	STDMETHOD(ReloadA2)(latency_stats* payload) = 0;
 	STDMETHOD(ReloadControls)(const bool& rateEnabled, const bool& profileEnabled, const DWORD& hdr, const DWORD& sdr,
 	                          const bool& highThreadPrio, const bool& audioCapture) = 0;
-	STDMETHOD(ReloadMetricsControls)(const bool& enabled, const DWORD& port, const std::string& status) = 0;
+	STDMETHOD(ReloadMetricsControls)(const bool& enabled, const std::string& bindAddress, const DWORD& port,
+	                                 const std::string& status) = 0;
 	STDMETHOD(Reload)(dv_status* payload) = 0;
 };
 
@@ -80,6 +81,8 @@ interface __declspec(uuid("6A505550-28B2-4668-BC2C-461E75A63BC4")) ISignalInfo :
 	STDMETHOD(SetMetricsEnabled)(bool enabled) = 0;
 	STDMETHOD(GetMetricsPort)(DWORD* port) = 0;
 	STDMETHOD(SetMetricsPort)(DWORD port) = 0;
+	STDMETHOD(GetMetricsBindAddress)(std::wstring* address) = 0;
+	STDMETHOD(SetMetricsBindAddress)(const std::wstring& address) = 0;
 };
 
 class CSignalInfoProp :
@@ -114,7 +117,8 @@ public:
 	HRESULT ReloadA2(latency_stats* payload) override;
 	HRESULT ReloadControls(const bool& rateEnabled, const bool& profileEnabled, const DWORD& hdr,
 	                       const DWORD& sdr, const bool& highThreadPrio, const bool& audioCapture) override;
-	HRESULT ReloadMetricsControls(const bool& enabled, const DWORD& port, const std::string& status) override;
+	HRESULT ReloadMetricsControls(const bool& enabled, const std::string& bindAddress, const DWORD& port,
+	                              const std::string& status) override;
 	HRESULT Reload(dv_status* payload) override;
 
 private:
