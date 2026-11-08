@@ -1,12 +1,44 @@
-# EDID for Dolby Vision capture
+# EDID library
+
+EDIDs for capturing from an Apple TV 4K through an HDFury Vertex2 into a Magewell Pro Capture HDMI 4K Plus. None are
+applied automatically, see [Apply on Vertex2](#apply-on-vertex2).
+
+The status column records results on that chain, with Vertex2 firmware 0.62 for everything that needs 4K. On it the
+card does not lock any signal above 340MHz from the Vertex2, on either output and even with the Vertex2 test pattern,
+while the same card locks 4K60 RGB directly from a PC.
+
+| File | 4K | Dolby Vision | HDR10 | Audio | Origin | Status |
+|---|---|---|---|---|---|---|
+| `vertex2-lg-dv30-4k-4000nit-no4k50-lpcm.bin` | up to 30Hz | standard, 4000 nit | yes | LPCM 7.1 only | derived from `no4k50` | **Recommended** when the link cannot lock above 340MHz. Apple TV sends 7.1 LPCM |
+| `vertex2-lg-dv30-4k-4000nit-no4k50.bin` | up to 30Hz | standard, 4000 nit | yes | LPCM + bitstream | derived from videoprocessor | Works: 4K24 Dolby Vision decoded, but the Apple TV sends an Atmos bitstream |
+| `vertex2-lg-dv-1080p-4000nit.bin` | none | standard, 4000 nit | yes | LPCM + bitstream | derived from videoprocessor | Works: Dolby Vision at up to 1080p, see below |
+| `vertex2-lg-dv-1080p.bin` | none | standard, 350 nit | yes | LPCM + bitstream | derived from videoprocessor | Superseded by the 4000 nit version, the source tone maps to 350 nits |
+| `vertex2-lg-dv30-4k-4000nit-297mhz.bin` | up to 60Hz, 300MHz limit | standard, 4000 nit | yes | LPCM + bitstream | derived from videoprocessor | Not sufficient: with 4K50 listed the Apple TV still sends 371MHz or 594MHz |
+| `vertex2-lg-dv30-4k-4000nit.bin` | up to 60Hz | standard, 4000 nit | yes | LPCM + bitstream | derived from videoprocessor | Needs a link that locks above 340MHz, 4K50 HDR at 371MHz did not lock here |
+| `vertex2-lg-dv60-4k-4000nit.bin` | up to 60Hz | standard incl. 4K60, 4000 nit | yes | LPCM + bitstream | derived from videoprocessor | Needs a link that locks above 340MHz, did not work here |
+| `vertex2-full-no-dv-approx.bin` | up to 60Hz | none | yes | LPCM + bitstream | approximation of Vertex2 **Full no DV** | Unverified, FULL + LG DV with the Dolby Vision block removed |
+| `magewell-vsdb340.bin` | up to 60Hz | none | no | LPCM + bitstream | derived from the default EDID of the card | Diagnostic, HDMI VSDB max TMDS 340MHz. It made no difference to the failure above 340MHz |
+
+## SHA-256
+
+| File | SHA-256 |
+|---|---|
+| `vertex2-lg-dv30-4k-4000nit-no4k50-lpcm.bin` | `cf1b35f6cba422aff59f316e47e8234974ddbdf2a9bfa53cf9568c8b2a1a5119` |
+| `vertex2-lg-dv30-4k-4000nit-no4k50.bin` | `5cd7a02dae1df3fabdc8605cfee564cb62323d4369ba851015ae54b899bd0777` |
+| `vertex2-lg-dv-1080p-4000nit.bin` | `4776d83d20ced301307b68c2bcd50b76c5dd8c31c2e0f0eae7522032e37ed5c6` |
+| `vertex2-lg-dv-1080p.bin` | `e6163fbae4a6e32696859b10eabe071ff30235d30614bc3e87936cef7fd046f1` |
+| `vertex2-lg-dv30-4k-4000nit-297mhz.bin` | `7ffa9335d2ea0c18ebec9983e444034b7a0e42159d5feebdb8d645a82eaa330f` |
+| `vertex2-lg-dv30-4k-4000nit.bin` | `ad264f457802f0fc1ae02a8148fb976b39bc2d715c8ac889bd6f78056a8d0fd1` |
+| `vertex2-lg-dv60-4k-4000nit.bin` | `0b2c664d624fa4630327da576941e75f429f0e834cce71baac43f3f81c42d15a` |
+| `vertex2-full-no-dv-approx.bin` | `2cb63b5985c5fd5da02cb667b24a9e62361b9cea68c9709da45278d42fedc937` |
+| `magewell-vsdb340.bin` | `4dbfe91324c3bee03c9470b001a1e0dd167561959bfa5bb2f118e93dfd3c2170` |
+
+## Dolby Vision at up to 1080p
 
 `vertex2-lg-dv-1080p-4000nit.bin` is a 256 byte EDID that makes an Apple TV 4K send the TV-led Dolby Vision RGB
-tunnel (see [Dolby Vision](../../README.md#dolby-vision)) at up to 1080p, used with an HDFury Vertex2 between the
-source and a Magewell Pro Capture card. It is not applied automatically.
+tunnel (see [Dolby Vision](../../README.md#dolby-vision)) at up to 1080p.
 
-SHA-256: `4776d83d20ced301307b68c2bcd50b76c5dd8c31c2e0f0eae7522032e37ed5c6`
-
-## Why
+### Why
 
 A source only sends the tunnel when the sink's EDID has a Dolby Vision vendor specific video data block (VSVDB) that
 supports *standard* (TV-led) Dolby Vision. With an Apple TV:
@@ -16,7 +48,7 @@ supports *standard* (TV-led) Dolby Vision. With an Apple TV:
 * a version 1, standard only, VSVDB injected into the automix EDID removes Dolby Vision from the Apple TV format list
 * a complete EDID with the standard only VSVDB works
 
-## Provenance
+### Provenance
 
 It is derived from `vertex2-lg-dv30-hdr10bit.bin` from
 [videoprocessor](https://github.com/billslack2/videoprocessor/tree/a8f62855c246019e3d9262f384e58c96d60f3147/docs/edid)
@@ -68,6 +100,9 @@ signal above 340MHz. A Vertex2 on firmware 0.62 driving a Magewell Pro Capture H
 outputs, even with the Vertex2's own test pattern, while the same card locks 4K60 RGB directly from a PC.
 
 SHA-256: `5cd7a02dae1df3fabdc8605cfee564cb62323d4369ba851015ae54b899bd0777`
+
+`vertex2-lg-dv30-4k-4000nit-no4k50-lpcm.bin` is the same with LPCM as the only audio format. With the bitstream
+formats listed the Apple TV sends an Atmos bitstream, which can't be decoded here, so use this one for 7.1 LPCM.
 
 Limiting the rate in the VSDBs is not enough. With 4K50/60 still listed, an Apple TV sends them at 371MHz or 594MHz
 despite the EDID, so they are removed. Changes from the videoprocessor file:
