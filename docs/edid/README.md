@@ -60,3 +60,26 @@ The Vertex2 rewrites the HDMI physical address per input so the EDID it presents
 and the checksum.
 
 Tested with Apple TV 4K -> Vertex2 -> Magewell Pro Capture HDMI 4K Plus -> JRiver (JRVR) at 1080p50.
+
+## 4K up to 30Hz
+
+`vertex2-lg-dv30-4k-4000nit-no4k50.bin` offers 4K Dolby Vision and HDR at up to 30Hz, for a chain that can't lock a
+signal above 340MHz. A Vertex2 on firmware 0.62 driving a Magewell Pro Capture HDMI 4K Plus fails this way on both
+outputs, even with the Vertex2's own test pattern, while the same card locks 4K60 RGB directly from a PC.
+
+SHA-256: `5cd7a02dae1df3fabdc8605cfee564cb62323d4369ba851015ae54b899bd0777`
+
+Limiting the rate in the VSDBs is not enough. With 4K50/60 still listed, an Apple TV sends them at 371MHz or 594MHz
+despite the EDID, so they are removed. Changes from the videoprocessor file:
+
+| Where | Before | After |
+|---|---|---|
+| Preferred timing (base DTD1) | 3840x2160p60 | 3840x2160p30 |
+| Range limits, max pixel clock | 600MHz | 300MHz |
+| CTA video data block | includes VICs 96, 97, 101, 102 | those 4K50/60 VICs removed |
+| Y420 capability map | present | removed |
+| HDMI Forum VSDB | max 600Mcsc, 10-bit 4:2:0 | no rate above 340Mcsc, no 4:2:0 deep colour |
+| Dolby VSVDB target max luminance | 350 nits (`0x0A`) | 4000 nits (`0x9C`) |
+
+Tested with Apple TV 4K -> Vertex2 -> Magewell Pro Capture HDMI 4K Plus, 4K24 Dolby Vision at 297MHz. The tunnel was
+decoded and the Apple TV switched into it from 4K24 SDR with Match Dynamic Range on. 24p HDR10 and 25Hz are untested.
