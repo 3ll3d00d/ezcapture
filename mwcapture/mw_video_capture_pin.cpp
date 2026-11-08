@@ -90,28 +90,9 @@ magewell_video_capture_pin::video_frame_grabber::video_frame_grabber(magewell_vi
 	pms(pms)
 {
 	this->pms->GetPointer(&pmsData);
-
-	if (deviceType == MW_PRO)
-	{
-		#ifndef NO_LOGGING
-		LOG_TRACE_L3(mLogData.logger, "[{}] Pinning {} bytes", this->mLogData.prefix, this->pms->GetSize());
-		#endif
-		MWPinVideoBuffer(hChannel, pmsData, this->pms->GetSize());
-	}
 }
 
-magewell_video_capture_pin::video_frame_grabber::~video_frame_grabber()
-{
-	if (deviceType == MW_PRO)
-	{
-		#ifndef NO_LOGGING
-		LOG_TRACE_L3(mLogData.logger, "[{}] Unpinning {} bytes, captured {} bytes", mLogData.prefix, pms->GetSize(),
-		             pms->GetActualDataLength());
-		#endif
-
-		MWUnpinVideoBuffer(hChannel, pmsData);
-	}
-}
+magewell_video_capture_pin::video_frame_grabber::~video_frame_grabber() = default;
 
 HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 {
@@ -166,6 +147,8 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 				BGR24.GetImageDimensions(pin->mVideoFormat.cx, pin->mVideoFormat.cy, &captureStride, &imageSize);
 				if (pin->mDvCapture.size() < imageSize)
 				{
+					// growing may reallocate so it must not be pinned
+					pin->Unpin(pin->mDvCapture.data());
 					pin->mDvCapture.resize(imageSize);
 				}
 				pin->mDvCaptureStride = captureStride;
@@ -175,6 +158,25 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 				captureColourFormat = static_cast<MWCAP_VIDEO_COLOR_FORMAT>(pin->mVideoSignal.signalStatus.colorFormat);
 				captureQuantisation = static_cast<MWCAP_VIDEO_QUANTIZATION_RANGE>(pin->mVideoSignal.signalStatus.quantRange);
 				captureSaturation = static_cast<MWCAP_VIDEO_SATURATION_RANGE>(pin->mVideoSignal.signalStatus.satRange);
+			}
+
+			// samples from another allocator are different buffers, drop pins on any that may since have been freed
+			if (pin->m_pAllocator != pin->mPinnedAllocator)
+			{
+				pin->UnpinAll();
+				pin->mPinnedAllocator = pin->m_pAllocator;
+			}
+			if (writeBuffer == pmsData)
+			{
+				pin->PinForCapture(writeBuffer, static_cast<DWORD>(pms->GetSize()));
+			}
+			else if (writeBuffer == pin->mDvCapture.data())
+			{
+				pin->PinForCapture(writeBuffer, static_cast<DWORD>(pin->mDvCapture.size()));
+			}
+			else
+			{
+				pin->PinForCapture(writeBuffer, captureSize);
 			}
 
 			hr = MWCaptureVideoFrameToVirtualAddressEx(
@@ -625,7 +627,74 @@ magewell_video_capture_pin::magewell_video_capture_pin(HRESULT* phr, magewell_ca
 
 magewell_video_capture_pin::~magewell_video_capture_pin()
 {
+	UnpinAll();
 	CloseHandle(mNotifyEvent);
+}
+
+void magewell_video_capture_pin::PinForCapture(uint8_t* data, DWORD size)
+{
+	const auto existing = std::ranges::find_if(mPinnedBuffers, [data](const pinned_buffer& b) { return b.data == data; });
+	if (existing != mPinnedBuffers.end())
+	{
+		if (existing->size >= size)
+		{
+			return;
+		}
+		Unpin(data);
+	}
+	const auto pinned = MWPinVideoBuffer(mFilter->GetChannelHandle(), data, size) == MW_SUCCEEDED;
+	mPinnedBuffers.push_back({data, size, pinned});
+
+	#ifndef NO_LOGGING
+	if (pinned)
+	{
+		LOG_TRACE_L1(mLogData.logger, "[{}] Pinned {} bytes at {} ({} pinned buffers)", mLogData.prefix, size,
+		             static_cast<void*>(data), mPinnedBuffers.size());
+	}
+	else
+	{
+		LOG_WARNING(mLogData.logger, "[{}] Unable to pin {} bytes at {}, the driver will lock it on every capture",
+		            mLogData.prefix, size, static_cast<void*>(data));
+	}
+	#endif
+}
+
+void magewell_video_capture_pin::Unpin(const uint8_t* data)
+{
+	const auto existing = std::ranges::find_if(mPinnedBuffers, [data](const pinned_buffer& b) { return b.data == data; });
+	if (existing == mPinnedBuffers.end())
+	{
+		return;
+	}
+	if (existing->pinned)
+	{
+		MWUnpinVideoBuffer(mFilter->GetChannelHandle(), existing->data);
+	}
+	mPinnedBuffers.erase(existing);
+}
+
+void magewell_video_capture_pin::UnpinAll()
+{
+	#ifndef NO_LOGGING
+	if (!mPinnedBuffers.empty())
+	{
+		LOG_TRACE_L1(mLogData.logger, "[{}] Unpinning {} buffers", mLogData.prefix, mPinnedBuffers.size());
+	}
+	#endif
+	for (const auto& b : mPinnedBuffers)
+	{
+		if (b.pinned)
+		{
+			MWUnpinVideoBuffer(mFilter->GetChannelHandle(), b.data);
+		}
+	}
+	mPinnedBuffers.clear();
+	mPinnedAllocator = nullptr;
+}
+
+void magewell_video_capture_pin::OnBuffersReleasing()
+{
+	UnpinAll();
 }
 
 void magewell_video_capture_pin::DoThreadDestroy()
@@ -1568,6 +1637,8 @@ void magewell_video_capture_pin::StopCapture()
 	if (deviceType == MW_PRO)
 	{
 		MWStopVideoCapture(mFilter->GetChannelHandle());
+		// as per the SDK example, after the capture stops and before the allocator decommits on Inactive
+		UnpinAll();
 	}
 	else if (mVideoCapture)
 	{

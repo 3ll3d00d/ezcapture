@@ -384,6 +384,8 @@ HRESULT capture_pin::RenegotiateMediaType(const CMediaType* pmt, long newSize, b
 	auto timeout = 100;
 	auto retVal = VFW_E_CHANGING_FORMAT;
 	auto oldMediaType = m_mt;
+	// the downstream pin or our allocator may free the existing buffers from here on
+	OnBuffersReleasing();
 	HRESULT hrQA = m_Connected->QueryAccept(pmt);
 
 receiveconnection:

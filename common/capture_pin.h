@@ -248,6 +248,10 @@ protected:
 	            device_type pType, bool pVideo);
 
 	virtual void DoThreadDestroy() = 0;
+	// called before the sample buffers may be freed or reallocated, e.g. a media type renegotiation
+	virtual void OnBuffersReleasing()
+	{
+	}
 	virtual bool ProposeBuffers(ALLOCATOR_PROPERTIES* pProperties) = 0;
 	HRESULT RenegotiateMediaType(const CMediaType* pmt, long newSize, boolean renegotiateOnQueryAccept);
 	HRESULT HandleStreamStateChange(IMediaSample* pms);

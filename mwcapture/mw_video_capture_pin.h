@@ -65,7 +65,13 @@ public:
 
 protected:
 	void DoThreadDestroy() override;
+	void OnBuffersReleasing() override;
 	void StopCapture();
+	// Pro cards only: buffers the card DMAs into are pinned once, on first use, rather than on every frame and are
+	// unpinned before they can be freed
+	void PinForCapture(uint8_t* data, DWORD size);
+	void Unpin(const uint8_t* data);
+	void UnpinAll();
 
 	void LoadFormat(video_format* videoFormat, video_signal* videoSignal, const usb_capture_formats* captureFormats);
 	// USB only
@@ -149,6 +155,15 @@ protected:
 	dv_tunnel::decoder mDvDecoder{};
 	bool mDvLocked{false};
 	std::vector<uint8_t> mDvCapture{};
+	struct pinned_buffer
+	{
+		uint8_t* data;
+		DWORD size;
+		bool pinned; // false if the pin failed, the driver then locks the buffer on every capture instead
+	};
+	std::vector<pinned_buffer> mPinnedBuffers{};
+	// the allocator the pinned samples belong to, a different allocator means different buffers
+	IMemAllocator* mPinnedAllocator{nullptr};
 	DWORD mDvCaptureStride{0};
 	int mDvOutputWidth{0};
 	bool mDvFullRange{true};
