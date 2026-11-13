@@ -19,6 +19,7 @@
 #include "dv_tunnel.h"
 #include "lavfilters_side_data.h"
 
+#include <cstddef>
 #include <cstring>
 
 namespace dv_tunnel
@@ -97,6 +98,26 @@ namespace dv_tunnel
 			out.Extensions[0].Level1.max_pq = md.l1MaxPq;
 			out.Extensions[0].Level1.avg_pq = md.l1AvgPq;
 		}
+	}
+
+	/**
+	 * Attaches the metadata to the sample, if it supports side data, as LAV does: V2 plus the legacy layout
+	 * without extensions.
+	 * @param scratch reused for each frame as the struct is large.
+	 */
+	inline void append_side_data(IMediaSample* pms, const metadata& md, MediaSideDataDOVIMetadata& scratch)
+	{
+		IMediaSideData* sideData = nullptr;
+		if (FAILED(pms->QueryInterface(&sideData)))
+		{
+			return;
+		}
+		to_lav(md, scratch);
+		sideData->SetSideData(IID_MediaSideDataDOVIMetadataV2, reinterpret_cast<const BYTE*>(&scratch),
+		                      sizeof(MediaSideDataDOVIMetadata));
+		sideData->SetSideData(IID_MediaSideDataDOVIMetadata, reinterpret_cast<const BYTE*>(&scratch),
+		                      offsetof(MediaSideDataDOVIMetadata, Extensions));
+		sideData->Release();
 	}
 }
 

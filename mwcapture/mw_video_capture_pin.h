@@ -81,14 +81,19 @@ protected:
 	HRESULT LoadSignal(HCHANNEL* pChannel);
 	void OnFrameWriterStrategyUpdated() override;
 
-	// experimental Dolby Vision RGB tunnel decode, pro only
+	// experimental Dolby Vision RGB tunnel decode
 	bool IsDvTunnelCandidate() const;
-	void ProbeDvTunnel(const uint8_t* frame, DWORD stride);
-	void WriteDvTunnelFrame(IMediaSample* pms);
+	// USB only, whether the card can capture the signal as BGR24 at its own size, i.e. without scaling
+	bool UsbCanCaptureDvTunnel() const;
+	// frame is the first row in memory, bottomUp if that is the bottom row of the picture
+	void ProbeDvTunnel(const uint8_t* frame, DWORD stride, bool bottomUp);
+	// writes the captured tunnel frame, or black if length is too short to hold it
+	void WriteDvTunnelFrame(const uint8_t* frame, DWORD stride, size_t length, bool bottomUp, IMediaSample* pms);
 	void AppendDvSideData(IMediaSample* pms);
 	void LogDvTunnelStats();
 	void PublishDvStatus();
 	void LogDvEdidSupport(HCHANNEL hChannel) const;
+	void LogUsbProcessSettings(HCHANNEL hChannel) const;
 
 	void SnapTemperatureIfNecessary(LONGLONG endTime)
 	{

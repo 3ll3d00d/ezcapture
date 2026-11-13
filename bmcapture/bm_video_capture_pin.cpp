@@ -108,9 +108,18 @@ HRESULT blackmagic_video_capture_pin::GetDeliveryBuffer(IMediaSample** ppSample,
 			auto hr = OnVideoSignal(newVideoFormat);
 			if (FAILED(hr))
 			{
+				if (newVideoFormat.dvTunnel && !mVideoFormat.dvTunnel)
+				{
+					mFilter->OnDvRejected();
+				}
 				mCurrentFrame.reset();
 				BACKOFF;
 				continue;
+			}
+			// reconnecting picks a writer for the pixel format but the tunnel is RGB in, P210 out
+			if (mVideoFormat.dvTunnel && mFrameWriterStrategy != DV_TUNNEL)
+			{
+				SetFrameWriterStrategy(DV_TUNNEL, mVideoFormat.pixelFormat);
 			}
 
 			retVal = video_capture_pin::GetDeliveryBuffer(ppSample, pStartTime, pEndTime, dwFlags);
@@ -163,6 +172,14 @@ HRESULT blackmagic_video_capture_pin::FillBuffer(IMediaSample* pms)
 	mFrameCounter = mCurrentFrame->GetFrameIndex();
 
 	AppendHdrSideDataIfNecessary(pms, endTime);
+	if (mVideoFormat.dvTunnel)
+	{
+		const auto& dv = mCurrentFrame->GetDv();
+		if (dv.render && dv.metadata)
+		{
+			dv_tunnel::append_side_data(pms, *dv.metadata, *mDvSideData);
+		}
+	}
 
 	int64_t now;
 	mFilter->GetReferenceTime(&now);

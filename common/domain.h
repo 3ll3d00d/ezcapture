@@ -555,8 +555,9 @@ struct video_format
 	DWORD lineLength{0};
 	DWORD imageSize{0};
 	bool bottomUpDib{true};
-	// experimental, the card captures BGR24 which is decoded as a Dolby Vision RGB tunnel to pixelFormat
+	// experimental, the card captures dvCaptureFormat which is decoded as a Dolby Vision RGB tunnel to pixelFormat
 	bool dvTunnel{false};
+	pixel_format dvCaptureFormat{BGR24};
 
 	void CalculateDimensions()
 	{
@@ -626,7 +627,8 @@ enum frame_writer_strategy :uint8_t
 	Y210_P210,
 	R210_BGR48,
 	BGR10_BGR48,
-	STRAIGHT_THROUGH
+	STRAIGHT_THROUGH,
+	DV_TUNNEL
 };
 
 inline const char* to_string(frame_writer_strategy e)
@@ -642,6 +644,7 @@ inline const char* to_string(frame_writer_strategy e)
 	case R210_BGR48: return "R210_BGR48";
 	case BGR10_BGR48: return "BGR10_BGR48";
 	case STRAIGHT_THROUGH: return "STRAIGHT_THROUGH";
+	case DV_TUNNEL: return "DV_TUNNEL";
 	default: return "unknown";
 	}
 }

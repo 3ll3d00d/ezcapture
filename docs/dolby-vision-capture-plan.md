@@ -1,6 +1,8 @@
 # Plan: Dolby Vision tunnel on DeckLink and Magewell USB
 
-Status: planned. Dolby Vision capture currently works on Magewell Pro cards only.
+Status: DeckLink and Magewell USB implemented end to end (phases 1, 3 and 4), both untested on hardware. The phase 2
+refactor is not started. Both skipped the probe gate, stage B below is now run with the full build. DeckLink has
+videoprocessor as evidence, Magewell USB has none.
 
 The plan is to establish what each card delivers, then move the Magewell Dolby Vision logic into `common/` so all
 filters share it. Only frame acquisition stays device-specific.
@@ -33,12 +35,14 @@ Vision, so ordinary RGB is never affected.
 ## Phase 1: probe build
 
 1. Add a pixel layout to the bit reader and unpacker in `dv_tunnel.h`. Parity ignores any alpha byte. For `r210`, try
-   both placements and use the one that passes the CRC.
+   both placements and use the one that passes the CRC. Done, ARGB and BGRA are also tried both ways as the alpha
+   position decides parity, and the unused bits pick which to try first as a dark picture can pass the CRC in both.
 2. Extend `dv_tunnel_test.cpp` so the decoder and unpack tests run for every layout.
 3. Run the decoder on candidate frames in `bmcapture` and on Magewell USB, logging only: CRC lock, layout, failed copies,
    packet counts and what the card reports. The picture is not changed.
 
-**Gate:** run stage B of the test protocol below on each card. DeckLink and USB pass or fail separately.
+**Gate:** run stage B of the test protocol below on each card. DeckLink and USB pass or fail separately. DeckLink
+went straight to phase 3, stage B now checks the full build.
 
 ## Phase 2: shared refactor, no behaviour change
 
@@ -69,7 +73,13 @@ For each card that passed the gate:
   colours in phase 3.
 * **EDID:** the DeckLink filter only sets the dynamic range field and no way to write a full EDID has been found, so the
   Vertex2 supplies it.
-* **Not reviewed yet:** `processVideoFrame`, `MediaSampleBackedDecklinkBuffer` and the Magewell USB capture path.
+* **Magewell USB orientation:** USB RGB frames are bottom-up (the output media type has a positive `biHeight`), the
+  decoder reads them from the last row in memory with a negative stride. If a USB card never locks, a top-down frame is
+  the first thing to rule out.
+* **Magewell USB capture:** the card captures in the format passed to `MWCreateVideoCapture`, so while the tunnel is
+  locked it is still asked for BGR24, not the P210 output. It is only a candidate when BGR24 and the signal's own size
+  are among the formats configured in the USB Capture Utility, any other size is scaled.
+* **Not reviewed yet:** `processVideoFrame`, `MediaSampleBackedDecklinkBuffer`.
 * **Build files:** any new file or test has to be added to both the MSBuild and CMake builds.
 
 ## Test protocol
@@ -165,9 +175,22 @@ result if the signal locks.
 
 ### Stage B: tunnel integrity
 
-**Needs the probe build, which doesn't exist yet.** The probe runs the Dolby Vision decoder on incoming frames without
-changing the picture. It reports whether the metadata CRC locks and which pixel layout it was found in. The exact log
-lines will be added here when it is built.
+**DeckLink:** use the `BlackmagicTrace` build (Release builds compile out logging). It logs, at the start of each
+candidate signal, the end of the tunnel and every 600 frames:
+
+```
+Searching for a DV tunnel in 3840 x 2160 bmdFormat8BitARGB (row bytes: 15360) at frame 1
+DV tunnel detected at frame 12 in bmdFormat8BitARGB as BGRA, switching to P210 [metadata: true]
+DV tunnel [locked: true, layout: BGRA, frames: 600, rejected: 0, no_md: 0, crc failed copies: 0, recovered: 0, ...]
+DV tunnel ended at frame 4000, switching back to RGB
+```
+
+The property page shows the same counts in the Dolby Vision box.
+
+**Magewell USB:** use the with-logging `mwcapture` build. At startup it logs the card's processing settings, which
+should all be defaults, then the same `DV tunnel detected` / `DV tunnel [...]` / `DV tunnel ended` lines as a Pro card.
+If the status stays `HDR (Dolby Vision: not detected)` check BGR24 and the signal's resolution are configured in the USB
+Capture Utility.
 
 | # | Apple TV | Content | Capture for at least |
 |---|---|---|---|

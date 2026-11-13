@@ -1040,6 +1040,9 @@ HRESULT blackmagic_capture_filter::processVideoFrame(IDeckLinkVideoInputFrame* v
 		#endif
 	}
 
+	dv_frame dv{};
+	ProcessDvTunnel(videoFrame, newVideoFormat, (videoFrame->GetFlags() & bmdFrameContainsHDRMetadata) != 0, dv);
+
 	{
 		CAutoLock lock(&mFrameSec);
 
@@ -1055,6 +1058,7 @@ HRESULT blackmagic_capture_filter::processVideoFrame(IDeckLinkVideoInputFrame* v
 		mVideoFormat = newVideoFormat;
 		mVideoFrame = std::make_shared<video_frame>(mLogData, newVideoFormat, frameNotificationTime, mVideoFrameTime,
 		                                            frameDuration, mCurrentVideoFrameIndex, videoFrame);
+		mVideoFrame->SetDv(std::move(dv));
 	}
 
 	// signal listeners
@@ -1067,6 +1071,199 @@ HRESULT blackmagic_capture_filter::processVideoFrame(IDeckLinkVideoInputFrame* v
 	}
 
 	return S_OK;
+}
+
+namespace
+{
+	// the layout the card reports for an RGB format that can carry the 8-bit DV tunnel
+	bool to_dv_layout(BMDPixelFormat pixelFormat, dv_tunnel::pixel_layout& layout)
+	{
+		switch (pixelFormat)
+		{
+		case bmdFormat8BitARGB:
+			layout = dv_tunnel::pixel_layout::ARGB;
+			return true;
+		case bmdFormat8BitBGRA:
+			layout = dv_tunnel::pixel_layout::BGRA;
+			return true;
+		case bmdFormat10BitRGB:
+			layout = dv_tunnel::pixel_layout::R210_HIGH8;
+			return true;
+		default:
+			return false;
+		}
+	}
+}
+
+void blackmagic_capture_filter::ProcessDvTunnel(IDeckLinkVideoInputFrame* videoFrame, video_format& videoFormat,
+                                                bool hasHdrMetadata, dv_frame& dv)
+{
+	const auto pixelFormat = videoFrame->GetPixelFormat();
+	const auto width = static_cast<uint32_t>(videoFrame->GetWidth());
+	const auto height = static_cast<uint32_t>(videoFrame->GetHeight());
+	auto layout = dv_tunnel::pixel_layout::ARGB;
+	// the tunnel is signalled as RGB with no HDR infoframe, the metadata CRC decides whether it is really DV
+	const bool candidate = !mDvRejected && to_dv_layout(pixelFormat, layout) && !hasHdrMetadata && (width & 1) == 0;
+
+	if (candidate != mDvCandidate)
+	{
+		if (candidate)
+		{
+			#ifndef NO_LOGGING
+			LOG_INFO(mLogData.logger, "[{}] Searching for a DV tunnel in {} x {} {} (row bytes: {}) at frame {}",
+			         mLogData.prefix, width, height, to_string(pixelFormat), videoFrame->GetRowBytes(),
+			         mCurrentVideoFrameIndex);
+			#endif
+		}
+		else
+		{
+			#ifndef NO_LOGGING
+			if (mDvDecoder.locked())
+			{
+				LOG_WARNING(mLogData.logger,
+				            "[{}] DV tunnel ended at frame {}, signal is no longer RGB without HDR metadata ({} {} hdr: {})",
+				            mLogData.prefix, mCurrentVideoFrameIndex, to_string(pixelFormat), width, hasHdrMetadata);
+			}
+			#endif
+			LogDvTunnelStats(true);
+			mDvDecoder.reset();
+			mDvStatsLoggedAt = 0;
+		}
+		mDvCandidate = candidate;
+	}
+
+	if (candidate)
+	{
+		CComQIPtr<IDeckLinkVideoBuffer> buffer(videoFrame);
+		if (buffer && S_OK == buffer->StartAccess(bmdBufferAccessRead))
+		{
+			void* bytes = nullptr;
+			if (S_OK == buffer->GetBytes(&bytes) && bytes != nullptr)
+			{
+				const bool wasLocked = mDvDecoder.locked();
+				mDvDecoder.process(static_cast<const uint8_t*>(bytes), videoFrame->GetRowBytes(), width, height,
+				                   mCurrentVideoFrameIndex, layout);
+				#ifndef NO_LOGGING
+				if (!wasLocked && mDvDecoder.locked())
+				{
+					LOG_WARNING(mLogData.logger,
+					            "[{}] DV tunnel detected at frame {} in {} as {}, switching to P210 [metadata: {}]",
+					            mLogData.prefix, mCurrentVideoFrameIndex, to_string(pixelFormat),
+					            dv_tunnel::to_string(mDvDecoder.layout()), mDvDecoder.active().valid);
+				}
+				else if (wasLocked && !mDvDecoder.locked())
+				{
+					LOG_WARNING(mLogData.logger, "[{}] DV tunnel ended at frame {}, switching back to RGB",
+					            mLogData.prefix, mCurrentVideoFrameIndex);
+				}
+				#endif
+			}
+			buffer->EndAccess(bmdBufferAccessRead);
+		}
+	}
+
+	if (candidate && mDvDecoder.locked())
+	{
+		if (mDvDecoder.active().valid)
+		{
+			mDvFullRange = mDvDecoder.active().fullRange();
+		}
+		// the card still captures RGB, it is decoded to 12-bit IPT-PQ 4:2:2 in P210
+		videoFormat.dvTunnel = true;
+		videoFormat.dvCaptureFormat = videoFormat.pixelFormat;
+		videoFormat.pixelFormat = P210;
+		videoFormat.colourFormat = BT2020;
+		videoFormat.colourFormatName = "DV";
+		videoFormat.quantisation = mDvFullRange ? QUANTISATION_FULL : QUANTISATION_LIMITED;
+		videoFormat.saturation = mDvFullRange ? SATURATION_FULL : SATURATION_LIMITED;
+		videoFormat.hdrMeta = {};
+		videoFormat.hdrMeta.transferFunction = 15;
+		videoFormat.CalculateDimensions();
+
+		dv.render = mDvDecoder.render();
+		dv.layout = mDvDecoder.layout();
+		if (dv.render)
+		{
+			dv.metadata = std::make_shared<const dv_tunnel::metadata>(mDvDecoder.active());
+		}
+	}
+
+	PublishDvStatus();
+	LogDvTunnelStats(false);
+}
+
+void blackmagic_capture_filter::OnDvRejected()
+{
+	if (!mDvRejected.exchange(true))
+	{
+		#ifndef NO_LOGGING
+		LOG_ERROR(mLogData.logger, "[{}] Renderer rejected P210 for the DV tunnel, DV decode disabled until restart",
+		          mLogData.prefix);
+		#endif
+	}
+}
+
+void blackmagic_capture_filter::PublishDvStatus()
+{
+	const auto state = mDvRejected
+		                   ? DV_REJECTED
+		                   : !mDvCandidate
+		                   ? DV_INACTIVE
+		                   : !mDvDecoder.locked()
+		                   ? DV_SEARCHING
+		                   : mDvDecoder.render()
+		                   ? DV_LOCKED
+		                   : DV_NO_METADATA;
+	// on any change of state and about once a second while locked
+	const auto interval = static_cast<uint64_t>(std::max(1L, std::lround(mVideoFormat.fps)));
+	const bool periodic = (state == DV_LOCKED || state == DV_NO_METADATA)
+		&& mCurrentVideoFrameIndex >= mDvStatusPublishedAt + interval;
+	if (state == mDvPublishedState && !periodic)
+	{
+		return;
+	}
+	const auto& md = mDvDecoder.active();
+	const auto& stats = mDvDecoder.stats();
+	dv_status status{
+		.state = state,
+		.metadataValid = md.valid,
+		.fullRange = md.fullRange(),
+		.colourSpace = md.signalColorSpace,
+		.sourceMinPq = md.sourceMinPq,
+		.sourceMaxPq = md.sourceMaxPq,
+		.hasL1 = md.hasL1,
+		.l1MinPq = md.l1MinPq,
+		.l1AvgPq = md.l1AvgPq,
+		.l1MaxPq = md.l1MaxPq,
+		.metadataBytes = stats.lastMetadataLength,
+		.packets = stats.lastPacketCount,
+		.frames = stats.frames,
+		.rejectedFrames = stats.rejectedFrames,
+		.crcFailedCopies = stats.crcFailedCopies,
+		.recoveredPackets = stats.recoveredPackets
+	};
+	OnDvStatusUpdated(status);
+	mDvPublishedState = state;
+	mDvStatusPublishedAt = mCurrentVideoFrameIndex;
+}
+
+void blackmagic_capture_filter::LogDvTunnelStats(bool force)
+{
+	#ifndef NO_LOGGING
+	const auto& stats = mDvDecoder.stats();
+	if (stats.frames == 0 || (!force && stats.frames < mDvStatsLoggedAt + 600))
+	{
+		return;
+	}
+	mDvStatsLoggedAt = stats.frames;
+	const auto& md = mDvDecoder.active();
+	LOG_INFO(mLogData.logger,
+	         "[{}] DV tunnel [locked: {}, layout: {}, frames: {}, rejected: {}, no_md: {}, crc failed copies: {}, recovered: {}, md bytes: {}, packets: {}, valid: {}, full range: {}, colour space: {}, source pq: {}-{}, L1: {}/{}/{}, ext: {}]",
+	         mLogData.prefix, mDvDecoder.locked(), dv_tunnel::to_string(mDvDecoder.layout()), stats.frames,
+	         stats.rejectedFrames, stats.noMetadataFrames, stats.crcFailedCopies, stats.recoveredPackets,
+	         stats.lastMetadataLength, stats.lastPacketCount, md.valid, md.fullRange(), md.signalColorSpace,
+	         md.sourceMinPq, md.sourceMaxPq, md.l1MinPq, md.l1AvgPq, md.l1MaxPq, md.extensions.size());
+	#endif
 }
 
 HRESULT blackmagic_capture_filter::processAudioPacket(IDeckLinkAudioInputPacket* audioPacket,

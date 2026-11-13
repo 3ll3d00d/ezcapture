@@ -13,7 +13,7 @@ Supports
 * Linear PCM audio
 * Non linear PCM audio (magewell pro pcie only)
 * SDR and HDR video formats
-* Dolby Vision via the HDMI RGB tunnel (magewell pro pcie only, experimental, see [Dolby Vision](#dolby-vision))
+* Dolby Vision via the HDMI RGB tunnel (experimental, see [Dolby Vision](#dolby-vision))
 * automatic reaction to audio codec changes or video format changes
 * automatic refresh rate switching
 
@@ -151,11 +151,11 @@ Use the `Bandwidth` row and the log to check whether the configured or detected 
 
 ## Dolby Vision
 
-Experimental, Magewell Pro (PCIe) cards only.
+Experimental, Magewell Pro (PCIe), Magewell USB and Blackmagic DeckLink cards.
 
 A source sends standard (TV-led) Dolby Vision over HDMI as an "RGB tunnel": the signal is 8-bit RGB 4:4:4 with no HDR infoframe but the pixels actually carry 12-bit IPT-PQ 4:2:2 and the Dolby Vision display management metadata is hidden in the low bits of the first rows of every frame. Passed on as ordinary RGB it shows as a green/purple image.
 
-The filter watches every 8-bit RGB signal without an HDR infoframe for that metadata, it only switches when a metadata packet passes its CRC check so ordinary RGB is never affected. Once found it
+The filter watches every RGB signal without an HDR infoframe for that metadata (8-bit RGB on Magewell, 8-bit or 10-bit RGB on Blackmagic), it only switches when a metadata packet passes its CRC check so ordinary RGB is never affected. Once found it
 
 * reconnects the renderer with P210 (12-bit samples), BT.2020 and PQ
 * unpacks the tunnel into the original 12-bit IPT-PQ samples
@@ -167,7 +167,7 @@ Only renderers that understand LAV's Dolby Vision side data show it correctly. J
 
 ### Getting the source to send it
 
-A source only sends the tunnel when the EDID it reads says the display supports standard Dolby Vision. The Magewell card's EDID does not, and an EDID that only offers low latency Dolby Vision (LLDV) gets LLDV instead, which is a source tone mapped 12-bit YCbCr HDR signal that is captured as ordinary HDR.
+A source only sends the tunnel when the EDID it reads says the display supports standard Dolby Vision. None of the Magewell or Blackmagic cards' EDIDs do (bmcapture can only change the dynamic range part of the Blackmagic EDID), so something upstream, such as a Vertex2, has to supply a suitable EDID. An EDID that only offers low latency Dolby Vision (LLDV) gets LLDV instead, which is a source tone mapped 12-bit YCbCr HDR signal that is captured as ordinary HDR.
 
 [docs/edid](docs/edid/README.md) has an EDID tested with an Apple TV 4K and an HDFury Vertex2, along with how it was made and how to apply it. Nothing between the source and the card may alter the picture, i.e. no scaling, no colour conversion and none of the Vertex2's HDR/LLDV options.
 
@@ -189,13 +189,35 @@ While the tunnel is locked the HDR box on the property page is titled `Dolby Vis
 
 For a signal that could carry the tunnel but does not, the box is titled `HDR (Dolby Vision: not detected)`.
 
-The with-logging variants also log the card's own EDID Dolby Vision support at startup (ignore it if something upstream such as a Vertex2 supplies the EDID), the switch in and out of Dolby Vision and a summary of the above every 600 frames.
+The with-logging variants also log the switch in and out of Dolby Vision and a summary of the above every 600 frames. mwcapture also logs the card's own EDID Dolby Vision support at startup (ignore it if something upstream such as a Vertex2 supplies the EDID).
+
+#### Blackmagic
+
+A Blackmagic card delivers the tunnel in the RGB format it detects, 8-bit ARGB or 10-bit RGB (`r210`). Where the 8-bit values sit in those pixels isn't certain: the alpha byte can be first or last, and an `r210` lane can hold the value in its top or bottom 8 bits. bmcapture tries both and uses the one whose metadata passes the CRC. The `BlackmagicTrace` variant logs which one it found, e.g.
+
+```
+DV tunnel detected at frame 1234 in bmdFormat8BitARGB as BGRA, switching to P210 [metadata: true]
+DV tunnel [locked: true, layout: BGRA, frames: 600, rejected: 0, ...]
+```
+
+If it locks but the picture has the wrong colours, report the logged layout along with the card model.
+
+#### Magewell USB
+
+The card captures the tunnel as BGR24, so BGR24 must be one of the formats set in the USB Capture Utility, as must the signal's own resolution. The tunnel is only looked for when both are, any other size is scaled which destroys it. Anything that alters the picture in the utility (brightness, contrast, colour format, quantisation range, cropping etc.) must be left at its default. The with-logging variant logs the card's processing settings at startup:
+
+```
+USB video process settings [colour format: ..., quantisation: ..., saturation: ..., switches: ..., source: ..., ...]
+```
+
+BGR24 needs 3 bytes per pixel, 1080p60 fits a 5Gbps USB link but 4K needs a 10Gbps link and the card may not offer 4K in BGR24 at all.
 
 ### Limitations
 
-* tested at 1080p50 only, the unpacking is not optimised so 4K, particularly 4K60, may not keep up
+* tested at 1080p50 on a Magewell Pro only, the unpacking is not optimised so 4K, particularly 4K60, may not keep up
+* Blackmagic support is untested on hardware. It follows [videoprocessor](https://github.com/billslack2/videoprocessor), which decodes a live DeckLink 4K23.976 tunnel captured as `r210`. [The test plan](docs/dolby-vision-capture-plan.md#test-protocol) describes how to check a card
+* Magewell USB support is untested on hardware and there is no evidence that USB cards pass the pixels through unchanged
 * only the L1 (scene brightness) metadata is passed on, other levels (trims etc.) are ignored
-* Magewell Pro cards only, not USB or Blackmagic
 
 ## Logging
 

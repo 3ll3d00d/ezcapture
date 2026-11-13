@@ -782,14 +782,15 @@ void capture_filter::OnVideoFormatLoaded(video_format* vf)
 
 	PublishVideoSignalMetrics();
 
-	// what crosses the bus is the captured format, the DV tunnel is captured as BGR24 and decoded to P210 on the CPU
-	mDeviceStatus.bandwidthUsed = captureBytesPerSecond(vf->dvTunnel ? BGR24 : vf->pixelFormat, vf->cx, vf->cy, vf->fps);
+	// what crosses the bus is the captured format, the DV tunnel is captured as RGB and decoded to P210 on the CPU
+	const auto& busFormat = vf->dvTunnel ? vf->dvCaptureFormat : vf->pixelFormat;
+	mDeviceStatus.bandwidthUsed = captureBytesPerSecond(busFormat, vf->cx, vf->cy, vf->fps);
 	#ifndef NO_LOGGING
 	if (mDeviceStatus.bandwidth > 0.0 && mDeviceStatus.bandwidthUsed > mDeviceStatus.bandwidth)
 	{
 		LOG_WARNING(mLogData.logger,
 		            "[{}] Capturing {}x{}@{:.3f} {} needs {:.0f}MB/s, more than the estimated {:.0f}MB/s available, expect dropped frames",
-		            mLogData.prefix, vf->cx, vf->cy, vf->fps, vf->dvTunnel ? BGR24.name : vf->pixelFormat.name,
+		            mLogData.prefix, vf->cx, vf->cy, vf->fps, busFormat.name,
 		            mDeviceStatus.bandwidthUsed / 1e6, mDeviceStatus.bandwidth / 1e6);
 	}
 	#endif

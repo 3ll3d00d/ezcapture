@@ -28,22 +28,25 @@ magewell_video_capture_pin::video_capture::video_capture(magewell_video_capture_
 	pin(pin),
 	mLogData(pin->mLogData)
 {
+	// the DV tunnel is captured exactly as sent and decoded on the CPU, not captured in the output format
+	const auto& captureFormat = pin->mVideoFormat.dvTunnel ? pin->mVideoFormat.dvCaptureFormat : pin->mSignalledFormat;
+
 	#ifndef NO_LOGGING
 	int64_t now;
 	pin->GetReferenceTime(&now);
 	LOG_INFO(mLogData.logger, "[{}] MWCreateVideoCapture [{}x{} '{}' {}] at {} (sessionID: {})", mLogData.prefix,
-	         pin->mVideoFormat.cx, pin->mVideoFormat.cy, pin->mSignalledFormat.name,
+	         pin->mVideoFormat.cx, pin->mVideoFormat.cy, captureFormat.name,
 	         pin->mVideoFormat.frameInterval, now, pin->mCaptureSessionId);
 	#endif
 
 	mEvent = MWCreateVideoCapture(hChannel, pin->mVideoFormat.cx, pin->mVideoFormat.cy,
-	                              pin->mSignalledFormat.fourcc, pin->mVideoFormat.frameInterval, CaptureFrame,
+	                              captureFormat.fourcc, pin->mVideoFormat.frameInterval, CaptureFrame,
 	                              pin);
 	#ifndef NO_LOGGING
 	if (mEvent == nullptr)
 	{
 		LOG_ERROR(mLogData.logger, "[{}] MWCreateVideoCapture failed [{}x{} '{}' {}]", mLogData.prefix,
-		          pin->mVideoFormat.cx, pin->mVideoFormat.cy, pin->mSignalledFormat.name,
+		          pin->mVideoFormat.cx, pin->mVideoFormat.cy, captureFormat.name,
 		          pin->mVideoFormat.frameInterval);
 	}
 	#endif
@@ -282,7 +285,8 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 
 				if (pin->mVideoFormat.dvTunnel)
 				{
-					pin->WriteDvTunnelFrame(pms);
+					pin->WriteDvTunnelFrame(pin->mDvCapture.data(), pin->mDvCaptureStride, pin->mDvCapture.size(), false,
+					                        pms);
 				}
 				else if (pin->mFrameWriterStrategy != STRAIGHT_THROUGH)
 				{
@@ -298,7 +302,7 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 				else if (pin->mHasSignal && pin->mVideoFormat.pixelFormat.format == pixel_format::BGR24
 					&& pin->IsDvTunnelCandidate())
 				{
-					pin->ProbeDvTunnel(pmsData, pin->mVideoFormat.lineLength);
+					pin->ProbeDvTunnel(pmsData, pin->mVideoFormat.lineLength, false);
 				}
 			}
 		}
@@ -308,8 +312,21 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 
 			CAutoLock lck(&pin->mCaptureCritSec);
 
+			// RGB from a USB card is bottom-up, i.e. a positive biHeight as bottomUpDib is false
+			const bool bottomUp = !pin->mVideoFormat.bottomUpDib;
 			auto pmsLen = pms->GetSize();
-			if (pmsLen < pin->mCapturedFrame.length)
+			if (pin->mVideoFormat.dvTunnel)
+			{
+				DWORD stride;
+				DWORD imageSize;
+				pin->mVideoFormat.dvCaptureFormat.GetImageDimensions(pin->mVideoFormat.cx, pin->mVideoFormat.cy,
+				                                                     &stride, &imageSize);
+				pin->WriteDvTunnelFrame(pin->mCapturedFrame.data, stride, pin->mCapturedFrame.length, bottomUp, pms);
+				hasFrame = true;
+				pin->mFrameTs.snap(now, READ);
+				pin->mFrameCounter++;
+			}
+			else if (pmsLen < pin->mCapturedFrame.length)
 			{
 				#ifndef NO_LOGGING
 				LOG_TRACE_L1(mLogData.logger,
@@ -324,6 +341,11 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 				hasFrame = true;
 				pin->mFrameTs.snap(now, READ);
 				pin->mFrameCounter++;
+				if (pin->mHasSignal && pin->mVideoFormat.pixelFormat.format == pixel_format::BGR24
+					&& pin->mCapturedFrame.length >= pin->mVideoFormat.imageSize && pin->IsDvTunnelCandidate())
+				{
+					pin->ProbeDvTunnel(pmsData, pin->mVideoFormat.lineLength, bottomUp);
+				}
 			}
 			else
 			{
@@ -801,6 +823,7 @@ void magewell_video_capture_pin::LoadFormat(video_format* videoFormat, video_sig
 		{
 			// the card still captures BGR24, it is decoded to 12-bit IPT-PQ 4:2:2 in P210
 			videoFormat->dvTunnel = true;
+			videoFormat->dvCaptureFormat = BGR24;
 			videoFormat->pixelFormat = P210;
 			videoFormat->colourFormat = BT2020;
 			videoFormat->colourFormatName = "DV";
@@ -822,11 +845,13 @@ void magewell_video_capture_pin::LoadFormat(video_format* videoFormat, video_sig
 
 	if (captureFormats->usb)
 	{
+		// what the card is asked to capture, the DV tunnel is decoded from BGR24
+		const auto& captureFormat = videoFormat->dvTunnel ? videoFormat->dvCaptureFormat : videoFormat->pixelFormat;
 		bool found = false;
 		for (int i = 0; i < captureFormats->fourccs.byCount && !found; i++)
 		{
 			uint32_t adw_fourcc = captureFormats->fourccs.adwFOURCCs[i];
-			if (adw_fourcc == videoFormat->pixelFormat.fourcc)
+			if (adw_fourcc == captureFormat.fourcc)
 			{
 				found = true;
 			}
@@ -848,7 +873,7 @@ void magewell_video_capture_pin::LoadFormat(video_format* videoFormat, video_sig
 
 			LOG_ERROR(mLogData.logger,
 			          "[{}] Supported format is {} but card is configured to use {}, video capture will fail",
-			          mLogData.prefix, videoFormat->pixelFormat.name, tmp);
+			          mLogData.prefix, captureFormat.name, tmp);
 			#endif
 		}
 
@@ -998,7 +1023,7 @@ HRESULT magewell_video_capture_pin::LoadSignal(HCHANNEL* pChannel)
 bool magewell_video_capture_pin::IsDvTunnelCandidate() const
 {
 	return !mDvRejected
-		&& mFilter->GetDeviceType() == MW_PRO
+		&& (mFilter->GetDeviceType() == MW_PRO || UsbCanCaptureDvTunnel())
 		&& mVideoSignal.signalStatus.state == MWCAP_VIDEO_SIGNAL_LOCKED
 		&& mVideoSignal.inputStatus.hdmiStatus.byBitDepth == 8
 		&& mVideoSignal.inputStatus.hdmiStatus.pixelEncoding == HDMI_ENCODING_RGB_444
@@ -1006,9 +1031,33 @@ bool magewell_video_capture_pin::IsDvTunnelCandidate() const
 		&& (mVideoSignal.signalStatus.cx & 1) == 0;
 }
 
-void magewell_video_capture_pin::ProbeDvTunnel(const uint8_t* frame, DWORD stride)
+bool magewell_video_capture_pin::UsbCanCaptureDvTunnel() const
 {
-	mDvDecoder.process(frame, stride, mVideoFormat.cx, mVideoFormat.cy, mFrameCounter);
+	const auto& formats = mUsbCaptureFormats;
+	if (!formats.usb)
+	{
+		return false;
+	}
+	bool bgr24 = false;
+	for (int i = 0; i < formats.fourccs.byCount && !bgr24; i++)
+	{
+		bgr24 = formats.fourccs.adwFOURCCs[i] == BGR24.fourcc;
+	}
+	// any other size is scaled, which destroys the tunnel
+	bool unscaled = false;
+	for (int i = 0; i < formats.frameSizes.byCount && !unscaled; i++)
+	{
+		unscaled = formats.frameSizes.aSizes[i].cx == mVideoSignal.signalStatus.cx
+			&& formats.frameSizes.aSizes[i].cy == mVideoSignal.signalStatus.cy;
+	}
+	return bgr24 && unscaled;
+}
+
+void magewell_video_capture_pin::ProbeDvTunnel(const uint8_t* frame, DWORD stride, bool bottomUp)
+{
+	const auto signedStride = static_cast<ptrdiff_t>(stride);
+	const auto* top = bottomUp ? frame + (mVideoFormat.cy - 1) * signedStride : frame;
+	mDvDecoder.process(top, bottomUp ? -signedStride : signedStride, mVideoFormat.cx, mVideoFormat.cy, mFrameCounter);
 	if (mDvDecoder.locked())
 	{
 		mDvLocked = true;
@@ -1026,15 +1075,31 @@ void magewell_video_capture_pin::ProbeDvTunnel(const uint8_t* frame, DWORD strid
 	}
 }
 
-void magewell_video_capture_pin::WriteDvTunnelFrame(IMediaSample* pms)
+void magewell_video_capture_pin::WriteDvTunnelFrame(const uint8_t* frame, DWORD stride, size_t length, bool bottomUp,
+                                                    IMediaSample* pms)
 {
 	const auto cx = mVideoFormat.cx;
 	const auto cy = mVideoFormat.cy;
-	mDvDecoder.process(mDvCapture.data(), mDvCaptureStride, cx, cy, mFrameCounter);
-	if (mDvDecoder.active().valid)
+	const auto signedStride = static_cast<ptrdiff_t>(stride);
+	const auto* top = bottomUp ? frame + (cy - 1) * signedStride : frame;
+	const auto srcStride = bottomUp ? -signedStride : signedStride;
+	// e.g. no frame captured yet after the capture restarted
+	const bool complete = length >= static_cast<size_t>(stride) * cy;
+	if (complete)
 	{
-		mDvFullRange = mDvDecoder.active().fullRange();
+		mDvDecoder.process(top, srcStride, cx, cy, mFrameCounter);
+		if (mDvDecoder.active().valid)
+		{
+			mDvFullRange = mDvDecoder.active().fullRange();
+		}
 	}
+	#ifndef NO_LOGGING
+	else
+	{
+		LOG_TRACE_L1(mLogData.logger, "[{}] DV tunnel frame {} incomplete ({} < {}), writing black", mLogData.prefix,
+		             mFrameCounter, length, static_cast<size_t>(stride) * cy);
+	}
+	#endif
 
 	// the renderer may ask for padding via the media type on the sample
 	AM_MEDIA_TYPE* smt = nullptr;
@@ -1059,9 +1124,9 @@ void magewell_video_capture_pin::WriteDvTunnelFrame(IMediaSample* pms)
 		#endif
 		return;
 	}
-	if (mDvDecoder.render())
+	if (complete && mDvDecoder.render())
 	{
-		dv_tunnel::unpack_bgr24(mDvCapture.data(), mDvCaptureStride, out, out + planeSize, dstStride, cx, cy);
+		dv_tunnel::unpack_bgr24(top, srcStride, out, out + planeSize, dstStride, cx, cy);
 	}
 	else
 	{
@@ -1084,18 +1149,7 @@ void magewell_video_capture_pin::AppendDvSideData(IMediaSample* pms)
 	{
 		return;
 	}
-	IMediaSideData* sideData = nullptr;
-	if (FAILED(pms->QueryInterface(&sideData)))
-	{
-		return;
-	}
-	dv_tunnel::to_lav(mDvDecoder.active(), *mDvSideData);
-	// as LAV does, V2 plus the legacy layout without extensions
-	sideData->SetSideData(IID_MediaSideDataDOVIMetadataV2, reinterpret_cast<const BYTE*>(mDvSideData.get()),
-	                      sizeof(MediaSideDataDOVIMetadata));
-	sideData->SetSideData(IID_MediaSideDataDOVIMetadata, reinterpret_cast<const BYTE*>(mDvSideData.get()),
-	                      offsetof(MediaSideDataDOVIMetadata, Extensions));
-	sideData->Release();
+	dv_tunnel::append_side_data(pms, mDvDecoder.active(), *mDvSideData);
 }
 
 void magewell_video_capture_pin::PublishDvStatus()
@@ -1201,6 +1255,28 @@ void magewell_video_capture_pin::LogDvEdidSupport(HCHANNEL hChannel) const
 		         mLogData.prefix, dv.version, dv.lowLatency,
 		         dv.supports2160p60Known ? (dv.supports2160p60 ? "yes" : "no") : "not signalled", payload);
 	}
+	#endif
+}
+
+void magewell_video_capture_pin::LogUsbProcessSettings(HCHANNEL hChannel) const
+{
+	#ifndef NO_LOGGING
+	// the DV tunnel only survives if the card captures RGB unchanged, these are set in the Magewell USB Capture Utility
+	MWCAP_VIDEO_PROCESS_SETTINGS settings{};
+	const auto hr = MWGetVideoCaptureProcessSettings(hChannel, &settings);
+	if (hr != MW_SUCCEEDED)
+	{
+		LOG_WARNING(mLogData.logger, "[{}] Unable to read the USB video process settings ({})", mLogData.prefix,
+		            static_cast<int>(hr));
+		return;
+	}
+	LOG_INFO(mLogData.logger,
+	         "[{}] USB video process settings [colour format: {}, quantisation: {}, saturation: {}, switches: {:#x}, source: {},{} {},{}, aspect: {}:{}, low latency: {}, deinterlace: {}, aspect conversion: {}]",
+	         mLogData.prefix, static_cast<int>(settings.colorFormat), static_cast<int>(settings.quantRange),
+	         static_cast<int>(settings.satRange), settings.dwProcessSwitchs, settings.rectSource.left,
+	         settings.rectSource.top, settings.rectSource.right, settings.rectSource.bottom, settings.nAspectX,
+	         settings.nAspectY, settings.bLowLatency != 0, static_cast<int>(settings.deinterlaceMode),
+	         static_cast<int>(settings.aspectRatioConvertMode));
 	#endif
 }
 
@@ -1580,9 +1656,10 @@ HRESULT magewell_video_capture_pin::OnThreadCreate()
 
 	mFilter->OnVideoSignalLoaded(&mVideoSignal);
 
-	if (mFilter->GetDeviceType() == MW_PRO)
+	LogDvEdidSupport(hChannel);
+	if (mFilter->GetDeviceType() != MW_PRO)
 	{
-		LogDvEdidSupport(hChannel);
+		LogUsbProcessSettings(hChannel);
 	}
 
 	auto deviceType = mFilter->GetDeviceType();

@@ -20,10 +20,13 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 /*
- * Decoder for the HDMI Dolby Vision RGB tunnel (the "TV led" DV format) captured as 8-bit BGR24.
+ * Decoder for the HDMI Dolby Vision RGB tunnel (the "TV led" DV format) captured as 8-bit RGB, see
+ * pixel_layout for the supported capture layouts.
  *
  * The decode logic follows CRGBDolbyVisionTunnelFormatter from billslack2/videoprocessor (GPL-3.0),
  * see docs/magewell-video-comparison.md section 5 for the format.
@@ -35,11 +38,11 @@
  */
 namespace dv_tunnel
 {
-	constexpr size_t packetBits = 1024;
-	constexpr size_t packetBytes = 128;
-	constexpr size_t repeats = 3;
-	constexpr size_t maxMetadataBytes = 0x2F00;
-	constexpr uint32_t packetLossLimit = 24;
+	inline constexpr size_t packetBits = 1024;
+	inline constexpr size_t packetBytes = 128;
+	inline constexpr size_t repeats = 3;
+	inline constexpr size_t maxMetadataBytes = 0x2F00;
+	inline constexpr uint32_t packetLossLimit = 24;
 
 	struct extension_block
 	{
@@ -207,35 +210,169 @@ namespace dv_tunnel
 		}
 	}
 
-	// the metadata bit carried by the pixel at index `pixel` (raster order) of a top-down BGR24 frame
-	inline uint8_t bgr24_bit(const uint8_t* frame, size_t stride, uint32_t width, size_t pixel)
+	/**
+	 * How the 8-bit RGB tunnel pixels are laid out in the captured frame.
+	 * - BGR24: 3 bytes B, G, R (Magewell Pro).
+	 * - ARGB, BGRA: 4 bytes in that order in memory, the alpha byte is ignored (DeckLink 8-bit RGB).
+	 * - R210_HIGH8, R210_LOW8: DeckLink r210, a big endian 32-bit word with 10-bit R, G, B in bits 29-20,
+	 *   19-10 and 9-0. The 8-bit value is in the top 8 bits of each 10-bit lane (HIGH8) or the bottom 8 (LOW8).
+	 */
+	enum class pixel_layout : uint8_t
 	{
-		const uint8_t* p = frame + pixel / width * stride + pixel % width * 3;
-		return detail::parity8(static_cast<uint8_t>(p[0] ^ p[1] ^ p[2]));
+		BGR24,
+		ARGB,
+		BGRA,
+		R210_HIGH8,
+		R210_LOW8
+	};
+
+	constexpr const char* to_string(pixel_layout layout)
+	{
+		switch (layout)
+		{
+		case pixel_layout::BGR24: return "BGR24";
+		case pixel_layout::ARGB: return "ARGB";
+		case pixel_layout::BGRA: return "BGRA";
+		case pixel_layout::R210_HIGH8: return "r210 high8";
+		case pixel_layout::R210_LOW8: return "r210 low8";
+		}
+		return "?";
+	}
+
+	constexpr bool is_r210(pixel_layout layout)
+	{
+		return layout == pixel_layout::R210_HIGH8 || layout == pixel_layout::R210_LOW8;
 	}
 
 	/**
-	 * Unpacks a top-down BGR24 tunnel frame to P210/P216 layout, i.e. 16-bit samples with the 12-bit
-	 * value in the top bits, a Y plane followed by an interleaved CbCr plane at full height.
+	 * The layout a card may really be delivering instead, the decoder tries both and the CRC decides.
+	 * - r210: either bit placement.
+	 * - ARGB and BGRA: the alpha byte is first or last, a 32-bit ARGB pixel stored little endian is BGRA in memory.
+	 */
+	constexpr pixel_layout alternative(pixel_layout layout)
+	{
+		switch (layout)
+		{
+		case pixel_layout::ARGB: return pixel_layout::BGRA;
+		case pixel_layout::BGRA: return pixel_layout::ARGB;
+		case pixel_layout::R210_HIGH8: return pixel_layout::R210_LOW8;
+		case pixel_layout::R210_LOW8: return pixel_layout::R210_HIGH8;
+		case pixel_layout::BGR24:
+		default: return layout;
+		}
+	}
+
+	constexpr size_t bytes_per_pixel(pixel_layout layout)
+	{
+		return layout == pixel_layout::BGR24 ? 3 : 4;
+	}
+
+	struct rgb8
+	{
+		uint8_t r;
+		uint8_t g;
+		uint8_t b;
+	};
+
+	template <pixel_layout L>
+	rgb8 read_rgb(const uint8_t* p)
+	{
+		if constexpr (L == pixel_layout::BGR24)
+		{
+			return {p[2], p[1], p[0]};
+		}
+		else if constexpr (L == pixel_layout::ARGB)
+		{
+			return {p[1], p[2], p[3]};
+		}
+		else if constexpr (L == pixel_layout::BGRA)
+		{
+			return {p[2], p[1], p[0]};
+		}
+		else
+		{
+			constexpr unsigned shift = L == pixel_layout::R210_HIGH8 ? 2U : 0U;
+			const uint32_t w = detail::be32(p);
+			return {
+				static_cast<uint8_t>((w >> 20 & 0x3FFU) >> shift),
+				static_cast<uint8_t>((w >> 10 & 0x3FFU) >> shift),
+				static_cast<uint8_t>((w & 0x3FFU) >> shift)
+			};
+		}
+	}
+
+	// calls f with std::integral_constant<pixel_layout, layout> so per pixel work is specialised by layout
+	template <typename F>
+	decltype(auto) with_layout(pixel_layout layout, F&& f)
+	{
+		switch (layout)
+		{
+		case pixel_layout::ARGB: return f(std::integral_constant<pixel_layout, pixel_layout::ARGB>{});
+		case pixel_layout::BGRA: return f(std::integral_constant<pixel_layout, pixel_layout::BGRA>{});
+		case pixel_layout::R210_HIGH8: return f(std::integral_constant<pixel_layout, pixel_layout::R210_HIGH8>{});
+		case pixel_layout::R210_LOW8: return f(std::integral_constant<pixel_layout, pixel_layout::R210_LOW8>{});
+		case pixel_layout::BGR24:
+		default: return f(std::integral_constant<pixel_layout, pixel_layout::BGR24>{});
+		}
+	}
+
+	// the start of the given row, frame is the top row and a negative stride reads a bottom-up frame
+	inline const uint8_t* row_start(const uint8_t* frame, ptrdiff_t stride, size_t row)
+	{
+		return frame + static_cast<ptrdiff_t>(row) * stride;
+	}
+
+	// the metadata bit carried by the pixel at index `pixel` (raster order, from the top row) of a frame
+	template <pixel_layout L>
+	uint8_t pixel_bit(const uint8_t* frame, ptrdiff_t stride, uint32_t width, size_t pixel)
+	{
+		const auto [r, g, b] = read_rgb<L>(row_start(frame, stride, pixel / width) + pixel % width * bytes_per_pixel(L));
+		return detail::parity8(static_cast<uint8_t>(r ^ g ^ b));
+	}
+
+	inline uint8_t bgr24_bit(const uint8_t* frame, ptrdiff_t stride, uint32_t width, size_t pixel)
+	{
+		return pixel_bit<pixel_layout::BGR24>(frame, stride, width, pixel);
+	}
+
+	/**
+	 * Unpacks a tunnel frame to P210/P216 layout, i.e. 16-bit samples with the 12-bit value in the top bits, a
+	 * Y plane followed by an interleaved CbCr plane at full height, top-down.
+	 * @param src the top row of the frame, with a negative srcStride if the frame is bottom-up.
 	 * @param dstStride the row length of each plane in bytes.
 	 */
-	inline void unpack_bgr24(const uint8_t* src, size_t srcStride, uint8_t* dstY, uint8_t* dstUV, size_t dstStride,
-	                         uint32_t width, uint32_t height)
+	template <pixel_layout L>
+	void unpack(const uint8_t* src, ptrdiff_t srcStride, uint8_t* dstY, uint8_t* dstUV, size_t dstStride,
+	            uint32_t width, uint32_t height)
 	{
+		constexpr size_t bpp = bytes_per_pixel(L);
 		for (uint32_t row = 0; row < height; ++row)
 		{
-			const uint8_t* in = src + row * srcStride;
+			const uint8_t* in = row_start(src, srcStride, row);
 			auto* y = reinterpret_cast<uint16_t*>(dstY + row * dstStride);
 			auto* uv = reinterpret_cast<uint16_t*>(dstUV + row * dstStride);
 			for (uint32_t x = 0; x < width; ++x)
 			{
-				const uint8_t b = in[x * 3];
-				const uint8_t g = in[x * 3 + 1];
-				const uint8_t r = in[x * 3 + 2];
+				const auto [r, g, b] = read_rgb<L>(in + x * bpp);
 				y[x] = static_cast<uint16_t>(g << 8 | (b & 0x0F) << 4);
 				uv[x] = static_cast<uint16_t>(r << 8 | (b & 0xF0));
 			}
 		}
+	}
+
+	inline void unpack(pixel_layout layout, const uint8_t* src, ptrdiff_t srcStride, uint8_t* dstY, uint8_t* dstUV,
+	                   size_t dstStride, uint32_t width, uint32_t height)
+	{
+		with_layout(layout, [&](auto l)
+		{
+			unpack<decltype(l)::value>(src, srcStride, dstY, dstUV, dstStride, width, height);
+		});
+	}
+
+	inline void unpack_bgr24(const uint8_t* src, ptrdiff_t srcStride, uint8_t* dstY, uint8_t* dstUV, size_t dstStride,
+	                         uint32_t width, uint32_t height)
+	{
+		unpack<pixel_layout::BGR24>(src, srcStride, dstY, dstUV, dstStride, width, height);
 	}
 
 	// black in the same layout, used when the tunnel is locked but there is no usable metadata
@@ -354,7 +491,13 @@ namespace dv_tunnel
 			*this = decoder{};
 		}
 
-		void process(const uint8_t* frame, size_t stride, uint32_t width, uint32_t height, uint64_t counter)
+		/**
+		 * @param layout the layout the card reports. Its alternative() is also tried, the one the frame favours
+		 * (or that last passed the CRC) first, and layout() reports the one in use.
+		 * @param frame the top row of the frame, with a negative stride if the frame is bottom-up.
+		 */
+		void process(const uint8_t* frame, ptrdiff_t stride, uint32_t width, uint32_t height, uint64_t counter,
+		             pixel_layout layout = pixel_layout::BGR24)
 		{
 			mStats.frames++;
 			// end of stream applies from the picture after the one that signalled it
@@ -387,10 +530,14 @@ namespace dv_tunnel
 				{
 					packet.fill(0);
 					const size_t first = (index * repeats + copy) * packetBits;
-					for (size_t bit = 0; bit < packetBits; ++bit)
+					with_layout(mLayout, [&](auto l)
 					{
-						packet[bit / 8] |= static_cast<uint8_t>(bgr24_bit(frame, stride, width, first + bit) << (7 - bit % 8));
-					}
+						for (size_t bit = 0; bit < packetBits; ++bit)
+						{
+							packet[bit / 8] |= static_cast<uint8_t>(
+								pixel_bit<decltype(l)::value>(frame, stride, width, first + bit) << (7 - bit % 8));
+						}
+					});
 					if (detail::crc32_mpeg2(packet.data(), packetBytes) == 0)
 					{
 						if (copy != 0)
@@ -404,11 +551,38 @@ namespace dv_tunnel
 				return false;
 			};
 
+			// only the CRC can confirm which of the two layouts is right
+			std::array<pixel_layout, 2> candidates{layout, layout};
+			size_t candidateCount = 1;
+			if (alternative(layout) != layout)
+			{
+				auto preferred = mLayout == layout || mLayout == alternative(layout) ? mLayout : layout;
+				// a dark picture can pass the CRC in both so try the one the unused bits favour first
+				const auto misfits = count_misfits(frame, stride, width, height, layout);
+				const auto altMisfits = count_misfits(frame, stride, width, height, alternative(layout));
+				if (misfits != altMisfits)
+				{
+					preferred = misfits < altMisfits ? layout : alternative(layout);
+				}
+				candidates = {preferred, alternative(preferred)};
+				candidateCount = 2;
+			}
+			bool firstPacket = false;
+			for (size_t i = 0; i < candidateCount && !firstPacket; ++i)
+			{
+				mLayout = candidates[i];
+				firstPacket = readPacket(0);
+			}
+			if (!firstPacket)
+			{
+				mLayout = candidates[0];
+			}
+
 			bool accepted = false;
 			bool validHeader = false;
 			detail::packet_header header;
 			// the first packet must be a single or first packet
-			if (readPacket(0) && detail::parse_header(packet.data(), header) && header.kind <= 1)
+			if (firstPacket && detail::parse_header(packet.data(), header) && header.kind <= 1)
 			{
 				validHeader = true;
 				mLocked = true;
@@ -482,8 +656,37 @@ namespace dv_tunnel
 		bool render() const { return mLocked && mValidHeader && mActive.valid; }
 		const metadata& active() const { return mActive; }
 		const decoder_stats& stats() const { return mStats; }
+		// the layout of the last frame, i.e. the one that passed the CRC or the one tried first
+		pixel_layout layout() const { return mLayout; }
 
 	private:
+		/**
+		 * Samples the frame for pixels whose unused bits do not look unused in the given layout, i.e. r210 lanes
+		 * with bits set outside the 8-bit value, or an alpha byte that differs from the first pixel's.
+		 */
+		static size_t count_misfits(const uint8_t* frame, ptrdiff_t stride, uint32_t width, uint32_t height,
+		                            pixel_layout layout)
+		{
+			if (layout == pixel_layout::BGR24)
+			{
+				return 0;
+			}
+			const size_t pixels = static_cast<size_t>(width) * height;
+			const size_t step = std::max<size_t>(1, pixels / 4096);
+			const size_t alphaOffset = layout == pixel_layout::ARGB ? 0 : 3;
+			const uint32_t r210Mask = layout == pixel_layout::R210_HIGH8 ? 0x00300C03U : 0x300C0300U;
+			size_t misfits = 0;
+			for (size_t pixel = 0; pixel < pixels; pixel += step)
+			{
+				const uint8_t* p = row_start(frame, stride, pixel / width) + pixel % width * 4;
+				const bool misfit = is_r210(layout)
+					                    ? (detail::be32(p) & r210Mask) != 0
+					                    : p[alphaOffset] != frame[alphaOffset];
+				misfits += misfit ? 1 : 0;
+			}
+			return misfits;
+		}
+
 		template <typename R>
 		bool read_metadata(R& readPacket, std::array<uint8_t, packetBytes>& packet, const detail::packet_header& header,
 		                   size_t availablePackets)
@@ -525,6 +728,7 @@ namespace dv_tunnel
 			return true;
 		}
 
+		pixel_layout mLayout{pixel_layout::BGR24};
 		bool mLocked{false};
 		bool mValidHeader{false};
 		uint32_t mMissingFrames{0};

@@ -148,6 +148,16 @@ bool video_capture_pin::ShouldChangeMediaType(video_format* newVideoFormat, bool
 		);
 		#endif
 	}
+	// the output format can be identical either side of the change but the frames must be written differently
+	if (mVideoFormat.dvTunnel != newVideoFormat->dvTunnel)
+	{
+		reconnect = true;
+
+		#ifndef NO_LOGGING
+		LOG_INFO(mLogData.logger, "[{}] DV tunnel change {} to {}", mLogData.prefix, mVideoFormat.dvTunnel,
+			newVideoFormat->dvTunnel);
+		#endif
+	}
 	auto incomingTransferFunction = newVideoFormat->hdrMeta.transferFunction;
 	if (mVideoFormat.hdrMeta.transferFunction != newVideoFormat->hdrMeta.transferFunction)
 	{

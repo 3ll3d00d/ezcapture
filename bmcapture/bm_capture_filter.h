@@ -25,6 +25,7 @@
 #include <atlcomcli.h>
 #include "bm_domain.h"
 #include "video_frame.h"
+#include <atomic>
 #include <functional>
 #include <chrono>
 
@@ -153,6 +154,9 @@ public:
 
 	HRESULT processAudioPacket(IDeckLinkAudioInputPacket* audioPacket, const int64_t& frameNotificationTime, bool hasVideoFrame);
 
+	// the renderer would not accept P210 so the DV tunnel is never decoded again by this filter instance
+	void OnDvRejected();
+
 protected:
 	static void LoadFormat(video_format* videoFormat, const video_signal* videoSignal);
 	static void LoadSignalFromDisplayMode(video_signal* newSignal, IDeckLinkDisplayMode* newDisplayMode);
@@ -192,6 +196,25 @@ private:
 	HANDLE mAudioFrameEvent;
 
 	std::unique_ptr<std::string> mInvalidHdrMetaDataItems;
+
+	/**
+	 * Runs the DV tunnel decoder on a frame that could carry it and, while the tunnel is locked, switches the format
+	 * to P210 and fills in how to write the frame.
+	 */
+	void ProcessDvTunnel(IDeckLinkVideoInputFrame* videoFrame, video_format& videoFormat, bool hasHdrMetadata,
+	                     dv_frame& dv);
+	void PublishDvStatus();
+	void LogDvTunnelStats(bool force);
+
+	// only accessed on the capture callback thread
+	dv_tunnel::decoder mDvDecoder{};
+	bool mDvCandidate{false};
+	bool mDvFullRange{true};
+	dv_state mDvPublishedState{DV_INACTIVE};
+	uint64_t mDvStatusPublishedAt{0};
+	uint64_t mDvStatsLoggedAt{0};
+	// set by a pin
+	std::atomic<bool> mDvRejected{false};
 };
 
 #endif

@@ -26,6 +26,8 @@
 #include "VideoFrameWriter.h"
 #include "any_rgb.h"
 #include "straight_through.h"
+#include "dv_tunnel_lav.h"
+#include "dv_tunnel_writer.h"
 #include <memory>
 
 class blackmagic_video_capture_pin final :
@@ -54,6 +56,8 @@ protected:
 	std::shared_ptr<video_frame> mCurrentFrame;
 
 private:
+	std::unique_ptr<MediaSideDataDOVIMetadata> mDvSideData{std::make_unique<MediaSideDataDOVIMetadata>()};
+
 	void OnFrameWriterStrategyUpdated() override
 	{
 		switch (mFrameWriterStrategy)
@@ -64,6 +68,9 @@ private:
 		case STRAIGHT_THROUGH:
 			mFrameWriter = std::make_unique<straight_through>(mLogData, mVideoFormat.cx, mVideoFormat.cy,
 				&mVideoFormat.pixelFormat);
+			break;
+		case DV_TUNNEL:
+			mFrameWriter = std::make_unique<dv_tunnel_writer>(mLogData, mVideoFormat.cx, mVideoFormat.cy);
 			break;
 		case YUY2_YV16:
 		case Y210_P210:

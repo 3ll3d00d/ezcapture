@@ -23,8 +23,22 @@
 
 #include <DeckLinkAPI_h.h>
 #include "domain.h"
+#include "dv_tunnel.h"
 #include "logging.h"
+#include <memory>
 #include <strmif.h>
+
+/**
+ * The Dolby Vision tunnel state of one captured frame, decided on the capture callback thread as that sees every
+ * frame (metadata can apply to the next picture).
+ */
+struct dv_frame
+{
+	// false means black, the tunnel is locked but there is no usable metadata
+	bool render{false};
+	dv_tunnel::pixel_layout layout{dv_tunnel::pixel_layout::ARGB};
+	std::shared_ptr<const dv_tunnel::metadata> metadata{};
+};
 
 class video_frame
 {
@@ -48,7 +62,8 @@ public:
 		LOG_TRACE_L3(mLogData.logger, "[{}] VideoFrame Access (new) {} {}", mLogData.prefix, index, ct);
 		#endif
 
-		mLength = frame->GetRowBytes() * mFormat.cy;
+		mRowBytes = frame->GetRowBytes();
+		mLength = mRowBytes * mFormat.cy;
 	}
 
 	~video_frame()
@@ -111,6 +126,12 @@ public:
 
 	long GetLength() const { return mLength; }
 
+	long GetRowBytes() const { return mRowBytes; }
+
+	void SetDv(dv_frame dv) { mDv = std::move(dv); }
+
+	const dv_frame& GetDv() const { return mDv; }
+
 	IDeckLinkVideoFrame* GetRawFrame() const { return mFrame; }
 
 private:
@@ -119,7 +140,9 @@ private:
 	int64_t mFrameTime{0};
 	int64_t mFrameDuration{0};
 	uint64_t mFrameIndex{0};
+	long mRowBytes{0};
 	long mLength{0};
+	dv_frame mDv{};
 	IDeckLinkVideoFrame* mFrame = nullptr;
 	IDeckLinkVideoBuffer* mBuffer = nullptr;
 	log_data mLogData;

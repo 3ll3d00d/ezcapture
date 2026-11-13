@@ -41,6 +41,9 @@
     <ClInclude Include="any_rgb.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="dv_tunnel_writer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="straight_through.h">
       <Filter>Header Files</Filter>
     </ClInclude>
