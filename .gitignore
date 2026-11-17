@@ -280,3 +280,8 @@ vcpkg_installed/
 /out/
 cmake-build-*/
 CMakeUserPresets.json
+
+# installer build outputs
+installer/output/
+installer/deps/
+installer/stage/

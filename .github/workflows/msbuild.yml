@@ -99,6 +99,15 @@ jobs:
       run: |
         msbuild /t:Rebuild /p:Configuration=${{ matrix.configuration }} ${{ steps.build_params.outputs.vmajor }} ${{ steps.build_params.outputs.vminor }} ${{ steps.build_params.outputs.vpatch }} ${{ steps.build_params.outputs.vsuffix }}
 
+    - name: Upload filters for the installer
+      uses: actions/upload-artifact@v7
+      with:
+        name: msbuild-${{ matrix.configuration }}
+        path: |
+          x64/${{ matrix.configuration }}/mwcapture.ax
+          x64/${{ matrix.configuration }}/bmcapture.ax
+        if-no-files-found: error
+
     - name: Create distribution
       id: create_dist
       shell: bash
@@ -141,3 +150,30 @@ jobs:
       run: |
         gh release upload ${{ github.ref_name }} ${{ steps.create_dist.outputs.mw_binary_path }}
         gh release upload ${{ github.ref_name }} ${{ steps.create_dist.outputs.bm_binary_path }}
+
+  installer:
+    needs: [ create_release, build ]
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Download filters
+      uses: actions/download-artifact@v8
+      with:
+        pattern: msbuild-Release*
+        path: installer/stage
+
+    - name: Install Inno Setup
+      shell: pwsh
+      run: ./installer/install-inno.ps1
+
+    - name: Build installer
+      id: build_installer
+      shell: pwsh
+      run: ./installer/build-installer.ps1 -Version '${{ github.ref_name }}' -StageDir installer/stage -Iscc C:\inno7\ISCC.exe
+
+    - name: Upload installer
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        gh release upload ${{ github.ref_name }} ${{ steps.build_installer.outputs.installer_path }}

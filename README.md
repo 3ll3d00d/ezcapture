@@ -23,18 +23,42 @@ Note that such live updates to audio and video formats rely on the downstream fi
 
 ## Use with old CPUs
 
-If your CPU does not support AVX2, download the `-noarch` variant only.
+The installer picks the right build automatically. If installing from the zips and your CPU does not support AVX2, download the `-noarch` variant only.
 
-## Initial Installation
+## Installation
 
-### Magewell
+### Installer
+
+Download `ezcapture-<version>-setup.exe` from https://github.com/3ll3d00d/ezcapture/releases and run it. It
+
+* asks which filters to install (Magewell, Blackmagic or both) and whether to add the trace builds alongside them
+* picks the AVX2 or no-arch build to suit the CPU
+* offers to install the Microsoft Visual C++ runtime and the Magewell capture runtime if they are missing or out of date
+* tells you what else is needed, e.g. Blackmagic Desktop Video, which cannot be bundled
+* registers the filters, so there is no need to run `regsvr32`
+
+Running it again upgrades, or changes which filters are installed. It can be removed from Windows' Installed apps.
+
+The installed version is shown in Installed apps, in `version.txt` in the install folder (`C:\Program Files\ezcapture`
+by default), under `HKLM\Software\ezcapture` and in the footer of the filter's property page.
+
+If you previously registered a filter from a zip, the installer re-registers the same filter from its own folder,
+so the old copy is no longer used and can be deleted.
+
+Silent installs are supported, e.g. `ezcapture-1.0.0-setup.exe /VERYSILENT /COMPONENTS="mw,bm" /TASKS="trace"`.
+
+### Manual Installation
+
+The zips on the releases page can still be installed by hand as follows.
+
+#### Magewell
 
 * Download the latest release from https://github.com/3ll3d00d/ezcapture/releases & unzip to some directory
 * Execute MWCaptureRT.exe
 * Open an admin cmd prompt in the directory
 * Register the filter using `regsvr32`, e.g. `regsvr32 mwcapture.ax` or `regsvr32 mwcapture-trace.ax`
 
-#### If using USB Capture Cards
+##### If using USB Capture Cards
 
 Install the [USB Capture Utility](https://www.magewell.com/products/usb-capture-hdmi-4k-plus#detail_firmware)
 
@@ -52,7 +76,7 @@ Install the [USB Capture Utility](https://www.magewell.com/products/usb-capture-
 
 See the [p38 of the manual](https://www.magewell.com/files/documents/User_Manual/USB-Capture-Utility-V3-user-manual_en_US.pdf) for details.
 
-### Blackmagic
+#### Blackmagic
 
 * Download the latest release from https://github.com/3ll3d00d/ezcapture/releases & unzip to some directory
 * Download the latest Desktop Video installer from https://www.blackmagicdesign.com/nl/support/family/capture-and-playback and install it
