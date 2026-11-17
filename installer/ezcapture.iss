@@ -450,8 +450,8 @@ begin
     if Code = 3010 then
       NeedsRestart := True
     else if (Code <> 0) and (Code <> 1638) then
-      Result := Format('The %s installer failed (exit code %d). Install it yourself, or go back and untick it, then try again.',
-        [Name, Code]);
+      Result := Format('The %s installer failed (exit code %d). Install it yourself, ' +
+        'or go back and untick it, then try again.', [Name, Code]);
   end;
 end;
 
