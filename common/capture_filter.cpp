@@ -308,11 +308,8 @@ capture_filter::~capture_filter()
 {
 	mMetrics.stop();
 	// delete the pins here rather than in ~CSource so anything they log as they are torn down happens before the
-	// loggers are released (the pin destructor removes it from m_paStreams and decrements m_iPins)
-	while (m_iPins > 0)
-	{
-		delete m_paStreams[m_iPins - 1];
-	}
+	// loggers are released
+	ReleasePinsAndClock();
 	#ifndef NO_LOGGING
 	if (mLoggingAcquired)
 	{
@@ -323,6 +320,22 @@ capture_filter::~capture_filter()
 	if (mQuillBackendAcquired)
 	{
 		ReleaseQuillBackend();
+	}
+}
+
+void capture_filter::ReleasePinsAndClock()
+{
+	// the pin destructor removes it from m_paStreams and decrements m_iPins
+	while (m_iPins > 0)
+	{
+		delete m_paStreams[m_iPins - 1];
+	}
+	// the clock is never handed out (QueryInterface returns the filter itself) so the filter holds the only
+	// reference, releasing it deletes the clock and stops its advise thread
+	if (mClock)
+	{
+		mClock->Release();
+		mClock = nullptr;
 	}
 }
 

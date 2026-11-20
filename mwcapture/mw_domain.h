@@ -306,7 +306,7 @@ struct device_info
 	device_type deviceType;
 	std::string serialNo{};
 	WCHAR devicePath[128];
-	HCHANNEL hChannel;
+	HCHANNEL hChannel{nullptr};
 	double temperature{0.0};
 	int64_t linkSpeed{0};
 	// pcie only

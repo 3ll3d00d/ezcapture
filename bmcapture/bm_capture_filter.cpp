@@ -470,6 +470,7 @@ blackmagic_capture_filter::blackmagic_capture_filter(LPUNKNOWN punk, HRESULT* ph
 	}
 
 	mClock = new BMReferenceClock(phr);
+	mClock->AddRef();
 
 	// video pin must have a default format in order to ensure a renderer is present in the graph
 	LoadFormat(&mVideoFormat, &mVideoSignal);

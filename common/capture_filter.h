@@ -299,8 +299,12 @@ protected:
 
 	~capture_filter() override;
 
+	// deletes the pins and the clock, a subclass whose pins or clock use a device handle calls this before
+	// releasing that handle as the base destructor only runs after the subclass destructor
+	void ReleasePinsAndClock();
+
 	log_data mLogData{};
-	IReferenceClock* mClock;
+	CBaseReferenceClock* mClock{nullptr};
 	device_status mDeviceStatus{};
 	display_status mDisplayStatus{};
 	audio_input_status mAudioInputStatus{};

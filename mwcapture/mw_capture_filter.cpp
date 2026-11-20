@@ -215,6 +215,7 @@ magewell_capture_filter::magewell_capture_filter(LPUNKNOWN punk, HRESULT* phr) :
 	}
 
 	mClock = new MWReferenceClock(phr, mDeviceInfo.hChannel, mDeviceInfo.deviceType == MW_PRO);
+	mClock->AddRef();
 
 	auto vp = new magewell_video_capture_pin(phr, this, false);
 	vp->UpdateFrameWriterStrategy();
@@ -230,6 +231,13 @@ magewell_capture_filter::magewell_capture_filter(LPUNKNOWN punk, HRESULT* phr) :
 
 magewell_capture_filter::~magewell_capture_filter()
 {
+	// the pins (pinned buffers) and the clock (device time) use the channel so must go before it is closed
+	ReleasePinsAndClock();
+	if (mDeviceInfo.hChannel)
+	{
+		MWCloseChannel(mDeviceInfo.hChannel);
+		mDeviceInfo.hChannel = nullptr;
+	}
 	if (mInited)
 	{
 		MWCaptureExitInstance();
