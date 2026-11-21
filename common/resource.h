@@ -134,6 +134,15 @@
 #define IDC_IN_PIXEL_CLOCK_LABEL        1128
 #define IDC_IN_PIXEL_CLOCK              1129
 #define IDC_METRICS_BIND_ADDRESS        1130
+#define IDC_WEB_BOX                     1133
+#define IDC_ENABLE_WEB                  1134
+#define IDC_WEB_BIND_ADDRESS            1135
+#define IDC_WEB_PORT                    1136
+#define IDC_WEB_URL                     1137
+#define IDC_WEB_COPY_URL                1138
+#define IDC_WEB_COPY_TOKEN              1139
+#define IDC_WEB_NEW_TOKEN               1140
+#define IDC_WEB_STATUS                  1141
 
 // Next default values for new objects
 // 
@@ -141,7 +150,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        103
 #define _APS_NEXT_COMMAND_VALUE         40001
-#define _APS_NEXT_CONTROL_VALUE         1133
+#define _APS_NEXT_CONTROL_VALUE         1142
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

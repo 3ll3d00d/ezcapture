@@ -28,6 +28,8 @@
 struct device_info
 {
 	std::string name{};
+	// BMDDeckLinkPersistentID, -1 if the device has none
+	int64_t persistentId{-1};
 	int apiVersion[3]{0, 0, 0};
 	uint8_t audioChannelCount{0};
 	bool inputFormatDetection{false};

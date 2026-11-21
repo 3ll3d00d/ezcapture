@@ -56,6 +56,8 @@ interface __declspec(uuid("4D6B8852-06A6-4997-BC07-3507BB77F748")) ISignalInfoCB
 	STDMETHOD(ReloadMetricsControls)(const bool& enabled, const std::string& bindAddress, const DWORD& port,
 	                                 const std::string& status) = 0;
 	STDMETHOD(Reload)(dv_status* payload) = 0;
+	STDMETHOD(ReloadWebControls)(const bool& enabled, const std::string& bindAddress, const DWORD& port,
+	                             const std::string& status, const std::string& url, const std::string& token) = 0;
 	// the filter has stopped, called on the thread that stopped it
 	STDMETHOD(OnFilterStopped)() = 0;
 };
@@ -82,6 +84,14 @@ interface __declspec(uuid("6A505550-28B2-4668-BC2C-461E75A63BC4")) ISignalInfo :
 	STDMETHOD(SetMetricsPort)(DWORD port) = 0;
 	STDMETHOD(GetMetricsBindAddress)(std::wstring* address) = 0;
 	STDMETHOD(SetMetricsBindAddress)(const std::wstring& address) = 0;
+	STDMETHOD(IsWebEnabled)(bool* enabled) = 0;
+	STDMETHOD(SetWebEnabled)(bool enabled) = 0;
+	STDMETHOD(GetWebPort)(DWORD* port) = 0;
+	STDMETHOD(SetWebPort)(DWORD port) = 0;
+	STDMETHOD(GetWebBindAddress)(std::wstring* address) = 0;
+	STDMETHOD(SetWebBindAddress)(const std::wstring& address) = 0;
+	// replaces the access token, anything using the old one (e.g. Home Assistant) must be updated
+	STDMETHOD(NewWebToken)() = 0;
 };
 
 class CSignalInfoProp :
@@ -120,6 +130,8 @@ public:
 	HRESULT ReloadMetricsControls(const bool& enabled, const std::string& bindAddress, const DWORD& port,
 	                              const std::string& status) override;
 	HRESULT Reload(dv_status* payload) override;
+	HRESULT ReloadWebControls(const bool& enabled, const std::string& bindAddress, const DWORD& port,
+	                          const std::string& status, const std::string& url, const std::string& token) override;
 	HRESULT OnFilterStopped() override;
 
 private:
@@ -133,6 +145,10 @@ private:
 	// while the DV tunnel is active the HDR box shows DV status instead
 	bool mDvShown{false};
 	bool mHaveHdr{false};
+	// the web page link (with the token) and the token, for the copy buttons
+	std::string mWebUrl;
+	std::string mWebToken;
+	void CopyToClipboard(const std::string& text) const;
 	hdr_status mLastHdr{};
 
 	void SetDirty()

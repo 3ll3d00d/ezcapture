@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ezcapture</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--fg:#1d2330;--muted:#667085;--line:#e3e6eb;--accent:#2f6fde;--ok:#1f8a4c;--warn:#b25e09;--bad:#c4321f}
+@media (prefers-color-scheme:dark){:root{--bg:#12151b;--card:#1b2029;--fg:#e6e9ef;--muted:#98a2b3;--line:#2a313d;--accent:#6a9cf5;--ok:#45c27a;--warn:#e3a34a;--bad:#f0705f}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--card)}
+h1{font-size:16px;margin:0}
+select{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:2px 6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);border-radius:999px;padding:1px 10px;font-size:13px;white-space:nowrap}
+.chip.ok{border-color:var(--ok);color:var(--ok)}.chip.warn{border-color:var(--warn);color:var(--warn)}.chip.bad{border-color:var(--bad);color:var(--bad)}
+main{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;padding:16px}
+section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-width:0}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:0 0 6px}
+table{width:100%;border-collapse:collapse}
+td{padding:2px 0;vertical-align:top}
+td:first-child{color:var(--muted);padding-right:12px;white-space:nowrap}
+td:last-child{text-align:right;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.null{color:var(--muted)}
+#msg{margin:16px;padding:10px 12px;border-radius:8px;border:1px solid var(--bad);color:var(--bad);display:none}
+footer{padding:0 16px 16px;color:var(--muted);font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="name">ezcapture</h1>
+  <select id="filter" hidden></select>
+  <div class="chips" id="chips"></div>
+</header>
+<div id="msg"></div>
+<main id="main"></main>
+<footer id="foot"></footer>
+<script>
+"use strict";
+const token = new URLSearchParams(location.hash.slice(1)).get("t") || "";
+const headers = token ? {Authorization: "Bearer " + token} : {};
+let filterId = "default", etag = "", timer = 0;
+
+const units = [["_bytes_per_sec", " B/s"], ["_mhz", " MHz"], ["_hz", " Hz"], ["_ms", " ms"], ["_nits", " nits"], ["_c", " °C"], ["_rpm", " rpm"], ["_db", " dB"]];
+const sections = [
+  ["Video input", d => d.video.input], ["Video output", d => d.video.output],
+  ["Video", d => ({measured_fps: d.video.measured_fps, ...prefix("headroom", d.video.headroom)})],
+  ["HDR", d => ({active: d.hdr.active, max_cll_nits: d.hdr.max_cll_nits, max_fall_nits: d.hdr.max_fall_nits,
+    max_dml_nits: d.hdr.max_dml_nits, min_dml_nits: d.hdr.min_dml_nits, ...primaries(d.hdr.primaries)})],
+  ["Dolby Vision", d => ({...d.dv, l1: undefined, lldv: undefined, ...prefix("l1", d.dv.l1), ...prefix("lldv", d.dv.lldv)})],
+  ["Audio input", d => d.audio.input], ["Audio output", d => d.audio.output],
+  ["Latency", d => latency(d.latency)],
+  ["Device", d => ({...d.device, ...prefix("display", d.display)})],
+  ["Settings", d => d.controls], ["Prometheus", d => d.metrics],
+];
+
+function prefix(p, o) { const r = {}; if (o) for (const [k, v] of Object.entries(o)) r[p + "_" + k] = v; return r; }
+function primaries(p) { return p ? {red: xy(p.rx, p.ry), green: xy(p.gx, p.gy), blue: xy(p.bx, p.by), white: xy(p.wpx, p.wpy)} : {}; }
+function xy(x, y) { return x.toFixed(4) + " × " + y.toFixed(4); }
+function latency(l) {
+  const r = {};
+  for (const [src, rows] of Object.entries(l)) for (const s of rows)
+    r[src + " " + s.stage] = s.min_ms.toFixed(2) + " / " + s.mean_ms.toFixed(2) + " / " + s.max_ms.toFixed(2) + " ms";
+  return r;
+}
+function label(k) {
+  for (const [suffix] of units) if (k.endsWith(suffix)) { k = k.slice(0, -suffix.length); break; }
+  const s = k.replace(/_/g, " ");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+function format(k, v) {
+  if (v === null) return null;
+  if (typeof v === "boolean") return v ? "yes" : "no";
+  if (typeof v === "number") {
+    let unit = "";
+    for (const [suffix, u] of units) if (k.endsWith(suffix)) { unit = u; break; }
+    if (unit === " B/s") return (v / 1e6).toFixed(0) + " MB/s";
+    return (Number.isInteger(v) ? v : +v.toFixed(3)) + unit;
+  }
+  return String(v);
+}
+function el(tag, text, cls) { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; }
+function chip(text, cls) { return el("span", text, "chip" + (cls ? " " + cls : "")); }
+
+function render(d) {
+  document.getElementById("name").textContent = d.filter.name || d.filter.id;
+  document.title = "ezcapture – " + (d.summary.video_mode || "no signal");
+  const s = d.summary, chips = document.getElementById("chips");
+  chips.replaceChildren(
+    chip(d.filter.state, d.filter.state === "running" ? "ok" : "warn"),
+    chip(s.signal ? s.video_mode : "no signal", s.signal ? "ok" : "bad"),
+    ...(s.dynamic_range ? [chip(s.dynamic_range.toUpperCase())] : []),
+    chip(s.audio === "none" ? "no audio" : s.audio + (s.audio_channels ? " " + s.audio_channels + "ch" : "")));
+  const main = document.getElementById("main");
+  main.replaceChildren(...sections.map(([title, pick]) => {
+    const sec = el("section"), table = el("table");
+    sec.append(el("h2", title), table);
+    for (const [k, v] of Object.entries(pick(d))) {
+      if (v === undefined || (typeof v === "object" && v !== null)) continue;
+      const f = format(k, v), tr = el("tr");
+      tr.append(el("td", label(k)), f === null ? el("td", "–", "null") : el("td", f));
+      table.append(tr);
+    }
+    return sec;
+  }));
+  document.getElementById("foot").textContent = "Updated " + (d.updated ? new Date(d.updated).toLocaleTimeString() : "never");
+}
+
+function message(text) { const m = document.getElementById("msg"); m.textContent = text; m.style.display = text ? "block" : "none"; }
+
+async function poll() {
+  clearTimeout(timer);
+  try {
+    const r = await fetch("api/v1/filters/" + encodeURIComponent(filterId) + "/state",
+      {headers: {...headers, ...(etag ? {"If-None-Match": etag} : {})}, cache: "no-store"});
+    if (r.status === 401) { message("Open this page with the link from the filter's property page, it includes the access token."); }
+    else if (r.status === 404) { message("The filter is not loaded."); etag = ""; await loadFilters(); }
+    else if (r.ok) { etag = r.headers.get("ETag") || ""; message(""); render(await r.json()); }
+    else if (r.status !== 304) { message("Error " + r.status); }
+  } catch (e) {
+    message("The filter is not running (the player may have closed it).");
+    etag = "";
+  }
+  timer = setTimeout(poll, 1000);
+}
+
+async function loadFilters() {
+  try {
+    const r = await fetch("api/v1/info", {headers, cache: "no-store"});
+    if (!r.ok) return;
+    const info = await r.json(), sel = document.getElementById("filter");
+    sel.replaceChildren(...info.filters.map(f => { const o = el("option", f.name + " (" + f.id + ")"); o.value = f.id; return o; }));
+    sel.hidden = info.filters.length < 2;
+    if (info.filters.length && !info.filters.some(f => f.id === filterId)) filterId = info.filters[0].id;
+    sel.value = filterId;
+    document.getElementById("foot").dataset.version = info.version;
+  } catch (e) { /* poll reports it */ }
+}
+
+document.getElementById("filter").addEventListener("change", e => { filterId = e.target.value; etag = ""; poll(); });
+loadFilters().then(poll);
+</script>
+</body>
+</html>

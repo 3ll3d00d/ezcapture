@@ -406,6 +406,8 @@
     <ClCompile Include="video_capture_pin.cpp" />
     <ClCompile Include="status_snapshot.cpp" />
     <ClCompile Include="web_json.cpp" />
+    <ClCompile Include="web_api.cpp" />
+    <ClCompile Include="web_server.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="bgr10_rgb48.h" />
@@ -436,6 +438,9 @@
     <ClInclude Include="yuy2_yv16.h" />
     <ClInclude Include="status_snapshot.h" />
     <ClInclude Include="web_json.h" />
+    <ClInclude Include="web_api.h" />
+    <ClInclude Include="web_server.h" />
+    <ClInclude Include="web_page.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\directshow_baseclasses\directshow_baseclasses.vcxproj">

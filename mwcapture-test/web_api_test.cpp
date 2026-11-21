@@ -15,12 +15,18 @@
 #include "gtest/gtest.h"
 
 #define NOMINMAX
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <streams.h>
 
 #include "status_snapshot.h"
+#include "web_api.h"
 #include "web_json.h"
+#include "web_server.h"
 
 #include <set>
+
+#pragma comment(lib, "ws2_32.lib")
 #include <string>
 
 namespace
@@ -360,4 +366,284 @@ TEST(StatusSnapshot, Controls)
 	const auto c = snap.Controls();
 	EXPECT_EQ(c.hdrProfile, 3u);
 	EXPECT_TRUE(c.metricsEnabled);
+}
+
+namespace
+{
+	struct fake_target : web_target
+	{
+		status_snapshot snap;
+		const status_snapshot& Status() const override { return snap; }
+	};
+
+	http_request get(std::string path, std::string host = "127.0.0.1:9474", std::string auth = {})
+	{
+		http_request r;
+		r.method = "GET";
+		r.path = std::move(path);
+		r.host = std::move(host);
+		r.authorization = std::move(auth);
+		return r;
+	}
+
+	std::string header_of(const http_response& r, const std::string& name)
+	{
+		for (const auto& [k, v] : r.headers)
+		{
+			if (k == name)
+			{
+				return v;
+			}
+		}
+		return {};
+	}
+
+	constexpr auto token = "0123456789abcdef0123456789abcdef";
+}
+
+TEST(WebApi, LoopbackHosts)
+{
+	EXPECT_TRUE(web_api::IsLoopbackHost("127.0.0.1:9474", 9474));
+	EXPECT_TRUE(web_api::IsLoopbackHost("localhost:9474", 9474));
+	EXPECT_TRUE(web_api::IsLoopbackHost("LOCALHOST", 9474));
+	EXPECT_TRUE(web_api::IsLoopbackHost("[::1]:9474", 9474));
+	EXPECT_FALSE(web_api::IsLoopbackHost("127.0.0.1:9475", 9474));
+	EXPECT_FALSE(web_api::IsLoopbackHost("evil.example:9474", 9474));
+	EXPECT_FALSE(web_api::IsLoopbackHost("localhost.evil.example:9474", 9474));
+	EXPECT_FALSE(web_api::IsLoopbackHost("", 9474));
+	EXPECT_FALSE(web_api::IsLoopbackHost("[::1", 9474));
+
+	EXPECT_TRUE(web_api::IsLoopbackAddress("127.0.0.1"));
+	EXPECT_TRUE(web_api::IsLoopbackAddress("::1"));
+	EXPECT_TRUE(web_api::IsLoopbackAddress("[::1]"));
+	EXPECT_FALSE(web_api::IsLoopbackAddress("0.0.0.0"));
+	EXPECT_FALSE(web_api::IsLoopbackAddress("192.168.1.10"));
+}
+
+TEST(WebApi, BearerTokens)
+{
+	EXPECT_EQ(web_api::BearerToken("Bearer abc"), "abc");
+	EXPECT_EQ(web_api::BearerToken("bearer  abc "), "abc");
+	EXPECT_EQ(web_api::BearerToken("Basic abc"), "");
+	EXPECT_EQ(web_api::BearerToken(""), "");
+	EXPECT_TRUE(web_api::TokenMatches("abc", "abc"));
+	EXPECT_FALSE(web_api::TokenMatches("abd", "abc"));
+	EXPECT_FALSE(web_api::TokenMatches("ab", "abc"));
+	EXPECT_FALSE(web_api::TokenMatches("abcd", "abc"));
+	EXPECT_FALSE(web_api::TokenMatches("", ""));
+}
+
+TEST(WebApi, ServesThePageToAnyone)
+{
+	web_api api{false, 9474, "1.0"};
+	auto r = api.Handle(get("/", "evil.example"));
+	EXPECT_EQ(r.status, 200);
+	EXPECT_EQ(header_of(r, "Content-Encoding"), "gzip");
+	EXPECT_EQ(r.contentType, "text/html; charset=utf-8");
+	ASSERT_GT(r.body.size(), 2u);
+	EXPECT_EQ(static_cast<unsigned char>(r.body[0]), 0x1f);
+
+	auto req = get("/index.html");
+	req.ifNoneMatch = header_of(r, "ETag");
+	EXPECT_EQ(api.Handle(req).status, 304);
+}
+
+TEST(WebApi, LoopbackReadsNeedNoTokenFromALocalName)
+{
+	web_api api{true, 9474, "1.0"};
+	fake_target target;
+	api.Register(&target, "magewell-abc", "Magewell", token);
+
+	EXPECT_EQ(api.Handle(get("/api/v1/filters/magewell-abc/state")).status, 200);
+	EXPECT_EQ(api.Handle(get("/api/v1/info", "localhost:9474")).status, 200);
+	// a DNS rebinding page gets the attacker's host name
+	EXPECT_EQ(api.Handle(get("/api/v1/filters/magewell-abc/state", "evil.example:9474")).status, 401);
+	// a token works from any host name
+	EXPECT_EQ(api.Handle(get("/api/v1/filters/magewell-abc/state", "evil.example:9474",
+	                         std::string{"Bearer "} + token)).status, 200);
+	const auto bad = api.Handle(get("/api/v1/filters/magewell-abc/state", "127.0.0.1:9474", "Bearer nope"));
+	EXPECT_EQ(bad.status, 401);
+	EXPECT_EQ(header_of(bad, "WWW-Authenticate"), "Bearer");
+	EXPECT_TRUE(has(bad.body, "bad_token"));
+}
+
+TEST(WebApi, NetworkReadsNeedTheToken)
+{
+	web_api api{false, 9474, "1.0"};
+	fake_target target;
+	api.Register(&target, "magewell-abc", "Magewell", token);
+
+	EXPECT_EQ(api.Handle(get("/api/v1/filters/magewell-abc/state")).status, 401);
+	EXPECT_EQ(api.Handle(get("/api/v1/info")).status, 401);
+	const auto auth = std::string{"Bearer "} + token;
+	EXPECT_EQ(api.Handle(get("/api/v1/filters/default/state", "capture-pc:9474", auth)).status, 200);
+	const auto info = api.Handle(get("/api/v1/info", "192.168.1.5:9474", auth));
+	EXPECT_EQ(info.status, 200);
+	EXPECT_TRUE(has(info.body, R"("filters":[{"id":"magewell-abc","name":"Magewell"}])")) << info.body;
+	EXPECT_TRUE(has(info.body, R"("api_version":1)")) << info.body;
+}
+
+TEST(WebApi, StateUsesETags)
+{
+	web_api api{true, 9474, "1.0"};
+	fake_target target;
+	api.Register(&target, "magewell-abc", "Magewell", token);
+
+	auto first = api.Handle(get("/api/v1/filters/default/state"));
+	ASSERT_EQ(first.status, 200);
+	EXPECT_EQ(header_of(first, "Cache-Control"), "no-store");
+	EXPECT_TRUE(has(first.body, R"("id":"magewell-abc")"));
+	const auto etag = header_of(first, "ETag");
+	ASSERT_FALSE(etag.empty());
+
+	auto again = get("/api/v1/filters/default/state");
+	again.ifNoneMatch = etag;
+	auto cached = api.Handle(again);
+	EXPECT_EQ(cached.status, 304);
+	EXPECT_TRUE(cached.body.empty());
+
+	double fps = 50.0;
+	target.snap.ReloadVfps(&fps);
+	auto changed = api.Handle(again);
+	EXPECT_EQ(changed.status, 200);
+	EXPECT_NE(header_of(changed, "ETag"), etag);
+}
+
+TEST(WebApi, ETagsDifferBetweenFilterInstances)
+{
+	web_api api{true, 9474, "1.0"};
+	fake_target a;
+	auto reg = api.Register(&a, "magewell-abc", "Magewell", token);
+	const auto etag = header_of(api.Handle(get("/api/v1/filters/default/state")), "ETag");
+	api.Unregister(reg);
+
+	fake_target b;
+	api.Register(&b, "magewell-abc", "Magewell", token);
+	auto req = get("/api/v1/filters/default/state");
+	req.ifNoneMatch = etag;
+	EXPECT_EQ(api.Handle(req).status, 200);
+}
+
+TEST(WebApi, RoutesAndErrors)
+{
+	web_api api{true, 9474, "1.0"};
+	fake_target target;
+	api.Register(&target, "magewell-abc", "Magewell", token);
+
+	EXPECT_EQ(api.Handle(get("/api/v1/filters/nope/state")).status, 404);
+	EXPECT_EQ(api.Handle(get("/api/v1/filters/magewell-abc/nope")).status, 404);
+	EXPECT_EQ(api.Handle(get("/api/v2/info")).status, 404);
+	EXPECT_EQ(api.Handle(get("/favicon.ico")).status, 404);
+	auto post = get("/api/v1/filters/magewell-abc/state");
+	post.method = "POST";
+	EXPECT_EQ(api.Handle(post).status, 405);
+	auto options = get("/api/v1/info");
+	options.method = "OPTIONS";
+	const auto preflight = api.Handle(options);
+	EXPECT_EQ(preflight.status, 405);
+	EXPECT_EQ(header_of(preflight, "Access-Control-Allow-Origin"), "");
+}
+
+TEST(WebApi, IdsAreUniqueAndDefaultIsTheFirst)
+{
+	web_api api{true, 9474, "1.0"};
+	fake_target a, b, c;
+	auto ra = api.Register(&a, "decklink-1", "A", token);
+	auto rb = api.Register(&b, "decklink-1", "B", token);
+	auto rc = api.Register(&c, "default", "C", token);
+	EXPECT_EQ(ra->id, "decklink-1");
+	EXPECT_EQ(rb->id, "decklink-1-2");
+	EXPECT_EQ(rc->id, "default-2");
+	EXPECT_TRUE(has(api.Handle(get("/api/v1/filters/default/state")).body, R"("name":"A")"));
+	api.Unregister(ra);
+	EXPECT_TRUE(has(api.Handle(get("/api/v1/filters/default/state")).body, R"("name":"B")"));
+	EXPECT_EQ(api.Handle(get("/api/v1/filters/decklink-1/state")).status, 404);
+	EXPECT_EQ(api.Count(), 2u);
+}
+
+namespace
+{
+	// a raw HTTP/1.1 exchange with a server on 127.0.0.1, returns everything it sent back
+	std::string http_exchange(uint16_t port, const std::string& request)
+	{
+		WSADATA wsa;
+		WSAStartup(MAKEWORD(2, 2), &wsa);
+		std::string response;
+		SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+		sockaddr_in addr{};
+		addr.sin_family = AF_INET;
+		addr.sin_port = htons(port);
+		inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
+		if (connect(s, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0)
+		{
+			send(s, request.data(), static_cast<int>(request.size()), 0);
+			char buf[4096];
+			int n;
+			while ((n = recv(s, buf, sizeof(buf), 0)) > 0)
+			{
+				response.append(buf, static_cast<size_t>(n));
+			}
+		}
+		closesocket(s);
+		WSACleanup();
+		return response;
+	}
+
+	constexpr uint16_t testPort{19474};
+}
+
+TEST(WebServer, AnswersOverHttpAndIsShared)
+{
+	std::string error;
+	auto server = web_server::Acquire("127.0.0.1", testPort, "1.2.3", error);
+	ASSERT_TRUE(server) << error;
+	EXPECT_EQ(server->Url(), "http://127.0.0.1:19474/");
+	auto same = web_server::Acquire("127.0.0.1", testPort, "1.2.3", error);
+	EXPECT_EQ(server.get(), same.get());
+	same.reset();
+
+	fake_target target;
+	auto reg = server->Api().Register(&target, "magewell-abc", "Magewell", token);
+
+	const auto state = http_exchange(testPort,
+		"GET /api/v1/filters/default/state HTTP/1.1\r\nHost: 127.0.0.1:19474\r\nConnection: close\r\n\r\n");
+	EXPECT_TRUE(state.starts_with("HTTP/1.1 200")) << state;
+	EXPECT_TRUE(has(state, "Content-Type: application/json; charset=utf-8")) << state;
+	EXPECT_TRUE(has(state, R"("id":"magewell-abc")")) << state;
+
+	const auto rebound = http_exchange(testPort,
+		"GET /api/v1/info HTTP/1.1\r\nHost: evil.example:19474\r\nConnection: close\r\n\r\n");
+	EXPECT_TRUE(rebound.starts_with("HTTP/1.1 401")) << rebound;
+
+	const auto big = http_exchange(testPort,
+		"POST /api/v1/info HTTP/1.1\r\nHost: 127.0.0.1:19474\r\nContent-Length: 5000\r\nConnection: close\r\n\r\n" +
+		std::string(5000, 'x'));
+	EXPECT_TRUE(big.starts_with("HTTP/1.1 413")) << big;
+
+	server->Api().Unregister(reg);
+	server.reset();
+
+	// the port is released with the last user
+	auto again = web_server::Acquire("127.0.0.1", testPort, "1.2.3", error);
+	EXPECT_TRUE(again) << error;
+}
+
+TEST(WebServer, ReportsAPortInUse)
+{
+	std::string error;
+	auto first = web_server::Acquire("127.0.0.1", testPort + 1, "1", error);
+	ASSERT_TRUE(first) << error;
+	// a different address string for the same port is a different server, so the bind fails
+	auto second = web_server::Acquire("0.0.0.0", testPort + 1, "1", error);
+	EXPECT_FALSE(second);
+	EXPECT_TRUE(has(error, "Unable to listen on 0.0.0.0:19475")) << error;
+}
+
+TEST(WebServer, TokensAreRandomHex)
+{
+	const auto a = web_server::NewToken();
+	const auto b = web_server::NewToken();
+	EXPECT_EQ(a.size(), 32u);
+	EXPECT_NE(a, b);
+	EXPECT_EQ(a.find_first_not_of("0123456789abcdef"), std::string::npos);
 }

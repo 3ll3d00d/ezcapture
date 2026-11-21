@@ -1,5 +1,6 @@
 find_package(quill CONFIG REQUIRED)
 find_package(prometheus-cpp CONFIG REQUIRED)
+find_package(civetweb CONFIG REQUIRED)
 
 add_library(common STATIC
     audio_capture_pin.cpp
@@ -10,12 +11,15 @@ add_library(common STATIC
     signalinfo.cpp
     status_snapshot.cpp
     video_capture_pin.cpp
+    web_api.cpp
     web_json.cpp
+    web_server.cpp
 )
 
 target_include_directories(common PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-# quill is PUBLIC because logging.h/metrics.h include it; prometheus-cpp is only used by metrics.cpp
-target_link_libraries(common PUBLIC directshow_baseclasses quill::quill PRIVATE prometheus-cpp::pull)
+# quill is PUBLIC because logging.h/metrics.h include it; prometheus-cpp is only used by metrics.cpp and civetweb
+# (which prometheus-cpp::pull also uses) only by web_server.cpp
+target_link_libraries(common PUBLIC directshow_baseclasses quill::quill PRIVATE prometheus-cpp::pull civetweb::civetweb)
 
 target_compile_definitions(common PRIVATE
     _CRT_SECURE_NO_WARNINGS

@@ -21,9 +21,12 @@
 #include "mw_capture_filter.h"
 #include "mw_video_capture_pin.h"
 #include "mw_audio_capture_pin.h"
+#include "web_json.h"
 
 #define REG_KEY_BASE L"MWCapture"
 #define DEFAULT_METRICS_PORT 9464
+// the installer's firewall rule opens this port
+#define DEFAULT_WEB_PORT 9474
 
 #if CAPTURE_NAME_SUFFIX == 1
 #define LOG_PREFIX_NAME "MagewellTrace"
@@ -55,7 +58,7 @@ CUnknown* magewell_capture_filter::CreateInstance(LPUNKNOWN punk, HRESULT* phr)
 
 magewell_capture_filter::magewell_capture_filter(LPUNKNOWN punk, HRESULT* phr) :
 	hdmi_capture_filter(WLOG_PREFIX_NAME, punk, phr, CLSID_MWCAPTURE_FILTER, LOG_PREFIX_NAME, REG_KEY_BASE,
-	                    DEFAULT_METRICS_PORT)
+	                    DEFAULT_METRICS_PORT, DEFAULT_WEB_PORT)
 {
 	// Initialise the device and validate that it presents some form of data
 	mInited = MWCaptureInitInstance();
@@ -230,6 +233,26 @@ magewell_capture_filter::magewell_capture_filter(LPUNKNOWN punk, HRESULT* phr) :
 		new magewell_audio_capture_pin(phr, this, false);
 		new magewell_audio_capture_pin(phr, this, true);
 	}
+
+	StartWebApi();
+}
+
+std::string magewell_capture_filter::GetWebId() const
+{
+	auto serial = web_json::slug(mDeviceInfo.serialNo);
+	std::erase(serial, '_');
+	return serial.empty() ? "magewell" : "magewell-" + serial;
+}
+
+std::string magewell_capture_filter::GetWebName() const
+{
+	switch (mDeviceInfo.deviceType)
+	{
+	case MW_PRO: return "Magewell Pro Capture";
+	case MW_USB_PRO: return "Magewell USB Capture 4K Pro";
+	case MW_USB_PLUS: return "Magewell USB Capture 4K+";
+	default: return "Magewell";
+	}
 }
 
 magewell_capture_filter::~magewell_capture_filter()
@@ -240,6 +263,7 @@ magewell_capture_filter::~magewell_capture_filter()
 	auto elapsed = [t0] { return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count(); };
 	LOG_INFO(mLogData.logger, "[{}] Tearing down filter", mLogData.prefix);
 	#endif
+	StopWebApi();
 	// the pins (pinned buffers) and the clock (device time) use the channel so must go before it is closed
 	ReleasePinsAndClock();
 	if (mDeviceInfo.hChannel)

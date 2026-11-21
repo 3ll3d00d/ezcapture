@@ -194,12 +194,14 @@ void capture_filter::ReleaseLogging()
 #endif
 
 capture_filter::capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID clsid, const std::string& pLogPrefix,
-                               std::wstring pRegKeyBase, uint16_t pDefaultMetricsPort) :
+                               std::wstring pRegKeyBase, uint16_t pDefaultMetricsPort, uint16_t pDefaultWebPort) :
 	CSource(pName, punk, clsid),
-	mRegKeyBase(ROOT_REG_KEY + std::move(pRegKeyBase))
+	mRegKeyBase(ROOT_REG_KEY + std::move(pRegKeyBase)),
+	mDefaultWebPort(pDefaultWebPort)
 {
 	mLogData.prefix = pLogPrefix;
 	mMetricsConfig.port = pDefaultMetricsPort;
+	mWebConfig.port = pDefaultWebPort;
 
 	#ifndef NO_LOGGING
 	AcquireQuillBackend(pLogPrefix);
@@ -263,6 +265,28 @@ capture_filter::capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSI
 		{
 			mMetricsConfig.signalRetention = std::chrono::seconds{res.GetValue()};
 		}
+		if (auto res = key.TryGetDwordValue(webEnabledRegKey))
+		{
+			mWebConfig.enabled = res.GetValue() == 1;
+		}
+		if (auto res = key.TryGetDwordValue(webPortRegKey))
+		{
+			if (const auto port = res.GetValue(); port > 0 && port <= 65535)
+			{
+				mWebConfig.port = static_cast<uint16_t>(port);
+			}
+		}
+		if (auto res = key.TryGetStringValue(webBindAddressRegKey))
+		{
+			if (auto addr = to_narrow(res.GetValue()); !addr.empty())
+			{
+				mWebConfig.bindAddress = std::move(addr);
+			}
+		}
+		if (auto res = key.TryGetStringValue(webTokenRegKey))
+		{
+			mWebConfig.token = to_narrow(res.GetValue());
+		}
 		#ifndef NO_LOGGING
 		LOG_INFO(mLogData.logger,
 		         "[{}] Loaded properties from registry [hdrProfile:{}, sdrProfile: {}, profileSwitch: {}, rateSwitch: {}, highPriority: {}, audio: {}]",
@@ -307,6 +331,7 @@ capture_filter::capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSI
 
 capture_filter::~capture_filter()
 {
+	StopWebApi();
 	#ifndef NO_LOGGING
 	if (mLoggingAcquired)
 	{
@@ -473,6 +498,10 @@ STDMETHODIMP capture_filter::Run(REFERENCE_TIME tStart)
 		const auto s1 = dynamic_cast<CBaseStreamControl*>(m_paStreams[i]);
 		s1->NotifyFilterState(State_Running, tStart);
 	}
+	if (mWeb)
+	{
+		mWeb->snapshot.SetRunState(filter_run_state::RUNNING);
+	}
 	return CBaseFilter::Run(tStart);
 }
 
@@ -482,6 +511,10 @@ STDMETHODIMP capture_filter::Pause()
 	{
 		const auto s1 = dynamic_cast<CBaseStreamControl*>(m_paStreams[i]);
 		s1->NotifyFilterState(State_Paused);
+	}
+	if (mWeb)
+	{
+		mWeb->snapshot.SetRunState(filter_run_state::PAUSED);
 	}
 	return CBaseFilter::Pause();
 }
@@ -665,6 +698,175 @@ HRESULT capture_filter::SetMetricsBindAddress(const std::wstring& address)
 				mMetricsConfig.bindAddress = std::move(narrow);
 				mMetricsStatus = "Applies when the filter is next loaded";
 			}
+			return S_OK;
+		}
+	}
+	return E_FAIL;
+}
+
+namespace
+{
+	// the address a browser on another PC would use to reach a server bound to bindAddress
+	std::string web_host(const std::string& bindAddress)
+	{
+		if (bindAddress == "0.0.0.0" || bindAddress == "::" || bindAddress == "[::]")
+		{
+			char name[256]{};
+			DWORD size = sizeof(name);
+			if (GetComputerNameExA(ComputerNameDnsHostname, name, &size) && size > 0)
+			{
+				return std::string{name, size};
+			}
+			return "localhost";
+		}
+		if (bindAddress.find(':') != std::string::npos && !bindAddress.starts_with('['))
+		{
+			return "[" + bindAddress + "]";
+		}
+		return bindAddress;
+	}
+
+	constexpr auto webPendingStatus = "Applies when the filter is next loaded";
+}
+
+void capture_filter::StartWebApi()
+{
+	if (!mWebConfig.enabled || mWeb)
+	{
+		return;
+	}
+	if (mWebConfig.token.empty())
+	{
+		// enabled by editing the registry, the page always makes one when it is enabled there
+		NewWebToken();
+	}
+	mWeb = std::make_unique<web_adapter>();
+	// sends the snapshot everything so it is complete before the first request
+	SetStatusCallback(&mWeb->snapshot);
+
+	std::string error;
+	mWebServer = web_server::Acquire(mWebConfig.bindAddress, mWebConfig.port, EZ_VERSION_STR, error);
+	if (!mWebServer)
+	{
+		mWebStatus = error;
+		#ifndef NO_LOGGING
+		LOG_ERROR(mLogData.logger, "[{}] Web API is unavailable: {}", mLogData.prefix, error);
+		#endif
+		SetStatusCallback(nullptr);
+		mWeb.reset();
+		return;
+	}
+	mWebRegistration = mWebServer->Api().Register(mWeb.get(), GetWebId(), GetWebName(), mWebConfig.token);
+	mWebUrl = std::format("http://{}:{}/#t={}", web_host(mWebConfig.bindAddress), mWebConfig.port,
+	                      mWebConfig.token);
+	mWebStatus = std::format("Serving {} as {}", mWebServer->Url(), mWebRegistration->id);
+	if (!web_api::IsLoopbackAddress(mWebConfig.bindAddress) && mWebConfig.port != mDefaultWebPort)
+	{
+		mWebStatus += std::format(", port {} is not covered by the installed firewall rule", mWebConfig.port);
+	}
+	#ifndef NO_LOGGING
+	LOG_INFO(mLogData.logger, "[{}] Web API {}", mLogData.prefix, mWebStatus);
+	#endif
+}
+
+void capture_filter::StopWebApi()
+{
+	if (mWebServer)
+	{
+		// waits for a request in progress, none can start once this returns
+		mWebServer->Api().Unregister(mWebRegistration);
+		mWebRegistration.reset();
+		mWebServer.reset();
+	}
+	if (mWeb)
+	{
+		SetStatusCallback(nullptr);
+		mWeb.reset();
+	}
+}
+
+HRESULT capture_filter::SetWebEnabled(bool enabled)
+{
+	if (enabled && mWebConfig.token.empty() && FAILED(NewWebToken()))
+	{
+		return E_FAIL;
+	}
+	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
+	{
+		if (const auto res = key.TrySetDwordValue(webEnabledRegKey, enabled ? 1 : 0))
+		{
+			if (mWebConfig.enabled != enabled)
+			{
+				mWebConfig.enabled = enabled;
+				mWebStatus = webPendingStatus;
+			}
+			return S_OK;
+		}
+	}
+	return E_FAIL;
+}
+
+HRESULT capture_filter::SetWebPort(DWORD port)
+{
+	if (port == 0 || port > 65535)
+	{
+		return E_INVALIDARG;
+	}
+	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
+	{
+		if (const auto res = key.TrySetDwordValue(webPortRegKey, port))
+		{
+			if (mWebConfig.port != port)
+			{
+				mWebConfig.port = static_cast<uint16_t>(port);
+				mWebStatus = webPendingStatus;
+			}
+			return S_OK;
+		}
+	}
+	return E_FAIL;
+}
+
+HRESULT capture_filter::SetWebBindAddress(const std::wstring& address)
+{
+	if (address.empty())
+	{
+		return E_INVALIDARG;
+	}
+	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
+	{
+		if (const auto res = key.TrySetStringValue(webBindAddressRegKey, address))
+		{
+			if (auto narrow = to_narrow(address); mWebConfig.bindAddress != narrow)
+			{
+				mWebConfig.bindAddress = std::move(narrow);
+				mWebStatus = webPendingStatus;
+			}
+			return S_OK;
+		}
+	}
+	return E_FAIL;
+}
+
+HRESULT capture_filter::NewWebToken()
+{
+	auto token = web_server::NewToken();
+	if (token.empty())
+	{
+		return E_FAIL;
+	}
+	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
+	{
+		if (const auto res = key.TrySetStringValue(webTokenRegKey, std::wstring{token.begin(), token.end()}))
+		{
+			mWebConfig.token = std::move(token);
+			if (mWebServer)
+			{
+				// a running server keeps the token it started with
+				mWebStatus = webPendingStatus;
+			}
+			mWebUrl = std::format("http://{}:{}/#t={}", web_host(mWebConfig.bindAddress), mWebConfig.port,
+			                      mWebConfig.token);
 			return S_OK;
 		}
 	}

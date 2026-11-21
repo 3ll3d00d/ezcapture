@@ -4,6 +4,121 @@ Each filter can run a small HTTP server with a JSON API and a status page. The A
 built-in REST integrations, so no custom component is needed. This page is the reference for what the API returns.
 [web-ui-plan.md](web-ui-plan.md) explains the design.
 
+## Setting it up
+
+1. Open the filter's property page. In the **Web API** row, tick **Enable?**, then set the address and port.
+   * `127.0.0.1` (the default) only allows this PC. For Home Assistant on another machine, use `0.0.0.0` (all
+     networks) or this PC's LAN address.
+   * The default ports are 9474 for Magewell and 9475 for DeckLink. The installer's firewall rule opens these ports
+     on private networks. If you change the port, add your own firewall rule.
+2. Click **Apply**, then stop and start playback so the filter is loaded again. The status line then shows where it
+   is serving, e.g. `Serving http://0.0.0.0:9474/ as magewell-a3f21c`.
+3. **Copy Link** copies the page address with the access token, e.g. `http://capture-pc:9474/#t=3f9c...`. Open it in
+   a browser to see the status page.
+4. **Copy Token** copies only the token, for Home Assistant. **New Token** replaces it. Anything using the old token
+   stops working once the filter is next loaded.
+
+The server only runs while a player has the filter loaded. When the player closes, Home Assistant marks the
+entities `unavailable`.
+
+When the server is on, it uses three threads that sleep until a request arrives. With it off, nothing runs.
+
+## Access
+
+Send the token as a header: `Authorization: Bearer <token>`.
+
+* Bound to `127.0.0.1`, reads work without the token as long as the request uses `127.0.0.1`, `localhost` or `[::1]`
+  as the host name. This stops other websites from reading it through DNS rebinding.
+* Bound to any other address, every request needs the token.
+* The status page itself (`/`) never needs the token. It holds no data, and it reads the token from the link.
+
+## Endpoints
+
+| Method | Path | Returns |
+|---|---|---|
+| GET | `/` | the status page |
+| GET | `/api/v1/info` | `{"api_version": 1, "product": "ezcapture", "version": "...", "filters": [{"id": "...", "name": "..."}]}` |
+| GET | `/api/v1/filters/<id>/state` | the [state document](#state-document) |
+
+`<id>` can be `default`, which is the first filter loaded, so most setups never need the real id.
+
+Responses send `Cache-Control: no-store`. The state document has an `ETag`, so send `If-None-Match` to get a `304`
+with no body when nothing has changed. Errors are `{"error": "<code>", "message": "..."}` with status `401` (missing
+or wrong token), `404` (unknown filter or path), `405` (wrong method) or `413` (body over 4 KB).
+
+## Home Assistant sensors
+
+```yaml
+# secrets.yaml
+ezcapture_auth: "Bearer 3f9c...e1"
+
+# configuration.yaml
+rest:
+  - resource: http://capture-pc:9474/api/v1/filters/default/state
+    headers:
+      Authorization: !secret ezcapture_auth
+    scan_interval: 10
+    sensor:
+      - name: Capture video mode
+        unique_id: ezcapture_video_mode
+        value_template: "{{ value_json.summary.video_mode }}"
+      - name: Capture dynamic range
+        unique_id: ezcapture_dynamic_range
+        device_class: enum
+        value_template: "{{ value_json.summary.dynamic_range }}"
+      - name: Capture audio
+        unique_id: ezcapture_audio
+        device_class: enum
+        value_template: "{{ value_json.summary.audio }}"
+      - name: Capture audio channels
+        unique_id: ezcapture_audio_channels
+        value_template: "{{ value_json.summary.audio_channels }}"
+      - name: Capture filter state
+        unique_id: ezcapture_filter_state
+        device_class: enum
+        value_template: "{{ value_json.filter.state }}"
+      - name: Capture card temperature
+        unique_id: ezcapture_temperature
+        device_class: temperature
+        unit_of_measurement: "°C"
+        state_class: measurement
+        value_template: "{{ value_json.device.temperature_c }}"
+      - name: Capture measured fps
+        unique_id: ezcapture_measured_fps
+        unit_of_measurement: "fps"
+        state_class: measurement
+        value_template: "{{ value_json.video.measured_fps }}"
+      - name: Capture MaxCLL
+        unique_id: ezcapture_max_cll
+        unit_of_measurement: "nits"
+        value_template: "{{ value_json.hdr.max_cll_nits }}"
+    binary_sensor:
+      - name: Capture signal
+        unique_id: ezcapture_signal
+        value_template: "{{ value_json.summary.signal }}"
+      - name: Capture HDR
+        unique_id: ezcapture_hdr
+        value_template: "{{ value_json.summary.dynamic_range not in [none, 'sdr'] }}"
+```
+
+An automation that reacts to the dynamic range, e.g. to change a projector's picture mode:
+
+```yaml
+automation:
+  - alias: Projector follows HDR
+    trigger:
+      - trigger: state
+        entity_id: sensor.capture_dynamic_range
+    action:
+      - choose:
+          - conditions: "{{ trigger.to_state.state in ['hdr10', 'dv', 'lldv'] }}"
+            sequence:
+              - action: script.projector_hdr_mode
+          - conditions: "{{ trigger.to_state.state == 'sdr' }}"
+            sequence:
+              - action: script.projector_sdr_mode
+```
+
 ## State document
 
 `GET /api/v1/filters/<id>/state` returns one JSON document with everything. Its shape never changes:

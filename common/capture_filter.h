@@ -26,6 +26,8 @@
 #include "signalinfo.h"
 #include "metrics.h"
 #include "modeswitcher.h"
+#include "status_snapshot.h"
+#include "web_server.h"
 
 #include <streams.h>
 #include "ISpecifyPropertyPages2.h"
@@ -42,6 +44,18 @@ inline constexpr auto hdrProfileSwitchEnabledRegKey = L"hdrProfileSwitchEnabled"
 inline constexpr auto refreshRateSwitchEnabledRegKey = L"refreshRateSwitchEnabled";
 inline constexpr auto highThreadPriorityEnabledRegKey = L"highThreadPriorityEnabled";
 inline constexpr auto audioCaptureEnabledRegKey = L"audioCaptureEnabled";
+inline constexpr auto webEnabledRegKey = L"webEnabled";
+inline constexpr auto webPortRegKey = L"webPort";
+inline constexpr auto webBindAddressRegKey = L"webBindAddress";
+inline constexpr auto webTokenRegKey = L"webToken";
+
+struct web_config
+{
+	bool enabled{false};
+	uint16_t port{0};
+	std::string bindAddress{"127.0.0.1"};
+	std::string token;
+};
 
 // Non template parts of the filter impl
 class capture_filter :
@@ -187,6 +201,34 @@ public:
 
 	STDMETHODIMP SetMetricsBindAddress(const std::wstring& address) override;
 
+	STDMETHODIMP IsWebEnabled(bool* enabled) override
+	{
+		CheckPointer(enabled, E_POINTER)
+		*enabled = mWebConfig.enabled;
+		return S_OK;
+	}
+
+	STDMETHODIMP SetWebEnabled(bool enabled) override;
+
+	STDMETHODIMP GetWebPort(DWORD* port) override
+	{
+		CheckPointer(port, E_POINTER)
+		*port = mWebConfig.port;
+		return S_OK;
+	}
+
+	STDMETHODIMP SetWebPort(DWORD port) override;
+
+	STDMETHODIMP GetWebBindAddress(std::wstring* address) override
+	{
+		CheckPointer(address, E_POINTER)
+		address->assign(mWebConfig.bindAddress.begin(), mWebConfig.bindAddress.end());
+		return S_OK;
+	}
+
+	STDMETHODIMP SetWebBindAddress(const std::wstring& address) override;
+	STDMETHODIMP NewWebToken() override;
+
 	DWORD GetMCProfileId(bool hdr)
 	{
 		return hdr ? mHdrProfile : mSdrProfile;
@@ -293,13 +335,25 @@ protected:
 	}
 
 	capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID clsid, const std::string& pLogPrefix,
-	               std::wstring pRegKeyBase, uint16_t pDefaultMetricsPort);
+	               std::wstring pRegKeyBase, uint16_t pDefaultMetricsPort, uint16_t pDefaultWebPort);
 
 	~capture_filter() override;
 
 	// deletes the pins and the clock, a subclass whose pins or clock use a device handle calls this before
 	// releasing that handle as the base destructor only runs after the subclass destructor
 	void ReleasePinsAndClock();
+
+	// the id of the filter in web API paths, stable for a given device, e.g. magewell-<serial>
+	virtual std::string GetWebId() const = 0;
+	// a description of the filter for the web API
+	virtual std::string GetWebName() const = 0;
+
+	// starts the web API if it is enabled, the subclass calls this at the end of its constructor once the device
+	// (and so GetWebId) is known
+	void StartWebApi();
+	// stops the web API, waiting for any request in progress; the subclass calls this at the start of its destructor
+	// so no request can reach the filter while it is torn down
+	void StopWebApi();
 
 	log_data mLogData{};
 	CBaseReferenceClock* mClock{nullptr};
@@ -371,6 +425,8 @@ protected:
 		                   mSdrProfile, mHighThreadPriorityEnabled, mAudioCaptureEnabled);
 		cb->ReloadMetricsControls(mMetricsConfig.enabled, mMetricsConfig.bindAddress, mMetricsConfig.port,
 		                          mMetricsStatus);
+		cb->ReloadWebControls(mWebConfig.enabled, mWebConfig.bindAddress, mWebConfig.port, mWebStatus, mWebUrl,
+		                      mWebConfig.token);
 	}
 
 	// sets (or clears, with nullptr) the status callback and sends it everything; not part of ISignalInfo so the
@@ -395,6 +451,23 @@ protected:
 	metrics_config mMetricsConfig{};
 	std::string mMetricsStatus{"Disabled"};
 	capture_metrics mMetrics{};
+	web_config mWebConfig{};
+	uint16_t mDefaultWebPort{0};
+	std::string mWebStatus{"Disabled"};
+	// the address to open the page, including the token
+	std::string mWebUrl;
+
+	// the web API's view of the filter, it reads the status snapshot and calls back into the filter for controls
+	class web_adapter : public web_target
+	{
+	public:
+		const status_snapshot& Status() const override { return snapshot; }
+		status_snapshot snapshot;
+	};
+
+	std::unique_ptr<web_adapter> mWeb;
+	std::shared_ptr<web_server> mWebServer;
+	std::shared_ptr<web_registration> mWebRegistration;
 
 private:
 	// the quill backend is shared by every filter in the module so is started/stopped by reference count
@@ -435,8 +508,8 @@ public:
 
 protected:
 	hdmi_capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSID clsid, const std::string& logPrefix,
-	                    const std::wstring& regKeyBase, uint16_t defaultMetricsPort) :
-		capture_filter(pName, punk, phr, clsid, logPrefix, regKeyBase, defaultMetricsPort)
+	                    const std::wstring& regKeyBase, uint16_t defaultMetricsPort, uint16_t defaultWebPort) :
+		capture_filter(pName, punk, phr, clsid, logPrefix, regKeyBase, defaultMetricsPort, defaultWebPort)
 	{
 	}
 

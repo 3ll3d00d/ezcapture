@@ -158,11 +158,22 @@ HRESULT CSignalInfoProp::OnApplyChanges()
 	SendDlgItemMessage(m_Dlg, IDC_METRICS_BIND_ADDRESS, WM_GETTEXT, 64, reinterpret_cast<LPARAM>(&bindAddress));
 	auto hr9 = mSignalInfo->SetMetricsBindAddress(bindAddress);
 
+	bool enableWeb = static_cast<bool>(SendDlgItemMessage(m_Dlg, IDC_ENABLE_WEB, BM_GETCHECK, 0, 0));
+	auto hr10 = mSignalInfo->SetWebEnabled(enableWeb);
+
+	SendDlgItemMessage(m_Dlg, IDC_WEB_PORT, WM_GETTEXT, 16, reinterpret_cast<LPARAM>(&b1));
+	DWORD webPort = _wtoi(b1);
+	auto hr11 = mSignalInfo->SetWebPort(webPort);
+
+	WCHAR webBindAddress[64];
+	SendDlgItemMessage(m_Dlg, IDC_WEB_BIND_ADDRESS, WM_GETTEXT, 64, reinterpret_cast<LPARAM>(&webBindAddress));
+	auto hr12 = mSignalInfo->SetWebBindAddress(webBindAddress);
+
 	// show the outcome (e.g. that a restart is required)
 	mSignalInfo->Reload();
 
 	return hr1 == S_OK && hr2 == S_OK && hr3 == S_OK && hr4 == S_OK && hr5 == S_OK && hr6 == S_OK && hr7 == S_OK
-	       && hr8 == S_OK && hr9 == S_OK
+	       && hr8 == S_OK && hr9 == S_OK && hr10 == S_OK && hr11 == S_OK && hr12 == S_OK
 		       ? S_OK
 		       : E_FAIL;
 }
@@ -293,6 +304,74 @@ INT_PTR CSignalInfoProp::OnReceiveMessage(HWND hwnd, UINT uMsg, WPARAM wParam, L
 				return TRUE;
 			}
 			return FALSE;
+		}
+		if (LOWORD(wParam) == IDC_ENABLE_WEB && HIWORD(wParam) == BN_CLICKED)
+		{
+			bool bFlag = static_cast<bool>(SendDlgItemMessage(m_Dlg, LOWORD(wParam), BM_GETCHECK, 0, 0));
+			bool existing;
+			mSignalInfo->IsWebEnabled(&existing);
+
+			EnableWindow(GetDlgItem(m_Dlg, IDC_WEB_PORT), bFlag);
+			EnableWindow(GetDlgItem(m_Dlg, IDC_WEB_BIND_ADDRESS), bFlag);
+			if (bFlag != existing)
+			{
+				SetDirty();
+				return TRUE;
+			}
+			return FALSE;
+		}
+		if (LOWORD(wParam) == IDC_WEB_PORT && HIWORD(wParam) == EN_CHANGE)
+		{
+			WCHAR b1[16];
+			SendDlgItemMessage(m_Dlg, IDC_WEB_PORT, WM_GETTEXT, 16, reinterpret_cast<LPARAM>(&b1));
+			DWORD port = _wtoi(b1);
+			if (port > 65535)
+			{
+				SendDlgItemMessage(m_Dlg, LOWORD(wParam), EM_UNDO, 0, 0);
+				return FALSE;
+			}
+			DWORD existing;
+			mSignalInfo->GetWebPort(&existing);
+			if (port != 0 && port != existing)
+			{
+				SetDirty();
+				return TRUE;
+			}
+			return FALSE;
+		}
+		if (LOWORD(wParam) == IDC_WEB_BIND_ADDRESS && HIWORD(wParam) == EN_CHANGE)
+		{
+			WCHAR bindAddress[64];
+			SendDlgItemMessage(m_Dlg, IDC_WEB_BIND_ADDRESS, WM_GETTEXT, 64, reinterpret_cast<LPARAM>(&bindAddress));
+			std::wstring existing;
+			mSignalInfo->GetWebBindAddress(&existing);
+			if (bindAddress[0] != L'\0' && existing != bindAddress)
+			{
+				SetDirty();
+				return TRUE;
+			}
+			return FALSE;
+		}
+		if (LOWORD(wParam) == IDC_WEB_COPY_URL && HIWORD(wParam) == BN_CLICKED)
+		{
+			CopyToClipboard(mWebUrl);
+			return TRUE;
+		}
+		if (LOWORD(wParam) == IDC_WEB_COPY_TOKEN && HIWORD(wParam) == BN_CLICKED)
+		{
+			CopyToClipboard(mWebToken);
+			return TRUE;
+		}
+		if (LOWORD(wParam) == IDC_WEB_NEW_TOKEN && HIWORD(wParam) == BN_CLICKED)
+		{
+			if (MessageBoxW(m_Dlg, L"Make a new access token? Anything using the current one, such as Home Assistant, "
+			                L"will need the new one. It applies when the filter is next loaded.",
+			                L"Web API", MB_OKCANCEL | MB_ICONQUESTION) == IDOK)
+			{
+				mSignalInfo->NewWebToken();
+				mSignalInfo->Reload();
+			}
+			return TRUE;
 		}
 		if (LOWORD(wParam) == IDC_METRICS_PORT && HIWORD(wParam) == EN_CHANGE)
 		{
@@ -947,6 +1026,70 @@ HRESULT CSignalInfoProp::ReloadControls(const bool& rateEnabled, const bool& pro
 	SendDlgItemMessage(m_Dlg, IDC_ENABLE_AUDIO, BM_SETCHECK, audioCapture, 0);
 
 	return S_OK;
+}
+
+HRESULT CSignalInfoProp::ReloadWebControls(const bool& enabled, const std::string& bindAddress, const DWORD& port,
+                                           const std::string& status, const std::string& url,
+                                           const std::string& token)
+{
+	if (PostToUiThread([this, enabled, bindAddress, port, status, url, token]
+	{
+		ReloadWebControls(enabled, bindAddress, port, status, url, token);
+	}))
+	{
+		return S_OK;
+	}
+	mWebUrl = url;
+	mWebToken = token;
+
+	WCHAR addressBuffer[64];
+	_snwprintf_s(addressBuffer, _TRUNCATE, L"%hs", bindAddress.c_str());
+	SendDlgItemMessage(m_Dlg, IDC_WEB_BIND_ADDRESS, EM_SETLIMITTEXT, 63, 0);
+	SendDlgItemMessage(m_Dlg, IDC_WEB_BIND_ADDRESS, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(addressBuffer));
+	EnableWindow(GetDlgItem(m_Dlg, IDC_WEB_BIND_ADDRESS), enabled);
+
+	WCHAR buffer[8];
+	_snwprintf_s(buffer, _TRUNCATE, L"%d", port);
+	SendDlgItemMessage(m_Dlg, IDC_WEB_PORT, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+	EnableWindow(GetDlgItem(m_Dlg, IDC_WEB_PORT), enabled);
+	SendDlgItemMessage(m_Dlg, IDC_ENABLE_WEB, BM_SETCHECK, enabled, 0);
+
+	WCHAR urlBuffer[256];
+	_snwprintf_s(urlBuffer, _TRUNCATE, L"%hs", url.c_str());
+	SendDlgItemMessage(m_Dlg, IDC_WEB_URL, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(urlBuffer));
+	EnableWindow(GetDlgItem(m_Dlg, IDC_WEB_COPY_URL), !url.empty());
+	EnableWindow(GetDlgItem(m_Dlg, IDC_WEB_COPY_TOKEN), !token.empty());
+
+	WCHAR statusBuffer[256];
+	_snwprintf_s(statusBuffer, _TRUNCATE, L"%hs", status.c_str());
+	SendDlgItemMessage(m_Dlg, IDC_WEB_STATUS, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(statusBuffer));
+	return S_OK;
+}
+
+void CSignalInfoProp::CopyToClipboard(const std::string& text) const
+{
+	if (text.empty() || !OpenClipboard(m_Dlg))
+	{
+		return;
+	}
+	EmptyClipboard();
+	if (HGLOBAL mem = GlobalAlloc(GMEM_MOVEABLE, text.size() + 1))
+	{
+		if (auto* dst = static_cast<char*>(GlobalLock(mem)))
+		{
+			memcpy(dst, text.c_str(), text.size() + 1);
+			GlobalUnlock(mem);
+			if (SetClipboardData(CF_TEXT, mem) == nullptr)
+			{
+				GlobalFree(mem);
+			}
+		}
+		else
+		{
+			GlobalFree(mem);
+		}
+	}
+	CloseClipboard();
 }
 
 HRESULT CSignalInfoProp::ReloadMetricsControls(const bool& enabled, const std::string& bindAddress, const DWORD& port,

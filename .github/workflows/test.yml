@@ -12,6 +12,14 @@ permissions:
   contents: write
 
 jobs:
+  web-page:
+    # common/web_page.h embeds common/web/index.html, fail if it was not regenerated after an edit
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+    - name: Check the embedded web page is up to date
+      run: python3 tools/gen_web_page.py --check
+
   build:
     runs-on: windows-latest
     strategy:

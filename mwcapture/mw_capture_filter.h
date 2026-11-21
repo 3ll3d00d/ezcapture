@@ -71,6 +71,10 @@ public:
 
 	const GUID& GetPropertyPageClsid() const override { return CLSID_MWCAPTURE_PROPS; }
 
+	// web API
+	std::string GetWebId() const override;
+	std::string GetWebName() const override;
+
 	device_type GetDeviceType() const;
 
 	// estimated usable capture bandwidth of the card's PCIe or USB link in bytes per second, 0 if unknown

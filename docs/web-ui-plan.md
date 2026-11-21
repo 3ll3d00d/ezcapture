@@ -91,12 +91,12 @@ CivetWeb options:
 |---|---|---|
 | `listening_ports` | `127.0.0.1:<port>` by default | local only unless changed |
 | `num_threads` | `2` | one request at a time is plenty, the second keeps a slow client from blocking everything |
-| `prespawn_threads` | `0` if 1.16 supports it | no idle workers until a request arrives (check the option exists) |
 | `document_root` | not set | no files are served from disk |
 | `request_timeout_ms` | `5000` | |
 | `enable_keep_alive` | `yes` | |
 
-Idle cost: the CivetWeb master thread blocked in `select`, plus any prespawned workers. No timers and no work.
+Idle cost: the CivetWeb master thread blocked in `select` and the two workers waiting for a connection. CivetWeb
+1.16 has no `prespawn_threads` option, so the workers start with the server. No timers and no work.
 
 ### 4. The page
 

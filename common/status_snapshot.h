@@ -96,6 +96,12 @@ public:
 	HRESULT ReloadMetricsControls(const bool& enabled, const std::string& bindAddress, const DWORD& port,
 	                              const std::string& status) override;
 	HRESULT Reload(dv_status* payload) override;
+	// the web settings are not part of the state document, the token must never be served
+	HRESULT ReloadWebControls(const bool&, const std::string&, const DWORD&, const std::string&, const std::string&,
+	                          const std::string&) override
+	{
+		return S_OK;
+	}
 	HRESULT OnFilterStopped() override;
 
 	void SetRunState(filter_run_state state);

@@ -94,6 +94,10 @@ public:
 
 	const GUID& GetPropertyPageClsid() const override { return CLSID_BMCAPTURE_PROPS; }
 
+	// web API
+	std::string GetWebId() const override;
+	std::string GetWebName() const override;
+
 	// Callbacks to update the prop page data
 	void OnVideoSignalLoaded(video_signal* vs) override;
 	void OnAudioSignalLoaded(audio_signal* as) override;

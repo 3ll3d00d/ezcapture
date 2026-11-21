@@ -42,6 +42,12 @@
     <ClCompile Include="web_json.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="web_api.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="web_server.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ISpecifyPropertyPages2.h">
@@ -126,6 +132,15 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="web_json.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="web_api.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="web_server.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="web_page.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

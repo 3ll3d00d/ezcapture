@@ -15,9 +15,12 @@
 #include "bm_capture_filter.h"
 #include "bm_audio_capture_pin.h"
 #include "bm_video_capture_pin.h"
+#include "web_json.h"
 
 #define REG_KEY_BASE L"BMCapture"
 #define DEFAULT_METRICS_PORT 9465
+// the installer's firewall rule opens this port
+#define DEFAULT_WEB_PORT 9475
 
 #if CAPTURE_NAME_SUFFIX == 1
 #define LOG_PREFIX_NAME "BlackmagicTrace"
@@ -105,7 +108,7 @@ void blackmagic_capture_filter::LoadFormat(video_format* videoFormat, const vide
 
 blackmagic_capture_filter::blackmagic_capture_filter(LPUNKNOWN punk, HRESULT* phr) :
 	hdmi_capture_filter(WLOG_PREFIX_NAME, punk, phr, CLSID_BMCAPTURE_FILTER, LOG_PREFIX_NAME, REG_KEY_BASE,
-	                    DEFAULT_METRICS_PORT),
+	                    DEFAULT_METRICS_PORT, DEFAULT_WEB_PORT),
 	mVideoFrameEvent(CreateEvent(nullptr, FALSE, FALSE, nullptr)),
 	mAudioFrameEvent(CreateEvent(nullptr, FALSE, FALSE, nullptr))
 {
@@ -294,6 +297,11 @@ blackmagic_capture_filter::blackmagic_capture_filter(LPUNKNOWN punk, HRESULT* ph
 			#ifndef NO_LOGGING
 			LOG_INFO(mLogData.logger, "[{}] Selected device {}", mLogData.prefix, deviceName);
 			#endif
+
+			int64_t persistentId = 0;
+			mDeviceInfo.persistentId = deckLinkAttributes->GetInt(BMDDeckLinkPersistentID, &persistentId) == S_OK
+				                           ? persistentId
+				                           : -1;
 
 			mDeckLink = deckLink;
 			mDeckLinkInput = deckLink;
@@ -521,6 +529,24 @@ blackmagic_capture_filter::blackmagic_capture_filter(LPUNKNOWN punk, HRESULT* ph
 	{
 		deckLinkIterator->Release();
 	}
+
+	StartWebApi();
+}
+
+std::string blackmagic_capture_filter::GetWebId() const
+{
+	if (mDeviceInfo.persistentId >= 0)
+	{
+		return std::format("decklink-{:x}", mDeviceInfo.persistentId);
+	}
+	auto name = web_json::slug(mDeviceInfo.name);
+	std::replace(name.begin(), name.end(), '_', '-');
+	return name.empty() ? "decklink" : "decklink-" + name;
+}
+
+std::string blackmagic_capture_filter::GetWebName() const
+{
+	return mDeviceInfo.name.empty() ? "DeckLink" : mDeviceInfo.name;
 }
 
 blackmagic_capture_filter::~blackmagic_capture_filter()
@@ -528,6 +554,7 @@ blackmagic_capture_filter::~blackmagic_capture_filter()
 	#ifndef NO_LOGGING
 	LOG_INFO(mLogData.logger, "[{}] Tearing down filter", mLogData.prefix);
 	#endif
+	StopWebApi();
 	if (mDeckLinkNotification)
 	{
 		mDeckLinkNotification->Unsubscribe(bmdStatusChanged, this);
