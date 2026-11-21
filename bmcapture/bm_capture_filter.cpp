@@ -1557,6 +1557,7 @@ void blackmagic_capture_filter::OnVideoSignalLoaded(video_signal* vs)
 
 	PublishVideoSignalMetrics();
 
+	std::lock_guard infoCallbackLock{mInfoCallbackLock};
 	if (mInfoCallback != nullptr)
 	{
 		mInfoCallback->Reload(&mVideoInputStatus);
@@ -1575,6 +1576,7 @@ void blackmagic_capture_filter::OnAudioSignalLoaded(audio_signal* as)
 
 	PublishAudioSignalMetrics();
 
+	std::lock_guard infoCallbackLock{mInfoCallbackLock};
 	if (mInfoCallback != nullptr)
 	{
 		mInfoCallback->Reload(&mAudioInputStatus);
@@ -1598,6 +1600,7 @@ void blackmagic_capture_filter::OnDeviceUpdated()
 	}
 	#endif
 
+	std::lock_guard infoCallbackLock{mInfoCallbackLock};
 	if (mInfoCallback != nullptr)
 	{
 		mInfoCallback->Reload(&mDeviceStatus);

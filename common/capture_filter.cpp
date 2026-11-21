@@ -62,8 +62,9 @@ void capture_filter::AcquireQuillBackend(const std::string& logPrefix)
 		// only metric samples to process and those are scraped every few seconds at most
 		bopt.sleep_duration = std::chrono::milliseconds(50);
 		#else
-		bopt.enable_yield_when_idle = true;
-		bopt.sleep_duration = std::chrono::nanoseconds(0);
+		// sleep briefly when idle, yielding with no sleep keeps a core busy for as long as the filter is loaded and
+		// competes with the capture threads; the frontend queues absorb what arrives in the meantime
+		bopt.sleep_duration = std::chrono::microseconds(500);
 		#endif
 		quill::Backend::start(bopt);
 	}
@@ -306,6 +307,12 @@ capture_filter::capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSI
 
 capture_filter::~capture_filter()
 {
+	#ifndef NO_LOGGING
+	if (mLoggingAcquired)
+	{
+		LOG_INFO(mLogData.logger, "[{}] Stopping metrics", mLogData.prefix);
+	}
+	#endif
 	mMetrics.stop();
 	// delete the pins here rather than in ~CSource so anything they log as they are torn down happens before the
 	// loggers are released
@@ -325,18 +332,31 @@ capture_filter::~capture_filter()
 
 void capture_filter::ReleasePinsAndClock()
 {
+	#ifndef NO_LOGGING
+	const auto t0 = std::chrono::steady_clock::now();
+	auto elapsed = [t0] { return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count(); };
+	#endif
 	// the pin destructor removes it from m_paStreams and decrements m_iPins
 	while (m_iPins > 0)
 	{
+		#ifndef NO_LOGGING
+		LOG_INFO(mLogData.logger, "[{}] Deleting pin {} at {:.1f}ms", mLogData.prefix, m_iPins - 1, elapsed());
+		#endif
 		delete m_paStreams[m_iPins - 1];
 	}
 	// the clock is never handed out (QueryInterface returns the filter itself) so the filter holds the only
 	// reference, releasing it deletes the clock and stops its advise thread
 	if (mClock)
 	{
+		#ifndef NO_LOGGING
+		LOG_INFO(mLogData.logger, "[{}] Releasing clock at {:.1f}ms", mLogData.prefix, elapsed());
+		#endif
 		mClock->Release();
 		mClock = nullptr;
 	}
+	#ifndef NO_LOGGING
+	LOG_INFO(mLogData.logger, "[{}] Pins and clock released at {:.1f}ms", mLogData.prefix, elapsed());
+	#endif
 }
 
 STDMETHODIMP capture_filter::NonDelegatingQueryInterface(REFIID riid, void** ppv)
@@ -482,7 +502,18 @@ STDMETHODIMP capture_filter::Stop()
 		auto s1 = dynamic_cast<CBaseStreamControl*>(m_paStreams[i]);
 		s1->NotifyFilterState(State_Stopped);
 	}
-	return CBaseFilter::Stop();
+	const auto hr = CBaseFilter::Stop();
+	{
+		// an open property page holds the filter and its modal frame disables the host's window; a host that kills
+		// the frame's thread when playback stops (JRiver does after 2s) leaves its window disabled and the filter
+		// alive, so ask the page to close itself now
+		std::lock_guard infoCallbackLock{mInfoCallbackLock};
+		if (mInfoCallback != nullptr)
+		{
+			mInfoCallback->OnFilterStopped();
+		}
+	}
+	return hr;
 }
 
 HRESULT capture_filter::SetHDRProfile(DWORD profile)
@@ -690,6 +721,7 @@ void capture_filter::OnModeUpdated(const mode_switch_result& result)
 		break;
 	}
 
+	std::lock_guard infoCallbackLock{mInfoCallbackLock};
 	if (mInfoCallback != nullptr)
 	{
 		mInfoCallback->Reload(&mDisplayStatus);
@@ -808,6 +840,7 @@ void capture_filter::OnVideoFormatLoaded(video_format* vf)
 	}
 	#endif
 
+	std::lock_guard infoCallbackLock{mInfoCallbackLock};
 	if (mInfoCallback != nullptr)
 	{
 		mInfoCallback->Reload(&mVideoOutputStatus);
@@ -840,6 +873,7 @@ void capture_filter::OnHdrUpdated(MediaSideDataHDR* hdr, MediaSideDataHDRContent
 
 	PublishVideoSignalMetrics();
 
+	std::lock_guard infoCallbackLock{mInfoCallbackLock};
 	if (mInfoCallback != nullptr)
 	{
 		mInfoCallback->Reload(&mHdrStatus);
@@ -870,6 +904,7 @@ void capture_filter::OnAudioFormatLoaded(audio_format* af)
 
 	PublishAudioSignalMetrics();
 
+	std::lock_guard infoCallbackLock{mInfoCallbackLock};
 	if (mInfoCallback != nullptr)
 	{
 		mInfoCallback->Reload(&mAudioOutputStatus);

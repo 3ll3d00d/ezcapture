@@ -491,6 +491,14 @@ struct latency_stats
 	uint64_t max{0};
 };
 
+// how much of each frame interval the pin thread spends on a frame, it must stay below the interval or frames drop
+struct video_headroom
+{
+	double intervalMs{0.0};
+	double busyMeanMs{0.0};
+	double busyMaxMs{0.0};
+};
+
 struct hdr_status
 {
 	bool hdrOn{false};
@@ -674,6 +682,11 @@ struct frame_metrics
 	std::string name2{"Conversion"};
 	metric m3;
 	std::string name3{};
+	// per frame, the time the pin thread is occupied by the frame once it is available, i.e. what has to fit in
+	// one frame interval
+	metric busy;
+	// the nominal frame interval for the signal in 100ns units, 0 if unknown
+	double intervalTicks{0.0};
 
 	void start(int64_t ts)
 	{
@@ -689,6 +702,7 @@ struct frame_metrics
 	void refreshRate(double rate)
 	{
 		// aim for metrics to update approx once every 1500ms
+		intervalTicks = rate > 0.0 ? 10000000.0 / rate : 0.0;
 		auto newSize = std::lrint(rate * 3 / 2);
 		if (std::in_range<uint16_t>(newSize))
 		{
@@ -696,6 +710,7 @@ struct frame_metrics
 			m1.resize(sz);
 			m2.resize(sz);
 			m3.resize(sz);
+			busy.resize(sz);
 		}
 		else
 		{
@@ -703,6 +718,7 @@ struct frame_metrics
 			m1.resize(sz);
 			m2.resize(sz);
 			m3.resize(sz);
+			busy.resize(sz);
 		}
 	}
 };
@@ -781,6 +797,8 @@ public:
 				metrics.m2.sample(mTs[CONVERTED] - mTs[READ]);
 				metrics.m3.sample(mTs[READ] - mTs[BUFFERED]);
 				metrics.name3 = "Host";
+				// from the frame being complete on the card to it being ready to deliver, i.e. Host + Conversion
+				metrics.busy.sample(mTs[CONVERTED] - mTs[BUFFERED]);
 			}
 			else
 			{
@@ -792,6 +810,7 @@ public:
 		{
 			propagate = metrics.m1.sample(mTs[READ] - mTs[BUFFERING]);
 			metrics.m2.sample(mTs[CONVERTED] - mTs[READ]);
+			metrics.busy.sample(mTs[CONVERTED] - mTs[READ]);
 		}
 		else
 		{
@@ -799,6 +818,7 @@ public:
 			metrics.m2.sample(mTs[CONVERTED] - mTs[READ]);
 			metrics.m3.sample(mTs[BUFFER_ALLOCATED] - mTs[WAIT_COMPLETE]);
 			metrics.name3 = "Handoff";
+			metrics.busy.sample(mTs[CONVERTED] - mTs[WAIT_COMPLETE]);
 		}
 		if (metrics.m1.size() == 1)
 		{

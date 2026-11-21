@@ -231,6 +231,12 @@ magewell_capture_filter::magewell_capture_filter(LPUNKNOWN punk, HRESULT* phr) :
 
 magewell_capture_filter::~magewell_capture_filter()
 {
+	#ifndef NO_LOGGING
+	// a host may kill the thread if teardown is slow (JRiver allows 2s), so time each step
+	const auto t0 = std::chrono::steady_clock::now();
+	auto elapsed = [t0] { return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count(); };
+	LOG_INFO(mLogData.logger, "[{}] Tearing down filter", mLogData.prefix);
+	#endif
 	// the pins (pinned buffers) and the clock (device time) use the channel so must go before it is closed
 	ReleasePinsAndClock();
 	if (mDeviceInfo.hChannel)
@@ -238,10 +244,16 @@ magewell_capture_filter::~magewell_capture_filter()
 		MWCloseChannel(mDeviceInfo.hChannel);
 		mDeviceInfo.hChannel = nullptr;
 	}
+	#ifndef NO_LOGGING
+	LOG_INFO(mLogData.logger, "[{}] Channel closed at {:.1f}ms", mLogData.prefix, elapsed());
+	#endif
 	if (mInited)
 	{
 		MWCaptureExitInstance();
 	}
+	#ifndef NO_LOGGING
+	LOG_INFO(mLogData.logger, "[{}] SDK released at {:.1f}ms", mLogData.prefix, elapsed());
+	#endif
 }
 
 void magewell_capture_filter::SnapHardwareDetails()
@@ -371,6 +383,7 @@ void magewell_capture_filter::OnVideoSignalLoaded(video_signal* vs)
 
 	PublishVideoSignalMetrics();
 
+	std::lock_guard infoCallbackLock{mInfoCallbackLock};
 	if (mInfoCallback != nullptr)
 	{
 		mInfoCallback->Reload(&mVideoInputStatus);
@@ -391,6 +404,7 @@ void magewell_capture_filter::OnAudioSignalLoaded(audio_signal* as)
 
 	PublishAudioSignalMetrics();
 
+	std::lock_guard infoCallbackLock{mInfoCallbackLock};
 	if (mInfoCallback != nullptr)
 	{
 		mInfoCallback->Reload(&mAudioInputStatus);
@@ -427,6 +441,7 @@ void magewell_capture_filter::OnDeviceUpdated()
 	}
 	#endif
 
+	std::lock_guard infoCallbackLock{mInfoCallbackLock};
 	if (mInfoCallback != nullptr)
 	{
 		mInfoCallback->Reload(&mDeviceStatus);

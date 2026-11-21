@@ -12,6 +12,8 @@
  * You should have received a copy of the GNU General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
+#include <functional>
+#include <memory>
 #include "version.h"
 #include "signalinfo.h"
 #include "commctrl.h"
@@ -165,10 +167,63 @@ HRESULT CSignalInfoProp::OnApplyChanges()
 		       : E_FAIL;
 }
 
+template <typename F>
+bool CSignalInfoProp::PostToUiThread(F&& update)
+{
+	// the filter calls back from its own threads; updating the dialog from there would block until the UI thread
+	// handles the message, which deadlocks when the UI thread is itself waiting on the filter (e.g. stopping the
+	// graph with the page open). So off the UI thread the update is copied and posted, the caller never waits.
+	const HWND dlg = m_Dlg;
+	if (dlg == nullptr)
+	{
+		return true;
+	}
+	if (GetWindowThreadProcessId(dlg, nullptr) == GetCurrentThreadId())
+	{
+		return false;
+	}
+	auto* fn = new std::function<void()>(std::forward<F>(update));
+	if (!PostMessage(dlg, WM_SIGNALINFO_UPDATE, 0, reinterpret_cast<LPARAM>(fn)))
+	{
+		delete fn;
+	}
+	return true;
+}
+
+HRESULT CSignalInfoProp::OnFilterStopped()
+{
+	// close the property frame (OleCreatePropertyFrame's modal dialog) so it ends normally: it re-enables its owner
+	// and releases the filter. Only a top level, owned dialog is closed so a page embedded in the host's own window
+	// is left alone.
+	const HWND dlg = m_Dlg;
+	if (dlg == nullptr)
+	{
+		return S_OK;
+	}
+	const HWND frame = GetAncestor(dlg, GA_ROOT);
+	if (frame == nullptr || frame == dlg || GetWindow(frame, GW_OWNER) == nullptr)
+	{
+		return S_OK;
+	}
+	WCHAR className[16]{};
+	GetClassNameW(frame, className, static_cast<int>(std::size(className)));
+	if (wcscmp(className, L"#32770") == 0)
+	{
+		PostMessage(frame, WM_CLOSE, 0, 0);
+	}
+	return S_OK;
+}
+
 INT_PTR CSignalInfoProp::OnReceiveMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
 	switch (uMsg)
 	{
+	case WM_SIGNALINFO_UPDATE:
+		{
+			const std::unique_ptr<std::function<void()>> fn(reinterpret_cast<std::function<void()>*>(lParam));
+			(*fn)();
+			return TRUE;
+		}
 	case WM_COMMAND:
 		if (LOWORD(wParam) == IDC_SWITCH_REFRESH_RATE && HIWORD(wParam) == BN_CLICKED)
 		{
@@ -336,6 +391,10 @@ INT_PTR CSignalInfoProp::OnReceiveMessage(HWND hwnd, UINT uMsg, WPARAM wParam, L
 
 HRESULT CSignalInfoProp::Reload(audio_input_status* payload)
 {
+	if (PostToUiThread([this, p = *payload]() mutable { Reload(&p); }))
+	{
+		return S_OK;
+	}
 	WCHAR buffer[28];
 	_snwprintf_s(buffer, _TRUNCATE, L"%hs", payload->audioInStatus ? "LOCKED" : "NONE");
 	SendDlgItemMessage(m_Dlg, IDC_AUDIO_IN_SIGNAL_STATUS, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
@@ -357,6 +416,10 @@ HRESULT CSignalInfoProp::Reload(audio_input_status* payload)
 
 HRESULT CSignalInfoProp::Reload(audio_output_status* payload)
 {
+	if (PostToUiThread([this, p = *payload]() mutable { Reload(&p); }))
+	{
+		return S_OK;
+	}
 	WCHAR buffer[28];
 	_snwprintf_s(buffer, _TRUNCATE, L"%hs", payload->audioOutCodec.c_str());
 	SendDlgItemMessage(m_Dlg, IDC_AUDIO_OUT_CODEC, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
@@ -393,6 +456,10 @@ HRESULT CSignalInfoProp::Reload(audio_output_status* payload)
 
 HRESULT CSignalInfoProp::Reload(video_input_status* payload)
 {
+	if (PostToUiThread([this, p = *payload]() mutable { Reload(&p); }))
+	{
+		return S_OK;
+	}
 	WCHAR buffer[28];
 	_snwprintf_s(buffer, _TRUNCATE, L"%d x %d (%d:%d) %d bit", payload->inX, payload->inY, payload->inAspectX,
 	             payload->inAspectY, payload->inBitDepth);
@@ -426,6 +493,10 @@ HRESULT CSignalInfoProp::Reload(video_input_status* payload)
 
 HRESULT CSignalInfoProp::Reload(video_output_status* payload)
 {
+	if (PostToUiThread([this, p = *payload]() mutable { Reload(&p); }))
+	{
+		return S_OK;
+	}
 	WCHAR buffer[28];
 	_snwprintf_s(buffer, _TRUNCATE, L"%d x %d (%d:%d) %d bit", payload->outX, payload->outY, payload->outAspectX,
 	             payload->outAspectY, payload->outBitDepth);
@@ -447,6 +518,10 @@ HRESULT CSignalInfoProp::Reload(video_output_status* payload)
 
 HRESULT CSignalInfoProp::Reload(hdr_status* payload)
 {
+	if (PostToUiThread([this, p = *payload]() mutable { Reload(&p); }))
+	{
+		return S_OK;
+	}
 	mLastHdr = *payload;
 	mHaveHdr = true;
 	if (mDvShown)
@@ -518,6 +593,10 @@ void CSignalInfoProp::ShowHdrLabels()
 
 HRESULT CSignalInfoProp::Reload(dv_status* payload)
 {
+	if (PostToUiThread([this, p = *payload]() mutable { Reload(&p); }))
+	{
+		return S_OK;
+	}
 	const auto state = payload->state;
 	if (state == DV_INACTIVE || state == DV_SEARCHING)
 	{
@@ -629,6 +708,10 @@ HRESULT CSignalInfoProp::Reload(dv_status* payload)
 
 HRESULT CSignalInfoProp::Reload(device_status* payload)
 {
+	if (PostToUiThread([this, p = *payload]() mutable { Reload(&p); }))
+	{
+		return S_OK;
+	}
 	WCHAR buffer[256];
 	if (!payload->deviceDesc.empty())
 	{
@@ -700,6 +783,10 @@ HRESULT CSignalInfoProp::Reload(device_status* payload)
 
 HRESULT CSignalInfoProp::Reload(display_status* payload)
 {
+	if (PostToUiThread([this, p = *payload]() mutable { Reload(&p); }))
+	{
+		return S_OK;
+	}
 	if (!payload->status.empty())
 	{
 		WCHAR buffer[256];
@@ -711,6 +798,10 @@ HRESULT CSignalInfoProp::Reload(display_status* payload)
 
 HRESULT CSignalInfoProp::ReloadV1(latency_stats* payload)
 {
+	if (PostToUiThread([this, p = *payload]() mutable { ReloadV1(&p); }))
+	{
+		return S_OK;
+	}
 	WCHAR buffer[256];
 	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / to_millis_ratio,
 	             payload->mean / to_millis_ratio, static_cast<double>(payload->max) / to_millis_ratio);
@@ -723,6 +814,10 @@ HRESULT CSignalInfoProp::ReloadV1(latency_stats* payload)
 
 HRESULT CSignalInfoProp::ReloadV2(latency_stats* payload)
 {
+	if (PostToUiThread([this, p = *payload]() mutable { ReloadV2(&p); }))
+	{
+		return S_OK;
+	}
 	WCHAR buffer[256];
 	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / to_millis_ratio,
 	             payload->mean / to_millis_ratio, static_cast<double>(payload->max) / to_millis_ratio);
@@ -735,6 +830,10 @@ HRESULT CSignalInfoProp::ReloadV2(latency_stats* payload)
 
 HRESULT CSignalInfoProp::ReloadV3(latency_stats* payload)
 {
+	if (PostToUiThread([this, p = *payload]() mutable { ReloadV3(&p); }))
+	{
+		return S_OK;
+	}
 	if (payload->name.empty())
 	{
 		ShowWindow(GetDlgItem(m_Dlg, IDC_VIDEO_ALLOC_LAT), SW_HIDE);
@@ -756,8 +855,34 @@ HRESULT CSignalInfoProp::ReloadV3(latency_stats* payload)
 	return S_OK;
 }
 
+HRESULT CSignalInfoProp::ReloadVHeadroom(video_headroom* payload)
+{
+	if (PostToUiThread([this, p = *payload]() mutable { ReloadVHeadroom(&p); }))
+	{
+		return S_OK;
+	}
+	// frame interval - time the pin thread is busy with a frame = what is left, negative means frames are dropped
+	WCHAR buffer[256];
+	if (payload->intervalMs > 0.0 && payload->busyMeanMs > 0.0)
+	{
+		_snwprintf_s(buffer, _TRUNCATE, L"%.1f - %.1f = %.1f ms (worst %.1f)", payload->intervalMs,
+		             payload->busyMeanMs, payload->intervalMs - payload->busyMeanMs,
+		             payload->intervalMs - payload->busyMaxMs);
+	}
+	else
+	{
+		_snwprintf_s(buffer, _TRUNCATE, L"?");
+	}
+	SendDlgItemMessage(m_Dlg, IDC_VIDEO_HEADROOM, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+	return S_OK;
+}
+
 HRESULT CSignalInfoProp::ReloadVfps(double* payload)
 {
+	if (PostToUiThread([this, p = *payload]() mutable { ReloadVfps(&p); }))
+	{
+		return S_OK;
+	}
 	WCHAR buffer[256];
 	_snwprintf_s(buffer, _TRUNCATE, L"%.3f Hz", *payload);
 	SendDlgItemMessage(m_Dlg, IDC_VIDEO_FPS, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
@@ -767,6 +892,10 @@ HRESULT CSignalInfoProp::ReloadVfps(double* payload)
 
 HRESULT CSignalInfoProp::ReloadA1(latency_stats* payload)
 {
+	if (PostToUiThread([this, p = *payload]() mutable { ReloadA1(&p); }))
+	{
+		return S_OK;
+	}
 	WCHAR buffer[256];
 	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / to_millis_ratio,
 	             payload->mean / to_millis_ratio, static_cast<double>(payload->max) / to_millis_ratio);
@@ -779,6 +908,10 @@ HRESULT CSignalInfoProp::ReloadA1(latency_stats* payload)
 
 HRESULT CSignalInfoProp::ReloadA2(latency_stats* payload)
 {
+	if (PostToUiThread([this, p = *payload]() mutable { ReloadA2(&p); }))
+	{
+		return S_OK;
+	}
 	WCHAR buffer[256];
 	_snwprintf_s(buffer, _TRUNCATE, L"%.3f / %.3f / %.3f ms", static_cast<double>(payload->min) / to_millis_ratio,
 	             payload->mean / to_millis_ratio, static_cast<double>(payload->max) / to_millis_ratio);
@@ -792,6 +925,10 @@ HRESULT CSignalInfoProp::ReloadA2(latency_stats* payload)
 HRESULT CSignalInfoProp::ReloadControls(const bool& rateEnabled, const bool& profileEnabled, const DWORD& hdr,
                                         const DWORD& sdr, const bool& highThreadPrio, const bool& audioCapture)
 {
+	if (PostToUiThread([this, rateEnabled, profileEnabled, hdr, sdr, highThreadPrio, audioCapture] { ReloadControls(rateEnabled, profileEnabled, hdr, sdr, highThreadPrio, audioCapture); }))
+	{
+		return S_OK;
+	}
 	WCHAR buffer[8];
 
 	_snwprintf_s(buffer, _TRUNCATE, L"%d", hdr);
@@ -815,6 +952,10 @@ HRESULT CSignalInfoProp::ReloadControls(const bool& rateEnabled, const bool& pro
 HRESULT CSignalInfoProp::ReloadMetricsControls(const bool& enabled, const std::string& bindAddress, const DWORD& port,
                                                const std::string& status)
 {
+	if (PostToUiThread([this, enabled, bindAddress, port, status] { ReloadMetricsControls(enabled, bindAddress, port, status); }))
+	{
+		return S_OK;
+	}
 	WCHAR addressBuffer[64];
 	_snwprintf_s(addressBuffer, _TRUNCATE, L"%hs", bindAddress.c_str());
 	SendDlgItemMessage(m_Dlg, IDC_METRICS_BIND_ADDRESS, EM_SETLIMITTEXT, 63, 0);

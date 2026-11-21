@@ -52,6 +52,7 @@ interface __declspec(uuid("4D6B8852-06A6-4997-BC07-3507BB77F748")) ISignalInfoCB
 	STDMETHOD(ReloadV2)(latency_stats* payload) = 0;
 	STDMETHOD(ReloadV3)(latency_stats* payload) = 0;
 	STDMETHOD(ReloadVfps)(double* payload) = 0;
+	STDMETHOD(ReloadVHeadroom)(video_headroom* payload) = 0;
 	STDMETHOD(ReloadA1)(latency_stats* payload) = 0;
 	STDMETHOD(ReloadA2)(latency_stats* payload) = 0;
 	STDMETHOD(ReloadControls)(const bool& rateEnabled, const bool& profileEnabled, const DWORD& hdr, const DWORD& sdr,
@@ -59,6 +60,8 @@ interface __declspec(uuid("4D6B8852-06A6-4997-BC07-3507BB77F748")) ISignalInfoCB
 	STDMETHOD(ReloadMetricsControls)(const bool& enabled, const std::string& bindAddress, const DWORD& port,
 	                                 const std::string& status) = 0;
 	STDMETHOD(Reload)(dv_status* payload) = 0;
+	// the filter has stopped, called on the thread that stopped it
+	STDMETHOD(OnFilterStopped)() = 0;
 };
 
 interface __declspec(uuid("6A505550-28B2-4668-BC2C-461E75A63BC4")) ISignalInfo : IUnknown
@@ -113,6 +116,7 @@ public:
 	HRESULT ReloadV2(latency_stats* payload) override;
 	HRESULT ReloadV3(latency_stats* payload) override;
 	HRESULT ReloadVfps(double* payload) override;
+	HRESULT ReloadVHeadroom(video_headroom* payload) override;
 	HRESULT ReloadA1(latency_stats* payload) override;
 	HRESULT ReloadA2(latency_stats* payload) override;
 	HRESULT ReloadControls(const bool& rateEnabled, const bool& profileEnabled, const DWORD& hdr,
@@ -120,8 +124,14 @@ public:
 	HRESULT ReloadMetricsControls(const bool& enabled, const std::string& bindAddress, const DWORD& port,
 	                              const std::string& status) override;
 	HRESULT Reload(dv_status* payload) override;
+	HRESULT OnFilterStopped() override;
 
 private:
+	// posted to the dialog with a heap allocated std::function<void()> to run on the UI thread
+	static constexpr UINT WM_SIGNALINFO_UPDATE = WM_APP + 1;
+	// true if the update was posted to (or dropped for want of) the UI thread, false to apply it now
+	template <typename F>
+	bool PostToUiThread(F&& update);
 	void ShowHdrLabels();
 
 	// while the DV tunnel is active the HDR box shows DV status instead

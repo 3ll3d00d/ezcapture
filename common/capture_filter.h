@@ -31,6 +31,7 @@
 #include "ISpecifyPropertyPages2.h"
 #include "lavfilters_side_data.h"
 #include <set>
+#include <mutex>
 
 EXTERN_C const AMOVIESETUP_PIN sMIPPins[];
 
@@ -86,6 +87,7 @@ public:
 	//////////////////////////////////////////////////////////////////////////
 	STDMETHODIMP Reload() override
 	{
+		std::lock_guard infoCallbackLock{mInfoCallbackLock};
 		if (mInfoCallback != nullptr)
 		{
 			mInfoCallback->Reload(&mAudioInputStatus);
@@ -100,6 +102,7 @@ public:
 			mInfoCallback->ReloadV2(&mVideoLatencyStats2);
 			mInfoCallback->ReloadV3(&mVideoLatencyStats3);
 			mInfoCallback->ReloadVfps(&mVideoMeasuredFps);
+			mInfoCallback->ReloadVHeadroom(&mVideoHeadroom);
 			mInfoCallback->ReloadA1(&mAudioLatencyStats1);
 			mInfoCallback->ReloadA2(&mAudioLatencyStats2);
 			mInfoCallback->ReloadControls(mRefreshRateSwitchEnabled, mHdrProfileSwitchEnabled, mHdrProfile,
@@ -113,6 +116,7 @@ public:
 
 	STDMETHODIMP SetCallback(ISignalInfoCB* cb) override
 	{
+		std::lock_guard infoCallbackLock{mInfoCallbackLock};
 		mInfoCallback = cb;
 		return S_OK;
 	}
@@ -217,6 +221,7 @@ public:
 	void OnDvStatusUpdated(const dv_status& status)
 	{
 		mDvStatus = status;
+		std::lock_guard infoCallbackLock{mInfoCallbackLock};
 		if (mInfoCallback != nullptr)
 		{
 			mInfoCallback->Reload(&mDvStatus);
@@ -243,6 +248,9 @@ public:
 		CaptureLatency(metrics.m1, mVideoLatencyStats1, metrics.name1, src);
 		CaptureLatency(metrics.m2, mVideoLatencyStats2, metrics.name2, src);
 		mVideoMeasuredFps = metrics.actualFrameRate;
+		mVideoHeadroom.intervalMs = metrics.intervalTicks / 10000.0;
+		mVideoHeadroom.busyMeanMs = metrics.busy.mean() / 10000.0;
+		mVideoHeadroom.busyMaxMs = static_cast<double>(metrics.busy.max()) / 10000.0;
 
 		#ifndef NO_LOGGING
 		LOG_TRACE_L2(mLogData.logger, "[{}] Measured fps {:.3f} Hz ({},{},{},{})", mLogData.prefix,
@@ -259,12 +267,14 @@ public:
 			CaptureLatency(metrics.m3, mVideoLatencyStats3, metrics.name3, src);
 		}
 
+		std::lock_guard infoCallbackLock{mInfoCallbackLock};
 		if (mInfoCallback != nullptr)
 		{
 			mInfoCallback->ReloadV1(&mVideoLatencyStats1);
 			mInfoCallback->ReloadV2(&mVideoLatencyStats2);
 			mInfoCallback->ReloadV3(&mVideoLatencyStats3);
 			mInfoCallback->ReloadVfps(&mVideoMeasuredFps);
+			mInfoCallback->ReloadVHeadroom(&mVideoHeadroom);
 		}
 	}
 
@@ -275,6 +285,7 @@ public:
 		const std::string src = "audio";
 		CaptureLatency(metrics.m1, mAudioLatencyStats1, metrics.name1, src);
 		CaptureLatency(metrics.m2, mAudioLatencyStats2, metrics.name2, src);
+		std::lock_guard infoCallbackLock{mInfoCallbackLock};
 		if (mInfoCallback != nullptr)
 		{
 			mInfoCallback->ReloadA1(&mAudioLatencyStats1);
@@ -317,8 +328,12 @@ protected:
 	latency_stats mAudioLatencyStats1{};
 	latency_stats mAudioLatencyStats2{};
 	double mVideoMeasuredFps{0.0};
+	video_headroom mVideoHeadroom{};
 	hdr_status mHdrStatus{};
 	dv_status mDvStatus{};
+	// the property page, held while it is called so it cannot be removed (and freed) mid call; page updates only
+	// post to its UI thread so the lock is never held for long
+	std::recursive_mutex mInfoCallbackLock;
 	ISignalInfoCB* mInfoCallback = nullptr;
 	std::set<DWORD> mRefreshRates{};
 	std::wstring mRegKeyBase{};
