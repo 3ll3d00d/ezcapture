@@ -30,6 +30,7 @@
 #include <streams.h>
 #include "ISpecifyPropertyPages2.h"
 #include "lavfilters_side_data.h"
+#include <array>
 #include <set>
 #include <mutex>
 
@@ -85,35 +86,19 @@ public:
 	//////////////////////////////////////////////////////////////////////////
 	//  ISignalInfo
 	//////////////////////////////////////////////////////////////////////////
+	// reloads the property page only, the status callback is loaded when it is set
 	STDMETHODIMP Reload() override
 	{
 		std::lock_guard infoCallbackLock{mInfoCallbackLock};
-		if (mInfoCallback != nullptr)
+		if (mInfoCallback == nullptr)
 		{
-			mInfoCallback->Reload(&mAudioInputStatus);
-			mInfoCallback->Reload(&mAudioOutputStatus);
-			mInfoCallback->Reload(&mVideoInputStatus);
-			mInfoCallback->Reload(&mVideoOutputStatus);
-			mInfoCallback->Reload(&mHdrStatus);
-			mInfoCallback->Reload(&mDvStatus);
-			mInfoCallback->Reload(&mDeviceStatus);
-			mInfoCallback->Reload(&mDisplayStatus);
-			mInfoCallback->ReloadV1(&mVideoLatencyStats1);
-			mInfoCallback->ReloadV2(&mVideoLatencyStats2);
-			mInfoCallback->ReloadV3(&mVideoLatencyStats3);
-			mInfoCallback->ReloadVfps(&mVideoMeasuredFps);
-			mInfoCallback->ReloadVHeadroom(&mVideoHeadroom);
-			mInfoCallback->ReloadA1(&mAudioLatencyStats1);
-			mInfoCallback->ReloadA2(&mAudioLatencyStats2);
-			mInfoCallback->ReloadControls(mRefreshRateSwitchEnabled, mHdrProfileSwitchEnabled, mHdrProfile,
-			                              mSdrProfile, mHighThreadPriorityEnabled, mAudioCaptureEnabled);
-			mInfoCallback->ReloadMetricsControls(mMetricsConfig.enabled, mMetricsConfig.bindAddress, mMetricsConfig.port,
-			                                     mMetricsStatus);
-			return S_OK;
+			return E_FAIL;
 		}
-		return E_FAIL;
+		ReloadAll(mInfoCallback);
+		return S_OK;
 	}
 
+	// the property page's callback
 	STDMETHODIMP SetCallback(ISignalInfoCB* cb) override
 	{
 		std::lock_guard infoCallbackLock{mInfoCallbackLock};
@@ -224,9 +209,9 @@ public:
 	{
 		mDvStatus = status;
 		std::lock_guard infoCallbackLock{mInfoCallbackLock};
-		if (mInfoCallback != nullptr)
+		for (auto* cb : InfoCallbacks())
 		{
-			mInfoCallback->Reload(&mDvStatus);
+			cb->Reload(&mDvStatus);
 		}
 	}
 
@@ -270,13 +255,13 @@ public:
 		}
 
 		std::lock_guard infoCallbackLock{mInfoCallbackLock};
-		if (mInfoCallback != nullptr)
+		for (auto* cb : InfoCallbacks())
 		{
-			mInfoCallback->ReloadV1(&mVideoLatencyStats1);
-			mInfoCallback->ReloadV2(&mVideoLatencyStats2);
-			mInfoCallback->ReloadV3(&mVideoLatencyStats3);
-			mInfoCallback->ReloadVfps(&mVideoMeasuredFps);
-			mInfoCallback->ReloadVHeadroom(&mVideoHeadroom);
+			cb->ReloadV1(&mVideoLatencyStats1);
+			cb->ReloadV2(&mVideoLatencyStats2);
+			cb->ReloadV3(&mVideoLatencyStats3);
+			cb->ReloadVfps(&mVideoMeasuredFps);
+			cb->ReloadVHeadroom(&mVideoHeadroom);
 		}
 	}
 
@@ -288,10 +273,10 @@ public:
 		CaptureLatency(metrics.m1, mAudioLatencyStats1, metrics.name1, src);
 		CaptureLatency(metrics.m2, mAudioLatencyStats2, metrics.name2, src);
 		std::lock_guard infoCallbackLock{mInfoCallbackLock};
-		if (mInfoCallback != nullptr)
+		for (auto* cb : InfoCallbacks())
 		{
-			mInfoCallback->ReloadA1(&mAudioLatencyStats1);
-			mInfoCallback->ReloadA2(&mAudioLatencyStats2);
+			cb->ReloadA1(&mAudioLatencyStats1);
+			cb->ReloadA2(&mAudioLatencyStats2);
 		}
 	}
 
@@ -333,10 +318,72 @@ protected:
 	video_headroom mVideoHeadroom{};
 	hdr_status mHdrStatus{};
 	dv_status mDvStatus{};
-	// the property page, held while it is called so it cannot be removed (and freed) mid call; page updates only
-	// post to its UI thread so the lock is never held for long
+	// the property page and the status callback (the web API's snapshot), held while they are called so neither can
+	// be removed (and freed) mid call; the page only posts to its UI thread and the snapshot only copies the payload
+	// so the lock is never held for long
 	std::recursive_mutex mInfoCallbackLock;
 	ISignalInfoCB* mInfoCallback = nullptr;
+	ISignalInfoCB* mStatusCallback = nullptr;
+
+	// the callbacks that are set, call while holding mInfoCallbackLock
+	struct info_callbacks
+	{
+		std::array<ISignalInfoCB*, 2> cbs{};
+		size_t count{0};
+		using iterator = std::array<ISignalInfoCB*, 2>::const_iterator;
+		iterator begin() const { return cbs.begin(); }
+		iterator end() const { return cbs.begin() + static_cast<std::ptrdiff_t>(count); }
+	};
+
+	info_callbacks InfoCallbacks() const
+	{
+		info_callbacks result;
+		if (mInfoCallback != nullptr)
+		{
+			result.cbs[result.count++] = mInfoCallback;
+		}
+		if (mStatusCallback != nullptr)
+		{
+			result.cbs[result.count++] = mStatusCallback;
+		}
+		return result;
+	}
+
+	// sends everything to cb, call while holding mInfoCallbackLock
+	void ReloadAll(ISignalInfoCB* cb)
+	{
+		cb->Reload(&mAudioInputStatus);
+		cb->Reload(&mAudioOutputStatus);
+		cb->Reload(&mVideoInputStatus);
+		cb->Reload(&mVideoOutputStatus);
+		cb->Reload(&mHdrStatus);
+		cb->Reload(&mDvStatus);
+		cb->Reload(&mDeviceStatus);
+		cb->Reload(&mDisplayStatus);
+		cb->ReloadV1(&mVideoLatencyStats1);
+		cb->ReloadV2(&mVideoLatencyStats2);
+		cb->ReloadV3(&mVideoLatencyStats3);
+		cb->ReloadVfps(&mVideoMeasuredFps);
+		cb->ReloadVHeadroom(&mVideoHeadroom);
+		cb->ReloadA1(&mAudioLatencyStats1);
+		cb->ReloadA2(&mAudioLatencyStats2);
+		cb->ReloadControls(mRefreshRateSwitchEnabled, mHdrProfileSwitchEnabled, mHdrProfile,
+		                   mSdrProfile, mHighThreadPriorityEnabled, mAudioCaptureEnabled);
+		cb->ReloadMetricsControls(mMetricsConfig.enabled, mMetricsConfig.bindAddress, mMetricsConfig.port,
+		                          mMetricsStatus);
+	}
+
+	// sets (or clears, with nullptr) the status callback and sends it everything; not part of ISignalInfo so the
+	// property page cannot replace it
+	void SetStatusCallback(ISignalInfoCB* cb)
+	{
+		std::lock_guard infoCallbackLock{mInfoCallbackLock};
+		mStatusCallback = cb;
+		if (cb != nullptr)
+		{
+			ReloadAll(cb);
+		}
+	}
 	std::set<DWORD> mRefreshRates{};
 	std::wstring mRegKeyBase{};
 	DWORD mHdrProfile{0};

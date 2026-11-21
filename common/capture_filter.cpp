@@ -508,9 +508,9 @@ STDMETHODIMP capture_filter::Stop()
 		// the frame's thread when playback stops (JRiver does after 2s) leaves its window disabled and the filter
 		// alive, so ask the page to close itself now
 		std::lock_guard infoCallbackLock{mInfoCallbackLock};
-		if (mInfoCallback != nullptr)
+		for (auto* cb : InfoCallbacks())
 		{
-			mInfoCallback->OnFilterStopped();
+			cb->OnFilterStopped();
 		}
 	}
 	return hr;
@@ -722,9 +722,9 @@ void capture_filter::OnModeUpdated(const mode_switch_result& result)
 	}
 
 	std::lock_guard infoCallbackLock{mInfoCallbackLock};
-	if (mInfoCallback != nullptr)
+	for (auto* cb : InfoCallbacks())
 	{
-		mInfoCallback->Reload(&mDisplayStatus);
+		cb->Reload(&mDisplayStatus);
 	}
 }
 
@@ -841,10 +841,10 @@ void capture_filter::OnVideoFormatLoaded(video_format* vf)
 	#endif
 
 	std::lock_guard infoCallbackLock{mInfoCallbackLock};
-	if (mInfoCallback != nullptr)
+	for (auto* cb : InfoCallbacks())
 	{
-		mInfoCallback->Reload(&mVideoOutputStatus);
-		mInfoCallback->Reload(&mDeviceStatus);
+		cb->Reload(&mVideoOutputStatus);
+		cb->Reload(&mDeviceStatus);
 	}
 }
 
@@ -874,9 +874,9 @@ void capture_filter::OnHdrUpdated(MediaSideDataHDR* hdr, MediaSideDataHDRContent
 	PublishVideoSignalMetrics();
 
 	std::lock_guard infoCallbackLock{mInfoCallbackLock};
-	if (mInfoCallback != nullptr)
+	for (auto* cb : InfoCallbacks())
 	{
-		mInfoCallback->Reload(&mHdrStatus);
+		cb->Reload(&mHdrStatus);
 	}
 }
 
@@ -905,8 +905,8 @@ void capture_filter::OnAudioFormatLoaded(audio_format* af)
 	PublishAudioSignalMetrics();
 
 	std::lock_guard infoCallbackLock{mInfoCallbackLock};
-	if (mInfoCallback != nullptr)
+	for (auto* cb : InfoCallbacks())
 	{
-		mInfoCallback->Reload(&mAudioOutputStatus);
+		cb->Reload(&mAudioOutputStatus);
 	}
 }
