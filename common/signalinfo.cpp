@@ -536,6 +536,50 @@ HRESULT CSignalInfoProp::Reload(dv_status* payload)
 	}
 
 	mDvShown = true;
+	WCHAR buffer[64];
+	if (state == DV_LLDV)
+	{
+		// LLDV is sent to the renderer as HDR (PQ) with synthesised static metadata, show where that came from
+		set_text(m_Dlg, IDC_HDR_BOX, L"HDR (Dolby Vision LLDV)");
+		set_text(m_Dlg, IDC_HDR_RED_LABEL, L"Status");
+		set_text(m_Dlg, IDC_HDR_GREEN_LABEL, L"Range");
+		set_text(m_Dlg, IDC_HDR_BLUE_LABEL, L"Signal");
+		set_text(m_Dlg, IDC_HDR_WHITE_LABEL, L"Peak");
+		set_text(m_Dlg, IDC_HDR_DML_LABEL, L"VSIF");
+		set_text(m_Dlg, IDC_HDR_MAX_FALL_LABEL, L"Aux");
+		set_text(m_Dlg, IDC_HDR_MAX_CLL_LABEL, L"Sent as");
+
+		set_text(m_Dlg, IDC_HDR_RED, L"LLDV, source tone mapped");
+		set_text(m_Dlg, IDC_HDR_GREEN, payload->fullRange ? L"Full" : L"Limited");
+		const auto* encoding = payload->lldvPixelEncoding == YUV_422
+			                       ? L"4:2:2"
+			                       : payload->lldvPixelEncoding == YUV_444
+			                       ? L"4:4:4"
+			                       : payload->lldvPixelEncoding == YUV_420
+			                       ? L"4:2:0"
+			                       : L"RGB";
+		_snwprintf_s(buffer, _TRUNCATE, L"%u-bit %s PQ BT.2020", static_cast<unsigned>(payload->lldvBitDepth),
+		             encoding);
+		set_text(m_Dlg, IDC_HDR_BLUE, buffer);
+		_snwprintf_s(buffer, _TRUNCATE, L"%.0f nits (%s)", payload->lldvPeakNits,
+		             payload->lldvBacklightMetadata ? L"from VSIF" : L"assumed");
+		set_text(m_Dlg, IDC_HDR_WHITE, buffer);
+		if (payload->lldvBacklightMetadata)
+		{
+			_snwprintf_s(buffer, _TRUNCATE, L"backlight md, max PQ %u", static_cast<unsigned>(payload->lldvEffectiveMaxPq));
+		}
+		else
+		{
+			_snwprintf_s(buffer, _TRUNCATE, L"no backlight md");
+		}
+		set_text(m_Dlg, IDC_HDR_DML, buffer);
+		_snwprintf_s(buffer, _TRUNCATE, L"mode %u, v%u, debug %u", static_cast<unsigned>(payload->lldvAuxRunMode),
+		             static_cast<unsigned>(payload->lldvAuxVersion), static_cast<unsigned>(payload->lldvAuxDebug));
+		set_text(m_Dlg, IDC_HDR_MAX_FALL, buffer);
+		_snwprintf_s(buffer, _TRUNCATE, L"HDR10, MaxCLL %.0f", payload->lldvPeakNits);
+		set_text(m_Dlg, IDC_HDR_MAX_CLL, buffer);
+		return S_OK;
+	}
 	set_text(m_Dlg, IDC_HDR_BOX, L"Dolby Vision");
 	set_text(m_Dlg, IDC_HDR_RED_LABEL, L"Status");
 	set_text(m_Dlg, IDC_HDR_GREEN_LABEL, L"Range");
@@ -545,7 +589,6 @@ HRESULT CSignalInfoProp::Reload(dv_status* payload)
 	set_text(m_Dlg, IDC_HDR_MAX_FALL_LABEL, L"Rejected");
 	set_text(m_Dlg, IDC_HDR_MAX_CLL_LABEL, L"CRC");
 
-	WCHAR buffer[64];
 	set_text(m_Dlg, IDC_HDR_RED, state == DV_LOCKED
 		                             ? L"Locked"
 		                             : state == DV_NO_METADATA

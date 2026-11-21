@@ -83,6 +83,13 @@ protected:
 
 	// experimental Dolby Vision RGB tunnel decode
 	bool IsDvTunnelCandidate() const;
+	// reads the vendor specific InfoFrame, logging it when it changes, and keeps the Dolby one if present
+	void LoadVsInfoFrame(HCHANNEL hChannel, DWORD validFlags);
+	// a locked signal with a low latency Dolby VSIF and no HDR InfoFrame
+	bool IsLldv() const;
+	// the peak brightness the source mapped LLDV to, from the VSIF when present
+	double LldvPeakNits() const;
+	void LoadLldvHdrMeta(hdr_meta* meta) const;
 	// USB only, whether the card can capture the signal as BGR24 at its own size, i.e. without scaling
 	bool UsbCanCaptureDvTunnel() const;
 	// frame is the first row in memory, bottomUp if that is the bottom row of the picture
@@ -156,6 +163,11 @@ protected:
 	video_signal mVideoSignal{};
 	usb_capture_formats mUsbCaptureFormats{};
 	bool mHasHdrInfoFrame{false};
+	// LLDV (pro only), the last vendor specific InfoFrame as read so changes are logged once
+	std::vector<uint8_t> mVsInfoFrame{};
+	dv_tunnel::dolby_vsif mDolbyVsif{};
+	uint8_t mVsMissedReads{0};
+	static constexpr uint8_t vsMissedReadsBeforeClear{10};
 	// dv tunnel
 	dv_tunnel::decoder mDvDecoder{};
 	bool mDvLocked{false};

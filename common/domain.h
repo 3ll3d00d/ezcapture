@@ -514,7 +514,8 @@ enum dv_state : uint8_t
 	DV_SEARCHING, // 8-bit RGB without an HDR infoframe but no DV header found
 	DV_LOCKED,
 	DV_NO_METADATA, // locked but no usable metadata so black is output
-	DV_REJECTED // the renderer would not accept P210
+	DV_REJECTED, // the renderer would not accept P210
+	DV_LLDV // low latency DV, an ordinary PQ picture already tone mapped by the source
 };
 
 struct dv_status
@@ -535,6 +536,16 @@ struct dv_status
 	uint64_t rejectedFrames{0};
 	uint64_t crcFailedCopies{0};
 	uint64_t recoveredPackets{0};
+	// LLDV only, from the signal and the Dolby vendor specific InfoFrame
+	uint8_t lldvBitDepth{0};
+	pixel_encoding lldvPixelEncoding{YUV_422};
+	bool lldvBacklightMetadata{false};
+	uint16_t lldvEffectiveMaxPq{0};
+	// the peak sent to the renderer as HDR metadata, from the VSIF or assumed
+	double lldvPeakNits{0.0};
+	uint8_t lldvAuxRunMode{0};
+	uint8_t lldvAuxVersion{0};
+	uint8_t lldvAuxDebug{0};
 };
 
 struct video_format

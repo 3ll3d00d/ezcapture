@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -464,6 +465,72 @@ namespace dv_tunnel
 			}
 		}
 		return result;
+	}
+
+	/**
+	 * The Dolby Vision vendor specific InfoFrame (IEEE OUI 00-D0-46) a source sends alongside a Dolby Vision signal.
+	 * With low latency set the signal is LLDV: ordinary YCbCr (normally 12-bit 4:2:2), PQ encoded with BT.2020
+	 * primaries, already tone mapped by the source to the target described by the sink's EDID, and sent without an
+	 * HDR InfoFrame. Field layout as decoded by edid-decode (parse_if_dolby). The Dolby Vision and low latency flags
+	 * match an Apple TV's LLDV InfoFrame, the backlight and aux fields have not been seen set yet.
+	 */
+	struct dolby_vsif
+	{
+		bool present{false};
+		bool dolbyVisionSignal{false};
+		bool lowLatency{false};
+		bool backlightMetadataPresent{false};
+		// 12-bit PQ code, only meaningful when backlightMetadataPresent
+		uint16_t effectiveMaxPq{0};
+		uint8_t auxRunMode{0};
+		uint8_t auxVersion{0};
+		uint8_t auxDebug{0};
+
+		bool is_lldv() const { return present && dolbyVisionSignal && lowLatency; }
+	};
+
+	constexpr uint32_t dolby_oui = 0x00D046;
+
+	/**
+	 * @param oui the registration id from the InfoFrame, as transmitted (least significant byte first) i.e. 0x00D046
+	 * @param data the payload after the 3 byte registration id
+	 */
+	inline dolby_vsif parse_dolby_vsif(uint32_t oui, const uint8_t* data, size_t length)
+	{
+		dolby_vsif result;
+		if (oui != dolby_oui || length < 1)
+		{
+			return result;
+		}
+		result.present = true;
+		result.dolbyVisionSignal = (data[0] & 0x02) != 0;
+		result.lowLatency = (data[0] & 0x01) != 0;
+		if (length >= 3)
+		{
+			result.backlightMetadataPresent = (data[1] & 0x80) != 0;
+			result.effectiveMaxPq = static_cast<uint16_t>((data[1] & 0x0F) << 8 | data[2]);
+		}
+		if (length >= 6)
+		{
+			result.auxRunMode = data[3];
+			result.auxVersion = data[4];
+			result.auxDebug = data[5];
+		}
+		return result;
+	}
+
+	/**
+	 * SMPTE ST 2084 EOTF, a 12-bit PQ code to cd/m2.
+	 */
+	inline double pq12_to_nits(uint16_t code)
+	{
+		constexpr double m1 = 2610.0 / 16384.0;
+		constexpr double m2 = 2523.0 / 4096.0 * 128.0;
+		constexpr double c1 = 3424.0 / 4096.0;
+		constexpr double c2 = 2413.0 / 4096.0 * 32.0;
+		constexpr double c3 = 2392.0 / 4096.0 * 32.0;
+		const double e = std::pow(std::min<double>(code, 4095.0) / 4095.0, 1.0 / m2);
+		return 10000.0 * std::pow(std::max(e - c1, 0.0) / (c2 - c3 * e), 1.0 / m1);
 	}
 
 	struct decoder_stats

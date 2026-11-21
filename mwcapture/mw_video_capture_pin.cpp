@@ -843,6 +843,14 @@ void magewell_video_capture_pin::LoadFormat(video_format* videoFormat, video_sig
 		}
 	}
 
+	if (!videoFormat->dvTunnel && IsLldv())
+	{
+		// an ordinary YCbCr picture captured as is, only the colour description changes
+		videoFormat->colourFormat = BT2020;
+		videoFormat->colourFormatName = "LLDV";
+		LoadLldvHdrMeta(&videoFormat->hdrMeta);
+	}
+
 	if (captureFormats->usb)
 	{
 		// what the card is asked to capture, the DV tunnel is decoded from BGR24
@@ -967,6 +975,7 @@ HRESULT magewell_video_capture_pin::LoadSignal(HCHANNEL* pChannel)
 		mHasHdrInfoFrame = true;
 		mVideoSignal.hdrInfo = {};
 		mVideoSignal.aviInfo = {};
+		mDolbyVsif = {};
 	}
 	else
 	{
@@ -1016,8 +1025,108 @@ HRESULT magewell_video_capture_pin::LoadSignal(HCHANNEL* pChannel)
 		{
 			mVideoSignal.aviInfo = {};
 		}
+
+		LoadVsInfoFrame(*pChannel, tPdwValidFlag);
 	}
 	return S_OK;
+}
+
+void magewell_video_capture_pin::LoadVsInfoFrame(HCHANNEL hChannel, DWORD validFlags)
+{
+	if (mFilter->GetDeviceType() != MW_PRO)
+	{
+		return;
+	}
+	// type, version, length then the payload, the checksum is left out so it is compared by content only
+	std::vector<uint8_t> data;
+	dv_tunnel::dolby_vsif vsif;
+	HDMI_INFOFRAME_PACKET pkt;
+	if (validFlags & MWCAP_HDMI_INFOFRAME_MASK_VS
+		&& MW_SUCCEEDED == MWGetHDMIInfoFramePacket(hChannel, MWCAP_HDMI_INFOFRAME_ID_VS, &pkt))
+	{
+		const size_t length = std::min<size_t>(pkt.header.byLength, sizeof(pkt.abyPayload));
+		// sources interleave empty (zero length) packets, these carry nothing so are treated as a missed read
+		if (length > 3)
+		{
+			data = {pkt.header.byPacketType, pkt.header.byVersion, static_cast<uint8_t>(length)};
+			data.insert(data.end(), pkt.abyPayload, pkt.abyPayload + length);
+			auto& vs = pkt.vsInfoFramePayload;
+			vsif = dv_tunnel::parse_dolby_vsif(vs.GetRegistrationId(), vs.abyVSData, length - 3);
+		}
+	}
+	if (data.empty())
+	{
+		// the InfoFrame comes and goes between reads, only treat it as gone after several misses in a row so
+		// neither the log nor the LLDV state flaps
+		if (mVsInfoFrame.empty() || ++mVsMissedReads < vsMissedReadsBeforeClear)
+		{
+			return;
+		}
+	}
+	mVsMissedReads = 0;
+	if (data == mVsInfoFrame)
+	{
+		return;
+	}
+	#ifndef NO_LOGGING
+	if (data.empty())
+	{
+		LOG_INFO(mLogData.logger, "[{}] Vendor specific InfoFrame no longer present", mLogData.prefix);
+	}
+	else
+	{
+		std::string hex;
+		for (const auto b : data)
+		{
+			hex += std::format("{:02x}", b);
+		}
+		LOG_INFO(mLogData.logger,
+		         "[{}] Vendor specific InfoFrame [dolby: {}, dv: {}, low latency: {}, backlight md: {}, eff max: {} ({:.0f} nits), aux: {}/{}/{}, data: {}]",
+		         mLogData.prefix, vsif.present, vsif.dolbyVisionSignal, vsif.lowLatency,
+		         vsif.backlightMetadataPresent, vsif.effectiveMaxPq, dv_tunnel::pq12_to_nits(vsif.effectiveMaxPq),
+		         vsif.auxRunMode, vsif.auxVersion, vsif.auxDebug, hex);
+	}
+	#endif
+	mVsInfoFrame = std::move(data);
+	mDolbyVsif = vsif;
+}
+
+double magewell_video_capture_pin::LldvPeakNits() const
+{
+	// the VSIF carries the effective peak when backlight metadata is present, otherwise assume 1000 nits
+	return mDolbyVsif.backlightMetadataPresent && mDolbyVsif.effectiveMaxPq > 0
+		       ? dv_tunnel::pq12_to_nits(mDolbyVsif.effectiveMaxPq)
+		       : 1000.0;
+}
+
+bool magewell_video_capture_pin::IsLldv() const
+{
+	return mFilter->GetDeviceType() == MW_PRO
+		&& mVideoSignal.signalStatus.state == MWCAP_VIDEO_SIGNAL_LOCKED
+		&& mDolbyVsif.is_lldv()
+		&& !mHasHdrInfoFrame;
+}
+
+void magewell_video_capture_pin::LoadLldvHdrMeta(hdr_meta* meta) const
+{
+	// LLDV is PQ in BT.2020 mapped by the source to the sink's target, there is no HDR InfoFrame so describe that
+	// target
+	const auto peak = LldvPeakNits();
+	*meta = {};
+	meta->r_primary_x = 0.708;
+	meta->r_primary_y = 0.292;
+	meta->g_primary_x = 0.170;
+	meta->g_primary_y = 0.797;
+	meta->b_primary_x = 0.131;
+	meta->b_primary_y = 0.046;
+	meta->whitepoint_x = 0.3127;
+	meta->whitepoint_y = 0.3290;
+	meta->minDML = 0.005;
+	meta->maxDML = peak;
+	meta->maxCLL = static_cast<int>(std::lround(peak));
+	// unknown, but every field must be non zero for the metadata to be sent
+	meta->maxFALL = meta->maxCLL;
+	meta->transferFunction = 15;
 }
 
 bool magewell_video_capture_pin::IsDvTunnelCandidate() const
@@ -1158,12 +1267,14 @@ void magewell_video_capture_pin::PublishDvStatus()
 		                   ? DV_REJECTED
 		                   : mVideoFormat.dvTunnel
 		                   ? (mDvDecoder.render() ? DV_LOCKED : DV_NO_METADATA)
+		                   : mHasSignal && IsLldv()
+		                   ? DV_LLDV
 		                   : mHasSignal && IsDvTunnelCandidate()
 		                   ? DV_SEARCHING
 		                   : DV_INACTIVE;
 	// on any change of state and about once a second while locked
 	const auto interval = static_cast<uint64_t>(std::max(1L, std::lround(mVideoFormat.fps)));
-	const bool periodic = (state == DV_LOCKED || state == DV_NO_METADATA)
+	const bool periodic = (state == DV_LOCKED || state == DV_NO_METADATA || state == DV_LLDV)
 		&& mFrameCounter >= mDvStatusPublishedAt + interval;
 	if (state == mDvPublishedState && !periodic)
 	{
@@ -1189,6 +1300,18 @@ void magewell_video_capture_pin::PublishDvStatus()
 		.crcFailedCopies = stats.crcFailedCopies,
 		.recoveredPackets = stats.recoveredPackets
 	};
+	if (state == DV_LLDV)
+	{
+		status.fullRange = mVideoFormat.quantisation == QUANTISATION_FULL;
+		status.lldvBitDepth = mVideoSignal.inputStatus.hdmiStatus.byBitDepth;
+		status.lldvPixelEncoding = static_cast<pixel_encoding>(mVideoSignal.inputStatus.hdmiStatus.pixelEncoding);
+		status.lldvBacklightMetadata = mDolbyVsif.backlightMetadataPresent;
+		status.lldvEffectiveMaxPq = mDolbyVsif.effectiveMaxPq;
+		status.lldvPeakNits = LldvPeakNits();
+		status.lldvAuxRunMode = mDolbyVsif.auxRunMode;
+		status.lldvAuxVersion = mDolbyVsif.auxVersion;
+		status.lldvAuxDebug = mDolbyVsif.auxDebug;
+	}
 	mFilter->OnDvStatusUpdated(status);
 	mDvPublishedState = state;
 	mDvStatusPublishedAt = mFrameCounter;

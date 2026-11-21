@@ -24,6 +24,7 @@
 #include "../common/dv_tunnel_lav.h"
 
 #include <algorithm>
+#include <cmath>
 #include <array>
 #include <memory>
 #include <string>
@@ -640,4 +641,47 @@ TEST(DvEdid, Version0IsStandardOnly)
 	EXPECT_TRUE(dv.standard);
 	EXPECT_FALSE(dv.lowLatency);
 	EXPECT_FALSE(dv.supports2160p60);
+}
+
+TEST(DvVsif, LowLatencyWithBacklightMetadataIsLldv)
+{
+	// PB4: dv signal + low latency, PB5/6: backlight md present, eff max PQ 0x0C21
+	const std::vector<uint8_t> data{0x03, 0x8C, 0x21, 0x01, 0x02, 0x03};
+	const auto vsif = dv_tunnel::parse_dolby_vsif(dv_tunnel::dolby_oui, data.data(), data.size());
+	EXPECT_TRUE(vsif.present);
+	EXPECT_TRUE(vsif.dolbyVisionSignal);
+	EXPECT_TRUE(vsif.lowLatency);
+	EXPECT_TRUE(vsif.is_lldv());
+	EXPECT_TRUE(vsif.backlightMetadataPresent);
+	EXPECT_EQ(0x0C21, vsif.effectiveMaxPq);
+	EXPECT_EQ(1, vsif.auxRunMode);
+	EXPECT_EQ(2, vsif.auxVersion);
+	EXPECT_EQ(3, vsif.auxDebug);
+}
+
+TEST(DvVsif, StandardDvIsNotLldv)
+{
+	const std::vector<uint8_t> data{0x02, 0x00, 0x00};
+	const auto vsif = dv_tunnel::parse_dolby_vsif(dv_tunnel::dolby_oui, data.data(), data.size());
+	EXPECT_TRUE(vsif.present);
+	EXPECT_TRUE(vsif.dolbyVisionSignal);
+	EXPECT_FALSE(vsif.is_lldv());
+}
+
+TEST(DvVsif, OtherOuiIsIgnored)
+{
+	// HDMI Licensing VSIF
+	const std::vector<uint8_t> data{0x03, 0x8C, 0x21};
+	const auto vsif = dv_tunnel::parse_dolby_vsif(0x000C03, data.data(), data.size());
+	EXPECT_FALSE(vsif.present);
+	EXPECT_FALSE(vsif.is_lldv());
+}
+
+TEST(DvVsif, PqToNits)
+{
+	EXPECT_NEAR(0.0, dv_tunnel::pq12_to_nits(0), 1e-9);
+	EXPECT_NEAR(10000.0, dv_tunnel::pq12_to_nits(4095), 1e-6);
+	// 100 nits is PQ 0.5081, 1000 nits is 0.7518
+	EXPECT_NEAR(100.0, dv_tunnel::pq12_to_nits(static_cast<uint16_t>(std::lround(0.5081 * 4095))), 1.0);
+	EXPECT_NEAR(1000.0, dv_tunnel::pq12_to_nits(static_cast<uint16_t>(std::lround(0.7518 * 4095))), 5.0);
 }
