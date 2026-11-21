@@ -283,6 +283,16 @@ void status_snapshot::SetRunState(filter_run_state state)
 	}
 }
 
+void status_snapshot::SetPendingReload(bool pending)
+{
+	std::lock_guard lock{mLock};
+	if (mControls.pendingReload != pending)
+	{
+		mControls.pendingReload = pending;
+		Changed();
+	}
+}
+
 uint64_t status_snapshot::Version() const
 {
 	std::lock_guard lock{mLock};
@@ -584,6 +594,7 @@ std::string status_snapshot::ToJson(const std::string& id, const std::string& na
 	w.key("high_thread_priority").value(controls.highThreadPriority);
 	w.key("audio_capture").value(controls.audioCapture);
 	w.key("metrics_enabled").value(controls.metricsEnabled);
+	w.key("pending_reload").value(controls.pendingReload);
 	w.end_object();
 
 	w.key("metrics").begin_object();

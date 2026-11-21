@@ -25,6 +25,13 @@ td:last-child{text-align:right;overflow-wrap:anywhere;font-variant-numeric:tabul
 .null{color:var(--muted)}
 #msg{margin:16px;padding:10px 12px;border-radius:8px;border:1px solid var(--bad);color:var(--bad);display:none}
 footer{padding:0 16px 16px;color:var(--muted);font-size:12px}
+#cards{display:contents}
+#settings label{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:3px 0}
+#settings input[type=number],#settings input[type=text]{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:1px 6px;width:9em;text-align:right}
+#settings input:disabled{opacity:.6}
+.hint{color:var(--muted);font-size:12px}
+.pending{color:var(--warn);font-size:12px}
+#settings-msg{min-height:1.2em;font-size:12px;color:var(--bad)}
 </style>
 </head>
 <body>
@@ -34,13 +41,13 @@ footer{padding:0 16px 16px;color:var(--muted);font-size:12px}
   <div class="chips" id="chips"></div>
 </header>
 <div id="msg"></div>
-<main id="main"></main>
+<main id="main"><div id="cards"></div><section id="settings" hidden><h2>Settings</h2><div id="controls"></div><div id="settings-msg"></div></section></main>
 <footer id="foot"></footer>
 <script>
 "use strict";
 const token = new URLSearchParams(location.hash.slice(1)).get("t") || "";
 const headers = token ? {Authorization: "Bearer " + token} : {};
-let filterId = "default", etag = "", timer = 0;
+let filterId = "default", etag = "", timer = 0, controlDefs = null;
 
 const units = [["_bytes_per_sec", " B/s"], ["_mhz", " MHz"], ["_hz", " Hz"], ["_ms", " ms"], ["_nits", " nits"], ["_c", " °C"], ["_rpm", " rpm"], ["_db", " dB"]];
 const sections = [
@@ -52,7 +59,7 @@ const sections = [
   ["Audio input", d => d.audio.input], ["Audio output", d => d.audio.output],
   ["Latency", d => latency(d.latency)],
   ["Device", d => ({...d.device, ...prefix("display", d.display)})],
-  ["Settings", d => d.controls], ["Prometheus", d => d.metrics],
+  ["Prometheus", d => d.metrics],
 ];
 
 function prefix(p, o) { const r = {}; if (o) for (const [k, v] of Object.entries(o)) r[p + "_" + k] = v; return r; }
@@ -92,8 +99,8 @@ function render(d) {
     chip(s.signal ? s.video_mode : "no signal", s.signal ? "ok" : "bad"),
     ...(s.dynamic_range ? [chip(s.dynamic_range.toUpperCase())] : []),
     chip(s.audio === "none" ? "no audio" : s.audio + (s.audio_channels ? " " + s.audio_channels + "ch" : "")));
-  const main = document.getElementById("main");
-  main.replaceChildren(...sections.map(([title, pick]) => {
+  renderControls(d);
+  document.getElementById("cards").replaceChildren(...sections.map(([title, pick]) => {
     const sec = el("section"), table = el("table");
     sec.append(el("h2", title), table);
     for (const [k, v] of Object.entries(pick(d))) {
@@ -107,6 +114,73 @@ function render(d) {
   document.getElementById("foot").textContent = "Updated " + (d.updated ? new Date(d.updated).toLocaleTimeString() : "never");
 }
 
+const appliesHint = {next_start: "when playback next starts", next_load: "when the filter is next loaded"};
+
+function controlValue(d, name) {
+  if (name in d.controls) return d.controls[name];
+  if (name === "metrics_port") return d.metrics.port;
+  if (name === "metrics_bind_address") return d.metrics.bind_address;
+  return null;
+}
+
+async function loadControls() {
+  try {
+    const r = await fetch("api/v1/filters/" + encodeURIComponent(filterId) + "/controls", {headers, cache: "no-store"});
+    if (!r.ok) return;
+    controlDefs = (await r.json()).controls;
+    buildControls();
+  } catch (e) { /* poll reports it */ }
+}
+
+// built once per filter so typing is not interrupted by the refresh, render only updates the values
+function buildControls() {
+  const box = document.getElementById("controls");
+  box.replaceChildren();
+  for (const c of controlDefs) {
+    const row = el("label"), text = el("span", label(c.name));
+    const input = el("input");
+    input.dataset.name = c.name;
+    input.disabled = !token;
+    if (c.type === "boolean") input.type = "checkbox";
+    else if (c.type === "integer") { input.type = "number"; input.min = c.min; input.max = c.max; input.step = 1; }
+    else input.type = "text";
+    input.addEventListener("change", () => setControl(c, input));
+    const left = el("span");
+    left.append(text);
+    if (c.applies !== "now") left.append(el("div", "applies " + appliesHint[c.applies], "hint"));
+    if (c.pending_reload) left.append(el("div", "changed, not yet in effect", "pending"));
+    row.append(left, input);
+    box.append(row);
+  }
+  if (!token) document.getElementById("settings-msg").textContent = "Open the link from the property page to change settings.";
+  document.getElementById("settings").hidden = false;
+}
+
+function renderControls(d) {
+  if (!controlDefs) return;
+  for (const input of document.querySelectorAll("#controls input")) {
+    if (document.activeElement === input) continue;
+    const v = controlValue(d, input.dataset.name);
+    if (input.type === "checkbox") input.checked = !!v;
+    else input.value = v === null ? "" : v;
+  }
+}
+
+async function setControl(c, input) {
+  const value = c.type === "boolean" ? input.checked : c.type === "integer" ? Number(input.value) : input.value;
+  const msg = document.getElementById("settings-msg");
+  try {
+    const r = await fetch("api/v1/filters/" + encodeURIComponent(filterId) + "/controls/" + c.name,
+      {method: "PUT", headers: {...headers, "Content-Type": "application/json"}, body: JSON.stringify({value})});
+    const body = await r.json();
+    msg.textContent = r.ok ? "" : body.message || ("Error " + r.status);
+    if (r.ok && body.pending_reload !== c.pending_reload) await loadControls();
+  } catch (e) { msg.textContent = "The setting was not saved, the filter is not running."; }
+  input.blur();
+  etag = "";
+  poll();
+}
+
 function message(text) { const m = document.getElementById("msg"); m.textContent = text; m.style.display = text ? "block" : "none"; }
 
 async function poll() {
@@ -115,8 +189,8 @@ async function poll() {
     const r = await fetch("api/v1/filters/" + encodeURIComponent(filterId) + "/state",
       {headers: {...headers, ...(etag ? {"If-None-Match": etag} : {})}, cache: "no-store"});
     if (r.status === 401) { message("Open this page with the link from the filter's property page, it includes the access token."); }
-    else if (r.status === 404) { message("The filter is not loaded."); etag = ""; await loadFilters(); }
-    else if (r.ok) { etag = r.headers.get("ETag") || ""; message(""); render(await r.json()); }
+    else if (r.status === 404) { message("The filter is not loaded."); etag = ""; controlDefs = null; await loadFilters(); }
+    else if (r.ok) { etag = r.headers.get("ETag") || ""; message(""); if (!controlDefs) await loadControls(); render(await r.json()); }
     else if (r.status !== 304) { message("Error " + r.status); }
   } catch (e) {
     message("The filter is not running (the player may have closed it).");
@@ -138,7 +212,7 @@ async function loadFilters() {
   } catch (e) { /* poll reports it */ }
 }
 
-document.getElementById("filter").addEventListener("change", e => { filterId = e.target.value; etag = ""; poll(); });
+document.getElementById("filter").addEventListener("change", e => { filterId = e.target.value; etag = ""; controlDefs = null; poll(); });
 loadFilters().then(poll);
 </script>
 </body>

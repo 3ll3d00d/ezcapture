@@ -18,10 +18,18 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
+
+namespace web_json
+{
+	struct scalar;
+}
 
 class status_snapshot;
 
@@ -46,6 +54,48 @@ struct http_response
 	std::vector<std::pair<std::string, std::string>> headers;
 };
 
+using control_value = std::variant<bool, int64_t, std::string>;
+
+enum class control_type : uint8_t
+{
+	BOOLEAN,
+	INTEGER,
+	STRING
+};
+
+enum class control_applies : uint8_t
+{
+	NOW,
+	// when playback next starts
+	NEXT_START,
+	// when the filter is next loaded
+	NEXT_LOAD
+};
+
+// a setting the API can read and change
+struct control_def
+{
+	std::string_view name;
+	control_type type;
+	control_applies applies;
+	int64_t min{0};
+	int64_t max{0};
+};
+
+// every control, in the order the API lists them
+std::span<const control_def> web_controls();
+const control_def* find_control(std::string_view name);
+const char* to_string(control_applies applies);
+
+/**
+ * Converts a request value to the control's type, leniently so Home Assistant bodies stay simple: a boolean accepts
+ * true/false, 1/0, "on"/"off", "true"/"false", "yes"/"no" and "1"/"0"; an integer accepts a whole number or a string
+ * holding one. Ranges are checked.
+ * @param error set to why the value was rejected.
+ */
+std::optional<control_value> to_control_value(const control_def& def, const web_json::scalar& value,
+                                              std::string& error);
+
 /*
  * What the API needs from a filter. The web server calls it from its own threads while the filter is registered,
  * web_api::Unregister waits for any call in progress so the filter can be destroyed straight after.
@@ -55,6 +105,12 @@ class web_target
 public:
 	virtual ~web_target() = default;
 	virtual const status_snapshot& Status() const = 0;
+	// the current value of a control from web_controls()
+	virtual control_value GetControl(const control_def& def) const = 0;
+	// sets a control with a value already converted and checked by to_control_value, false if it could not be saved
+	virtual bool SetControl(const control_def& def, const control_value& value) = 0;
+	// true if the control has been changed since the filter was loaded and the change is not yet in effect
+	virtual bool ControlPending(const control_def& def) const = 0;
 };
 
 // one filter served by a web_api
@@ -115,6 +171,8 @@ private:
 	std::shared_ptr<web_registration> Find(std::string_view id) const;
 	http_response Info() const;
 	static http_response State(const http_request& request, web_registration& reg);
+	static http_response Controls(web_registration& reg);
+	static http_response Control(const http_request& request, web_registration& reg, const control_def& def);
 
 	bool mLoopbackOnly;
 	uint16_t mPort;

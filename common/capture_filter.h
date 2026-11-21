@@ -100,16 +100,22 @@ public:
 	//////////////////////////////////////////////////////////////////////////
 	//  ISignalInfo
 	//////////////////////////////////////////////////////////////////////////
-	// reloads the property page only, the status callback is loaded when it is set
+	// reloads the property page, and sends the status callback the settings as the page calls this after applying
+	// its changes
 	STDMETHODIMP Reload() override
 	{
-		std::lock_guard infoCallbackLock{mInfoCallbackLock};
-		if (mInfoCallback == nullptr)
+		bool havePage;
 		{
-			return E_FAIL;
+			std::lock_guard settingsLock{mSettingsLock};
+			std::lock_guard infoCallbackLock{mInfoCallbackLock};
+			havePage = mInfoCallback != nullptr;
+			if (havePage)
+			{
+				ReloadAll(mInfoCallback);
+			}
 		}
-		ReloadAll(mInfoCallback);
-		return S_OK;
+		NotifyControls(false);
+		return havePage ? S_OK : E_FAIL;
 	}
 
 	// the property page's callback
@@ -195,6 +201,7 @@ public:
 	STDMETHODIMP GetMetricsBindAddress(std::wstring* address) override
 	{
 		if (!address) return E_POINTER;
+		std::lock_guard lock{mSettingsLock};
 		address->assign(mMetricsConfig.bindAddress.begin(), mMetricsConfig.bindAddress.end());
 		return S_OK;
 	}
@@ -222,6 +229,7 @@ public:
 	STDMETHODIMP GetWebBindAddress(std::wstring* address) override
 	{
 		CheckPointer(address, E_POINTER)
+		std::lock_guard lock{mSettingsLock};
 		address->assign(mWebConfig.bindAddress.begin(), mWebConfig.bindAddress.end());
 		return S_OK;
 	}
@@ -379,7 +387,8 @@ protected:
 	ISignalInfoCB* mInfoCallback = nullptr;
 	ISignalInfoCB* mStatusCallback = nullptr;
 
-	// the callbacks that are set, call while holding mInfoCallbackLock
+	// the callbacks that are set, call while holding mInfoCallbackLock. When both locks are needed, mSettingsLock is
+	// taken first.
 	struct info_callbacks
 	{
 		std::array<ISignalInfoCB*, 2> cbs{};
@@ -433,6 +442,7 @@ protected:
 	// property page cannot replace it
 	void SetStatusCallback(ISignalInfoCB* cb)
 	{
+		std::lock_guard settingsLock{mSettingsLock};
 		std::lock_guard infoCallbackLock{mInfoCallbackLock};
 		mStatusCallback = cb;
 		if (cb != nullptr)
@@ -457,12 +467,47 @@ protected:
 	// the address to open the page, including the token
 	std::string mWebUrl;
 
+	// guards the settings above against the property page and the web API changing them at the same time
+	mutable std::recursive_mutex mSettingsLock;
+
+	// the settings that only apply when the filter is loaded, as they were when it was
+	struct loaded_settings
+	{
+		bool audioCapture{true};
+		metrics_config metrics{};
+	} mLoadedSettings{};
+
+	// tells the callbacks the settings changed, includePage false when the page made the change (it is reading its
+	// own controls at the time and reloads itself afterwards)
+	void NotifyControls(bool includePage);
+
+	// the web API's controls, called on a web server thread
+	control_value GetWebControl(const control_def& def) const;
+	bool SetWebControl(const control_def& def, const control_value& value);
+	bool WebControlPending(const control_def& def) const;
+
 	// the web API's view of the filter, it reads the status snapshot and calls back into the filter for controls
 	class web_adapter : public web_target
 	{
 	public:
+		explicit web_adapter(capture_filter* f) : filter(f)
+		{
+		}
+
 		const status_snapshot& Status() const override { return snapshot; }
+		control_value GetControl(const control_def& def) const override { return filter->GetWebControl(def); }
+
+		bool SetControl(const control_def& def, const control_value& value) override
+		{
+			return filter->SetWebControl(def, value);
+		}
+
+		bool ControlPending(const control_def& def) const override { return filter->WebControlPending(def); }
+
 		status_snapshot snapshot;
+
+	private:
+		capture_filter* filter;
 	};
 
 	std::unique_ptr<web_adapter> mWeb;

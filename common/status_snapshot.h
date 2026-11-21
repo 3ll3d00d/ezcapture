@@ -61,6 +61,7 @@ struct status_controls
 	std::string metricsBindAddress;
 	DWORD metricsPort{0};
 	std::string metricsStatus;
+	bool pendingReload{false};
 };
 
 /*
@@ -105,6 +106,9 @@ public:
 	HRESULT OnFilterStopped() override;
 
 	void SetRunState(filter_run_state state);
+
+	// true when a setting has changed that only applies when the filter is next loaded
+	void SetPendingReload(bool pending);
 
 	// changes every time anything does, for use as an ETag
 	uint64_t Version() const;

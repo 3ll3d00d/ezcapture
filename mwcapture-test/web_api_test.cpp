@@ -24,6 +24,7 @@
 #include "web_json.h"
 #include "web_server.h"
 
+#include <map>
 #include <set>
 
 #pragma comment(lib, "ws2_32.lib")
@@ -359,7 +360,7 @@ TEST(StatusSnapshot, Controls)
 	snap.ReloadMetricsControls(true, "0.0.0.0", 9464, "Serving");
 	const auto json = snap.ToJson("id", "name");
 	EXPECT_TRUE(has(json,
-		R"("controls":{"refresh_rate_switch":true,"hdr_profile_switch":false,"hdr_profile":3,"sdr_profile":1,"high_thread_priority":true,"audio_capture":false,"metrics_enabled":true})"))
+		R"("controls":{"refresh_rate_switch":true,"hdr_profile_switch":false,"hdr_profile":3,"sdr_profile":1,"high_thread_priority":true,"audio_capture":false,"metrics_enabled":true,"pending_reload":false})"))
 		<< json;
 	EXPECT_TRUE(has(json, R"("metrics":{"enabled":true,"bind_address":"0.0.0.0","port":9464,"status_text":"Serving"})"))
 		<< json;
@@ -373,7 +374,31 @@ namespace
 	struct fake_target : web_target
 	{
 		status_snapshot snap;
+		std::map<std::string, control_value, std::less<>> values{
+			{"refresh_rate_switch", true}, {"hdr_profile_switch", false}, {"hdr_profile", int64_t{3}},
+			{"sdr_profile", int64_t{1}}, {"high_thread_priority", true}, {"audio_capture", true},
+			{"metrics_enabled", false}, {"metrics_port", int64_t{9464}},
+			{"metrics_bind_address", std::string{"127.0.0.1"}}
+		};
+		bool failSet{false};
+
 		const status_snapshot& Status() const override { return snap; }
+		control_value GetControl(const control_def& def) const override { return values.find(def.name)->second; }
+
+		bool SetControl(const control_def& def, const control_value& value) override
+		{
+			if (failSet)
+			{
+				return false;
+			}
+			values.find(def.name)->second = value;
+			return true;
+		}
+
+		bool ControlPending(const control_def& def) const override
+		{
+			return def.name == "audio_capture" && !std::get<bool>(values.find(def.name)->second);
+		}
 	};
 
 	http_request get(std::string path, std::string host = "127.0.0.1:9474", std::string auth = {})
@@ -646,4 +671,198 @@ TEST(WebServer, TokensAreRandomHex)
 	EXPECT_EQ(a.size(), 32u);
 	EXPECT_NE(a, b);
 	EXPECT_EQ(a.find_first_not_of("0123456789abcdef"), std::string::npos);
+}
+
+namespace
+{
+	http_request put(std::string path, std::string body, std::string auth = std::string{"Bearer "} + token,
+	                 std::string host = "127.0.0.1:9474")
+	{
+		auto r = get(std::move(path), std::move(host), std::move(auth));
+		r.method = "PUT";
+		r.body = std::move(body);
+		return r;
+	}
+
+	const control_value rejected{std::string{"<rejected>"}};
+
+	control_value convert(std::string_view name, std::string_view json, std::string* errorOut = nullptr)
+	{
+		std::string error;
+		auto v = to_control_value(*find_control(name), *web_json::parse_scalar(json), error);
+		if (errorOut) *errorOut = error;
+		return v ? *v : rejected;
+	}
+}
+
+TEST(WebControls, LenientBooleans)
+{
+	for (const auto* on : {"true", "1", R"("on")", R"("ON")", R"("true")", R"("yes")", R"("1")"})
+	{
+		EXPECT_EQ(convert("refresh_rate_switch", on), control_value{true}) << on;
+	}
+	for (const auto* off : {"false", "0", R"("off")", R"("False")", R"("no")", R"("0")"})
+	{
+		EXPECT_EQ(convert("refresh_rate_switch", off), control_value{false}) << off;
+	}
+	std::string error;
+	EXPECT_EQ(convert("refresh_rate_switch", "2", &error), rejected);
+	EXPECT_EQ(error, "refresh_rate_switch must be true or false");
+	EXPECT_EQ(convert("refresh_rate_switch", "null"), rejected);
+}
+
+TEST(WebControls, IntegersAreWholeAndInRange)
+{
+	EXPECT_EQ(convert("hdr_profile", "7"), control_value{int64_t{7}});
+	EXPECT_EQ(convert("hdr_profile", R"("7")"), control_value{int64_t{7}});
+	EXPECT_EQ(convert("hdr_profile", "7.0"), control_value{int64_t{7}});
+	std::string error;
+	EXPECT_EQ(convert("hdr_profile", "7.5", &error), rejected);
+	EXPECT_EQ(error, "hdr_profile must be a whole number");
+	EXPECT_EQ(convert("hdr_profile", "1001", &error), rejected);
+	EXPECT_EQ(error, "hdr_profile must be between 0 and 1000");
+	EXPECT_EQ(convert("metrics_port", "0"), rejected);
+	EXPECT_EQ(convert("metrics_port", "1e30"), rejected);
+	EXPECT_EQ(convert("hdr_profile", "true"), rejected);
+}
+
+TEST(WebControls, Addresses)
+{
+	EXPECT_EQ(convert("metrics_bind_address", R"("0.0.0.0")"), control_value{std::string{"0.0.0.0"}});
+	EXPECT_EQ(convert("metrics_bind_address", R"("[::1]")"), control_value{std::string{"[::1]"}});
+	EXPECT_EQ(convert("metrics_bind_address", R"("")"), rejected);
+	EXPECT_EQ(convert("metrics_bind_address", R"("1.2.3.4; rm")"), rejected);
+	EXPECT_EQ(convert("metrics_bind_address", "1"), rejected);
+}
+
+TEST(WebControls, ListsEveryControl)
+{
+	web_api api{true, 9474, "1.0"};
+	fake_target target;
+	target.values["audio_capture"] = false;
+	api.Register(&target, "magewell-abc", "Magewell", token);
+	const auto r = api.Handle(get("/api/v1/filters/default/controls"));
+	ASSERT_EQ(r.status, 200);
+	for (const auto& def : web_controls())
+	{
+		EXPECT_TRUE(has(r.body, std::format(R"("name":"{}")", def.name))) << def.name;
+	}
+	EXPECT_TRUE(has(r.body,
+		R"({"name":"hdr_profile","type":"integer","value":3,"min":0,"max":1000,"applies":"now","pending_reload":false})"))
+		<< r.body;
+	EXPECT_TRUE(has(r.body,
+		R"({"name":"audio_capture","type":"boolean","value":false,"applies":"next_load","pending_reload":true})"))
+		<< r.body;
+	EXPECT_TRUE(r.body.ends_with(R"("pending_reload":true})")) << r.body;
+}
+
+TEST(WebControls, GetAndSetOneControl)
+{
+	web_api api{true, 9474, "1.0"};
+	fake_target target;
+	api.Register(&target, "magewell-abc", "Magewell", token);
+
+	auto r = api.Handle(get("/api/v1/filters/default/controls/refresh_rate_switch"));
+	ASSERT_EQ(r.status, 200);
+	EXPECT_TRUE(has(r.body, R"("value":true)")) << r.body;
+
+	r = api.Handle(put("/api/v1/filters/default/controls/refresh_rate_switch", R"({"value": "off"})"));
+	ASSERT_EQ(r.status, 200) << r.body;
+	EXPECT_TRUE(has(r.body, R"("value":false)")) << r.body;
+	EXPECT_EQ(target.values["refresh_rate_switch"], control_value{false});
+
+	auto post = put("/api/v1/filters/magewell-abc/controls/hdr_profile", R"({"value": 12})");
+	post.method = "POST";
+	r = api.Handle(post);
+	ASSERT_EQ(r.status, 200) << r.body;
+	EXPECT_EQ(target.values["hdr_profile"], control_value{int64_t{12}});
+}
+
+TEST(WebControls, ChangesAlwaysNeedTheToken)
+{
+	web_api api{true, 9474, "1.0"};
+	fake_target target;
+	api.Register(&target, "magewell-abc", "Magewell", token);
+
+	// a loopback host is enough to read, never to write
+	EXPECT_EQ(api.Handle(put("/api/v1/filters/default/controls/refresh_rate_switch", R"({"value":false})", "")).status,
+	          401);
+	EXPECT_EQ(api.Handle(put("/api/v1/filters/default/controls/refresh_rate_switch", R"({"value":false})",
+	                         "Bearer wrong")).status, 401);
+	EXPECT_EQ(target.values["refresh_rate_switch"], control_value{true});
+}
+
+TEST(WebControls, BadRequests)
+{
+	web_api api{true, 9474, "1.0"};
+	fake_target target;
+	api.Register(&target, "magewell-abc", "Magewell", token);
+
+	auto r = api.Handle(put("/api/v1/filters/default/controls/refresh_rate_switch", "true"));
+	EXPECT_EQ(r.status, 400);
+	EXPECT_TRUE(has(r.body, "bad_request"));
+	r = api.Handle(put("/api/v1/filters/default/controls/hdr_profile", R"({"value": -1})"));
+	EXPECT_EQ(r.status, 400);
+	EXPECT_TRUE(has(r.body, "hdr_profile must be between 0 and 1000")) << r.body;
+	r = api.Handle(put("/api/v1/filters/default/controls/web_enabled", R"({"value": true})"));
+	EXPECT_EQ(r.status, 404);
+	EXPECT_TRUE(has(r.body, "unknown_control"));
+	auto del = put("/api/v1/filters/default/controls/hdr_profile", "");
+	del.method = "DELETE";
+	EXPECT_EQ(api.Handle(del).status, 405);
+	EXPECT_EQ(api.Handle(put("/api/v1/filters/default/controls", R"({"value": true})")).status, 405);
+
+	target.failSet = true;
+	r = api.Handle(put("/api/v1/filters/default/controls/hdr_profile", R"({"value": 2})"));
+	EXPECT_EQ(r.status, 500);
+}
+
+TEST(WebControls, WebSettingsAreNotControls)
+{
+	for (const auto& def : web_controls())
+	{
+		EXPECT_FALSE(def.name.starts_with("web")) << def.name;
+	}
+}
+
+// Serves a filter with made up status for working on the page, e.g.
+//   mwcapture-test --gtest_also_run_disabled_tests --gtest_filter=*ServeForPageDevelopment
+// then open http://127.0.0.1:19480/#t=0123456789abcdef0123456789abcdef. EZ_SERVE_SECONDS sets how long (default 60).
+TEST(WebServer, DISABLED_ServeForPageDevelopment)
+{
+	std::string error;
+	auto server = web_server::Acquire("127.0.0.1", 19480, "dev", error);
+	ASSERT_TRUE(server) << error;
+	fake_target target;
+	signal_fixture f;
+	f.hdr.hdrOn = true;
+	f.hdr.hdrMaxCLL = 1000;
+	f.hdr.hdrMaxFALL = 400;
+	f.vout.outTransferFunction = "SMPTE ST 2084 (PQ)";
+	f.vout.outPixelStructure = "P210";
+	target.snap.Reload(&f.vin);
+	target.snap.Reload(&f.vout);
+	target.snap.Reload(&f.hdr);
+	target.snap.Reload(&f.ain);
+	target.snap.Reload(&f.aout);
+	target.snap.ReloadControls(true, false, 3, 1, true, true);
+	target.snap.ReloadMetricsControls(false, "127.0.0.1", 9464, "Disabled");
+	target.snap.SetRunState(filter_run_state::RUNNING);
+	auto reg = server->Api().Register(&target, "magewell-dev", "Magewell Pro Capture", token);
+
+	int seconds = 60;
+	char buf[16]{};
+	if (GetEnvironmentVariableA("EZ_SERVE_SECONDS", buf, sizeof(buf)) > 0)
+	{
+		seconds = std::atoi(buf);
+	}
+	for (int i = 0; i < seconds * 2; ++i)
+	{
+		latency_stats lat{"Capture", 10000 + i * 10, 12500.0 + i, 20000};
+		target.snap.ReloadV1(&lat);
+		double fps = 23.976 + (i % 3) * 0.001;
+		target.snap.ReloadVfps(&fps);
+		Sleep(500);
+	}
+	server->Api().Unregister(reg);
 }

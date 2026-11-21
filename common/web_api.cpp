@@ -117,6 +117,172 @@ namespace
 	}
 }
 
+namespace
+{
+	constexpr control_def controls[] = {
+		{"refresh_rate_switch", control_type::BOOLEAN, control_applies::NOW},
+		{"hdr_profile_switch", control_type::BOOLEAN, control_applies::NOW},
+		{"hdr_profile", control_type::INTEGER, control_applies::NOW, 0, 1000},
+		{"sdr_profile", control_type::INTEGER, control_applies::NOW, 0, 1000},
+		{"high_thread_priority", control_type::BOOLEAN, control_applies::NEXT_START},
+		{"audio_capture", control_type::BOOLEAN, control_applies::NEXT_LOAD},
+		{"metrics_enabled", control_type::BOOLEAN, control_applies::NEXT_LOAD},
+		{"metrics_port", control_type::INTEGER, control_applies::NEXT_LOAD, 1, 65535},
+		{"metrics_bind_address", control_type::STRING, control_applies::NEXT_LOAD, 1, 63},
+	};
+
+	void write_value(web_json::writer& w, const control_value& v)
+	{
+		std::visit([&w](const auto& x) { w.value(x); }, v);
+	}
+
+	void write_control(web_json::writer& w, const control_def& def, const web_target& target)
+	{
+		w.key("name").value(def.name);
+		w.key("type").value(def.type == control_type::BOOLEAN
+			                    ? "boolean"
+			                    : def.type == control_type::INTEGER
+			                    ? "integer"
+			                    : "string");
+		w.key("value");
+		write_value(w, target.GetControl(def));
+		if (def.type == control_type::INTEGER)
+		{
+			w.key("min").value(def.min);
+			w.key("max").value(def.max);
+		}
+		w.key("applies").value(to_string(def.applies));
+		w.key("pending_reload").value(target.ControlPending(def));
+	}
+}
+
+std::span<const control_def> web_controls()
+{
+	return controls;
+}
+
+const control_def* find_control(std::string_view name)
+{
+	for (const auto& c : controls)
+	{
+		if (c.name == name)
+		{
+			return &c;
+		}
+	}
+	return nullptr;
+}
+
+const char* to_string(control_applies applies)
+{
+	switch (applies)
+	{
+	case control_applies::NOW: return "now";
+	case control_applies::NEXT_START: return "next_start";
+	case control_applies::NEXT_LOAD: return "next_load";
+	}
+	return "now";
+}
+
+std::optional<control_value> to_control_value(const control_def& def, const web_json::scalar& value,
+                                              std::string& error)
+{
+	using web_json::scalar;
+	switch (def.type)
+	{
+	case control_type::BOOLEAN:
+		if (value.type == scalar::BOOLEAN)
+		{
+			return value.b;
+		}
+		if (value.type == scalar::NUMBER && (value.n == 0.0 || value.n == 1.0))
+		{
+			return value.n == 1.0;
+		}
+		if (value.type == scalar::STRING)
+		{
+			for (const auto* t : {"on", "true", "yes", "1"})
+			{
+				if (iequals(value.s, t))
+				{
+					return true;
+				}
+			}
+			for (const auto* f : {"off", "false", "no", "0"})
+			{
+				if (iequals(value.s, f))
+				{
+					return false;
+				}
+			}
+		}
+		error = std::format("{} must be true or false", def.name);
+		return std::nullopt;
+	case control_type::INTEGER:
+		{
+			double n;
+			if (value.type == scalar::NUMBER)
+			{
+				n = value.n;
+			}
+			else if (value.type == scalar::STRING)
+			{
+				auto parsed = web_json::parse_scalar(value.s);
+				if (!parsed || parsed->type != scalar::NUMBER)
+				{
+					error = std::format("{} must be a whole number", def.name);
+					return std::nullopt;
+				}
+				n = parsed->n;
+			}
+			else
+			{
+				error = std::format("{} must be a whole number", def.name);
+				return std::nullopt;
+			}
+			if (n < -9.0e15 || n > 9.0e15 || n != static_cast<double>(static_cast<int64_t>(n)))
+			{
+				error = std::format("{} must be a whole number", def.name);
+				return std::nullopt;
+			}
+			const auto i = static_cast<int64_t>(n);
+			if (i < def.min || i > def.max)
+			{
+				error = std::format("{} must be between {} and {}", def.name, def.min, def.max);
+				return std::nullopt;
+			}
+			return i;
+		}
+	case control_type::STRING:
+		{
+			if (value.type != scalar::STRING)
+			{
+				error = std::format("{} must be a string", def.name);
+				return std::nullopt;
+			}
+			const auto len = static_cast<int64_t>(value.s.size());
+			if (len < def.min || len > def.max)
+			{
+				error = std::format("{} must be {} to {} characters", def.name, def.min, def.max);
+				return std::nullopt;
+			}
+			// the only string control is an address: digits, letters, '.', ':', '-', '[' and ']'
+			for (const char c : value.s)
+			{
+				if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '.' ||
+					c == ':' || c == '-' || c == '[' || c == ']'))
+				{
+					error = std::format("{} is not a valid address", def.name);
+					return std::nullopt;
+				}
+			}
+			return value.s;
+		}
+	}
+	error = "unknown control";
+	return std::nullopt;
+}
+
 http_response json_error(int status, std::string_view code, std::string_view message)
 {
 	web_json::writer w;
@@ -418,5 +584,84 @@ http_response web_api::Handle(const http_request& request) const
 		}
 		return State(request, *reg);
 	}
+	if (resource == "controls")
+	{
+		if (!get)
+		{
+			return json_error(405, "method_not_allowed", "Use GET");
+		}
+		return Controls(*reg);
+	}
+	if (resource.starts_with("controls/"))
+	{
+		const auto* def = find_control(resource.substr(9));
+		if (def == nullptr)
+		{
+			return json_error(404, "unknown_control", "No such control");
+		}
+		return Control(request, *reg, *def);
+	}
 	return json_error(404, "not_found", "No such path");
+}
+
+http_response web_api::Controls(web_registration& reg)
+{
+	web_json::writer w;
+	w.begin_object();
+	bool pending = false;
+	w.key("controls").begin_array();
+	for (const auto& def : web_controls())
+	{
+		w.begin_object();
+		write_control(w, def, *reg.target);
+		w.end_object();
+		pending |= reg.target->ControlPending(def);
+	}
+	w.end_array();
+	w.key("pending_reload").value(pending);
+	w.end_object();
+	http_response r;
+	r.body = w.take();
+	return no_store(std::move(r));
+}
+
+http_response web_api::Control(const http_request& request, web_registration& reg, const control_def& def)
+{
+	const bool get = request.method == "GET" || request.method == "HEAD";
+	if (!get)
+	{
+		if (request.method != "PUT" && request.method != "POST")
+		{
+			return json_error(405, "method_not_allowed", "Use GET, PUT or POST");
+		}
+		// a change always needs the token, whatever the address. A browser cannot add an Authorization header to a
+		// cross origin request without a CORS preflight, which is never answered, so another site cannot send one.
+		const auto presented = BearerToken(request.authorization);
+		if (!TokenMatches(presented, reg.token))
+		{
+			return unauthorised(!presented.empty());
+		}
+		auto value = web_json::parse_member(request.body, "value");
+		if (!value)
+		{
+			return json_error(400, "bad_request", R"(Send a JSON object such as {"value": true})");
+		}
+		std::string error;
+		auto converted = to_control_value(def, *value, error);
+		if (!converted)
+		{
+			return json_error(400, "bad_value", error);
+		}
+		if (!reg.target->SetControl(def, *converted))
+		{
+			return json_error(500, "not_saved", "The setting could not be saved");
+		}
+	}
+	web_json::writer w;
+	w.begin_object();
+	write_control(w, def, *reg.target);
+	w.end_object();
+	http_response r;
+	r.body = w.take();
+	return no_store(std::move(r));
 }

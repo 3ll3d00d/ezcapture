@@ -302,6 +302,9 @@ capture_filter::capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSI
 		}
 	}
 
+	mLoadedSettings.audioCapture = mAudioCaptureEnabled;
+	mLoadedSettings.metrics = mMetricsConfig;
+
 	if (mMetricsConfig.enabled)
 	{
 		if (!mQuillBackendAcquired)
@@ -551,6 +554,7 @@ STDMETHODIMP capture_filter::Stop()
 
 HRESULT capture_filter::SetHDRProfile(DWORD profile)
 {
+	std::lock_guard lock{mSettingsLock};
 	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
 	{
 		if (const auto res = key.TrySetDwordValue(hdrProfileRegKey, profile))
@@ -567,6 +571,7 @@ HRESULT capture_filter::SetHDRProfile(DWORD profile)
 
 HRESULT capture_filter::SetSDRProfile(DWORD profile)
 {
+	std::lock_guard lock{mSettingsLock};
 	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
 	{
 		if (const auto res = key.TrySetDwordValue(sdrProfileRegKey, profile))
@@ -583,6 +588,7 @@ HRESULT capture_filter::SetSDRProfile(DWORD profile)
 
 HRESULT capture_filter::SetHdrProfileSwitchEnabled(bool enabled)
 {
+	std::lock_guard lock{mSettingsLock};
 	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
 	{
 		if (const auto res = key.TrySetDwordValue(hdrProfileSwitchEnabledRegKey, enabled ? 1 : 0))
@@ -599,6 +605,7 @@ HRESULT capture_filter::SetHdrProfileSwitchEnabled(bool enabled)
 
 HRESULT capture_filter::SetRefreshRateSwitchEnabled(bool enabled)
 {
+	std::lock_guard lock{mSettingsLock};
 	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
 	{
 		if (const auto res = key.TrySetDwordValue(refreshRateSwitchEnabledRegKey, enabled ? 1 : 0))
@@ -615,6 +622,7 @@ HRESULT capture_filter::SetRefreshRateSwitchEnabled(bool enabled)
 
 HRESULT capture_filter::SetHighThreadPriorityEnabled(bool enabled)
 {
+	std::lock_guard lock{mSettingsLock};
 	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
 	{
 		if (const auto res = key.TrySetDwordValue(highThreadPriorityEnabledRegKey, enabled ? 1 : 0))
@@ -631,6 +639,7 @@ HRESULT capture_filter::SetHighThreadPriorityEnabled(bool enabled)
 
 HRESULT capture_filter::SetAudioCaptureEnabled(bool enabled)
 {
+	std::lock_guard lock{mSettingsLock};
 	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
 	{
 		if (const auto res = key.TrySetDwordValue(audioCaptureEnabledRegKey, enabled ? 1 : 0))
@@ -647,6 +656,7 @@ HRESULT capture_filter::SetAudioCaptureEnabled(bool enabled)
 
 HRESULT capture_filter::SetMetricsEnabled(bool enabled)
 {
+	std::lock_guard lock{mSettingsLock};
 	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
 	{
 		if (const auto res = key.TrySetDwordValue(metricsEnabledRegKey, enabled ? 1 : 0))
@@ -664,6 +674,7 @@ HRESULT capture_filter::SetMetricsEnabled(bool enabled)
 
 HRESULT capture_filter::SetMetricsPort(DWORD port)
 {
+	std::lock_guard lock{mSettingsLock};
 	if (port == 0 || port > 65535)
 	{
 		return E_INVALIDARG;
@@ -685,6 +696,7 @@ HRESULT capture_filter::SetMetricsPort(DWORD port)
 
 HRESULT capture_filter::SetMetricsBindAddress(const std::wstring& address)
 {
+	std::lock_guard lock{mSettingsLock};
 	if (address.empty())
 	{
 		return E_INVALIDARG;
@@ -740,7 +752,7 @@ void capture_filter::StartWebApi()
 		// enabled by editing the registry, the page always makes one when it is enabled there
 		NewWebToken();
 	}
-	mWeb = std::make_unique<web_adapter>();
+	mWeb = std::make_unique<web_adapter>(this);
 	// sends the snapshot everything so it is complete before the first request
 	SetStatusCallback(&mWeb->snapshot);
 
@@ -785,8 +797,99 @@ void capture_filter::StopWebApi()
 	}
 }
 
+void capture_filter::NotifyControls(bool includePage)
+{
+	std::lock_guard settingsLock{mSettingsLock};
+	bool pending = false;
+	for (const auto& def : web_controls())
+	{
+		pending |= WebControlPending(def);
+	}
+	std::lock_guard infoCallbackLock{mInfoCallbackLock};
+	for (auto* cb : InfoCallbacks())
+	{
+		if (cb == mInfoCallback && !includePage)
+		{
+			continue;
+		}
+		cb->ReloadControls(mRefreshRateSwitchEnabled, mHdrProfileSwitchEnabled, mHdrProfile, mSdrProfile,
+		                   mHighThreadPriorityEnabled, mAudioCaptureEnabled);
+		cb->ReloadMetricsControls(mMetricsConfig.enabled, mMetricsConfig.bindAddress, mMetricsConfig.port,
+		                          mMetricsStatus);
+		cb->ReloadWebControls(mWebConfig.enabled, mWebConfig.bindAddress, mWebConfig.port, mWebStatus, mWebUrl,
+		                      mWebConfig.token);
+	}
+	if (mWeb)
+	{
+		mWeb->snapshot.SetPendingReload(pending);
+	}
+}
+
+control_value capture_filter::GetWebControl(const control_def& def) const
+{
+	std::lock_guard lock{mSettingsLock};
+	const auto& n = def.name;
+	if (n == "refresh_rate_switch") return mRefreshRateSwitchEnabled;
+	if (n == "hdr_profile_switch") return mHdrProfileSwitchEnabled;
+	if (n == "hdr_profile") return static_cast<int64_t>(mHdrProfile);
+	if (n == "sdr_profile") return static_cast<int64_t>(mSdrProfile);
+	if (n == "high_thread_priority") return mHighThreadPriorityEnabled;
+	if (n == "audio_capture") return mAudioCaptureEnabled;
+	if (n == "metrics_enabled") return mMetricsConfig.enabled;
+	if (n == "metrics_port") return static_cast<int64_t>(mMetricsConfig.port);
+	if (n == "metrics_bind_address") return mMetricsConfig.bindAddress;
+	return false;
+}
+
+bool capture_filter::SetWebControl(const control_def& def, const control_value& value)
+{
+	std::lock_guard lock{mSettingsLock};
+	const auto& n = def.name;
+	HRESULT hr = E_INVALIDARG;
+	if (const auto* b = std::get_if<bool>(&value))
+	{
+		if (n == "refresh_rate_switch") hr = SetRefreshRateSwitchEnabled(*b);
+		else if (n == "hdr_profile_switch") hr = SetHdrProfileSwitchEnabled(*b);
+		else if (n == "high_thread_priority") hr = SetHighThreadPriorityEnabled(*b);
+		else if (n == "audio_capture") hr = SetAudioCaptureEnabled(*b);
+		else if (n == "metrics_enabled") hr = SetMetricsEnabled(*b);
+	}
+	else if (const auto* i = std::get_if<int64_t>(&value))
+	{
+		const auto dw = static_cast<DWORD>(*i);
+		if (n == "hdr_profile") hr = SetHDRProfile(dw);
+		else if (n == "sdr_profile") hr = SetSDRProfile(dw);
+		else if (n == "metrics_port") hr = SetMetricsPort(dw);
+	}
+	else if (const auto* str = std::get_if<std::string>(&value))
+	{
+		if (n == "metrics_bind_address") hr = SetMetricsBindAddress(std::wstring{str->begin(), str->end()});
+	}
+	if (hr != S_OK)
+	{
+		return false;
+	}
+	#ifndef NO_LOGGING
+	LOG_INFO(mLogData.logger, "[{}] Web API set {}", mLogData.prefix, n);
+	#endif
+	NotifyControls(true);
+	return true;
+}
+
+bool capture_filter::WebControlPending(const control_def& def) const
+{
+	std::lock_guard lock{mSettingsLock};
+	const auto& n = def.name;
+	if (n == "audio_capture") return mAudioCaptureEnabled != mLoadedSettings.audioCapture;
+	if (n == "metrics_enabled") return mMetricsConfig.enabled != mLoadedSettings.metrics.enabled;
+	if (n == "metrics_port") return mMetricsConfig.port != mLoadedSettings.metrics.port;
+	if (n == "metrics_bind_address") return mMetricsConfig.bindAddress != mLoadedSettings.metrics.bindAddress;
+	return false;
+}
+
 HRESULT capture_filter::SetWebEnabled(bool enabled)
 {
+	std::lock_guard lock{mSettingsLock};
 	if (enabled && mWebConfig.token.empty() && FAILED(NewWebToken()))
 	{
 		return E_FAIL;
@@ -808,6 +911,7 @@ HRESULT capture_filter::SetWebEnabled(bool enabled)
 
 HRESULT capture_filter::SetWebPort(DWORD port)
 {
+	std::lock_guard lock{mSettingsLock};
 	if (port == 0 || port > 65535)
 	{
 		return E_INVALIDARG;
@@ -829,6 +933,7 @@ HRESULT capture_filter::SetWebPort(DWORD port)
 
 HRESULT capture_filter::SetWebBindAddress(const std::wstring& address)
 {
+	std::lock_guard lock{mSettingsLock};
 	if (address.empty())
 	{
 		return E_INVALIDARG;
@@ -850,6 +955,7 @@ HRESULT capture_filter::SetWebBindAddress(const std::wstring& address)
 
 HRESULT capture_filter::NewWebToken()
 {
+	std::lock_guard lock{mSettingsLock};
 	auto token = web_server::NewToken();
 	if (token.empty())
 	{

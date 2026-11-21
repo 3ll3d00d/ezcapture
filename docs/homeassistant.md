@@ -30,6 +30,7 @@ Send the token as a header: `Authorization: Bearer <token>`.
 * Bound to `127.0.0.1`, reads work without the token as long as the request uses `127.0.0.1`, `localhost` or `[::1]`
   as the host name. This stops other websites from reading it through DNS rebinding.
 * Bound to any other address, every request needs the token.
+* Changing a setting always needs the token, whatever the address.
 * The status page itself (`/`) never needs the token. It holds no data, and it reads the token from the link.
 
 ## Endpoints
@@ -39,12 +40,125 @@ Send the token as a header: `Authorization: Bearer <token>`.
 | GET | `/` | the status page |
 | GET | `/api/v1/info` | `{"api_version": 1, "product": "ezcapture", "version": "...", "filters": [{"id": "...", "name": "..."}]}` |
 | GET | `/api/v1/filters/<id>/state` | the [state document](#state-document) |
+| GET | `/api/v1/filters/<id>/controls` | every [control](#controls) with its value, type and range |
+| GET | `/api/v1/filters/<id>/controls/<name>` | one control |
+| PUT or POST | `/api/v1/filters/<id>/controls/<name>` | sets it from a body like `{"value": true}`, returns it |
 
 `<id>` can be `default`, which is the first filter loaded, so most setups never need the real id.
 
 Responses send `Cache-Control: no-store`. The state document has an `ETag`, so send `If-None-Match` to get a `304`
-with no body when nothing has changed. Errors are `{"error": "<code>", "message": "..."}` with status `401` (missing
-or wrong token), `404` (unknown filter or path), `405` (wrong method) or `413` (body over 4 KB).
+with no body when nothing has changed. Errors are `{"error": "<code>", "message": "..."}` with status `400` (bad body or
+value), `401` (missing or wrong token), `404` (unknown filter, control or path), `405` (wrong method), `413` (body
+over 4 KB) or `500` (the setting could not be saved).
+
+## Controls
+
+| Name | Type | Range | Applies |
+|---|---|---|---|
+| `refresh_rate_switch` | boolean | | now |
+| `hdr_profile_switch` | boolean | | now |
+| `hdr_profile` | integer | 0 to 1000, the JRiver JRVR profile id | now |
+| `sdr_profile` | integer | 0 to 1000 | now |
+| `high_thread_priority` | boolean | | when playback next starts |
+| `audio_capture` | boolean | | when the filter is next loaded |
+| `metrics_enabled` | boolean | | when the filter is next loaded |
+| `metrics_port` | integer | 1 to 65535 | when the filter is next loaded |
+| `metrics_bind_address` | string | an IPv4 or IPv6 address, up to 63 characters | when the filter is next loaded |
+
+Each control reads and returns:
+
+```json
+{"name": "hdr_profile", "type": "integer", "value": 3, "min": 0, "max": 1000, "applies": "now", "pending_reload": false}
+```
+
+`applies` is `now`, `next_start` or `next_load`. `pending_reload` is `true` when a `next_load` control has been
+changed since the filter was loaded. `GET .../controls` also returns `pending_reload` for all of them together,
+and the state document has it as `controls.pending_reload`.
+
+Values are read leniently so Home Assistant bodies stay simple:
+
+* booleans: `true`/`false`, `1`/`0`, or the strings `"on"`/`"off"`, `"true"`/`"false"`, `"yes"`/`"no"`, `"1"`/`"0"`
+* integers: a whole number, or a string holding one
+
+A change made through the API updates an open property page, and the property page's changes show up in the API.
+The web API's own settings (enabled, address, port, token) can only be changed on the property page, so the API
+cannot lock itself out or open itself to the network.
+
+## Home Assistant switches and numbers
+
+A boolean control maps straight onto HA's RESTful switch, which reads and sets one URL:
+
+```yaml
+switch:
+  - platform: rest
+    name: Capture refresh rate switching
+    unique_id: ezcapture_refresh_rate_switch
+    resource: http://capture-pc:9474/api/v1/filters/default/controls/refresh_rate_switch
+    method: put
+    headers:
+      Authorization: !secret ezcapture_auth
+      Content-Type: application/json
+    body_on: '{"value": true}'
+    body_off: '{"value": false}'
+    is_on_template: "{{ value_json.value }}"
+```
+
+HA has no RESTful number, so integer controls use a `rest_command` and a template number:
+
+```yaml
+rest_command:
+  ezcapture_set:
+    url: "http://capture-pc:9474/api/v1/filters/default/controls/{{ name }}"
+    method: put
+    headers:
+      Authorization: !secret ezcapture_auth
+    content_type: application/json
+    payload: '{"value": {{ value | tojson }}}'
+
+template:
+  - number:
+      - name: Capture HDR profile
+        unique_id: ezcapture_hdr_profile
+        min: 0
+        max: 1000
+        step: 1
+        state: "{{ state_attr('sensor.capture_controls', 'hdr_profile') }}"
+        set_value:
+          - action: rest_command.ezcapture_set
+            data:
+              name: hdr_profile
+              value: "{{ value | int }}"
+          - action: homeassistant.update_entity
+            target:
+              entity_id: sensor.capture_controls
+```
+
+`sensor.capture_controls` holds the current values as attributes. Add it to the `rest:` block from
+[Home Assistant sensors](#home-assistant-sensors):
+
+```yaml
+      - name: Capture controls
+        unique_id: ezcapture_controls
+        value_template: "{{ value_json.controls.pending_reload }}"
+        json_attributes_path: "$.controls"
+        json_attributes:
+          - refresh_rate_switch
+          - hdr_profile_switch
+          - hdr_profile
+          - sdr_profile
+          - high_thread_priority
+          - audio_capture
+```
+
+`rest_command` can also be called straight from a script or automation, e.g. to turn off refresh rate switching
+while a game console is on:
+
+```yaml
+action: rest_command.ezcapture_set
+data:
+  name: refresh_rate_switch
+  value: false
+```
 
 ## Home Assistant sensors
 
@@ -272,7 +386,8 @@ last metrics window. The stages depend on the card and the pixel format, so look
 ### `controls` and `metrics`
 
 `controls` holds the property page settings: `refresh_rate_switch`, `hdr_profile_switch`, `hdr_profile`,
-`sdr_profile`, `high_thread_priority`, `audio_capture`, `metrics_enabled`.
+`sdr_profile`, `high_thread_priority`, `audio_capture`, `metrics_enabled`, and `pending_reload` (see
+[Controls](#controls)).
 
 `metrics` holds the Prometheus settings: `enabled`, `bind_address`, `port`, `status_text`.
 
