@@ -57,7 +57,8 @@ interface __declspec(uuid("4D6B8852-06A6-4997-BC07-3507BB77F748")) ISignalInfoCB
 	                                 const std::string& status) = 0;
 	STDMETHOD(Reload)(dv_status* payload) = 0;
 	STDMETHOD(ReloadWebControls)(const bool& enabled, const std::string& bindAddress, const DWORD& port,
-	                             const std::string& status, const std::string& url, const std::string& token) = 0;
+	                             const std::string& notifyUrl, const std::string& status, const std::string& url,
+	                             const std::string& token) = 0;
 	// the filter has stopped, called on the thread that stopped it
 	STDMETHOD(OnFilterStopped)() = 0;
 };
@@ -92,6 +93,9 @@ interface __declspec(uuid("6A505550-28B2-4668-BC2C-461E75A63BC4")) ISignalInfo :
 	STDMETHOD(SetWebBindAddress)(const std::wstring& address) = 0;
 	// replaces the access token, anything using the old one (e.g. Home Assistant) must be updated
 	STDMETHOD(NewWebToken)() = 0;
+	// where to POST the summary when it changes, empty for nowhere
+	STDMETHOD(GetWebNotifyUrl)(std::wstring* url) = 0;
+	STDMETHOD(SetWebNotifyUrl)(const std::wstring& url) = 0;
 };
 
 class CSignalInfoProp :
@@ -131,7 +135,8 @@ public:
 	                              const std::string& status) override;
 	HRESULT Reload(dv_status* payload) override;
 	HRESULT ReloadWebControls(const bool& enabled, const std::string& bindAddress, const DWORD& port,
-	                          const std::string& status, const std::string& url, const std::string& token) override;
+	                          const std::string& notifyUrl, const std::string& status, const std::string& url,
+	                          const std::string& token) override;
 	HRESULT OnFilterStopped() override;
 
 private:

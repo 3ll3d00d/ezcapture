@@ -13,6 +13,7 @@ add_library(common STATIC
     video_capture_pin.cpp
     web_api.cpp
     web_json.cpp
+    web_notifier.cpp
     web_server.cpp
 )
 

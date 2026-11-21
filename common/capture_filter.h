@@ -27,6 +27,7 @@
 #include "metrics.h"
 #include "modeswitcher.h"
 #include "status_snapshot.h"
+#include "web_notifier.h"
 #include "web_server.h"
 
 #include <streams.h>
@@ -48,6 +49,7 @@ inline constexpr auto webEnabledRegKey = L"webEnabled";
 inline constexpr auto webPortRegKey = L"webPort";
 inline constexpr auto webBindAddressRegKey = L"webBindAddress";
 inline constexpr auto webTokenRegKey = L"webToken";
+inline constexpr auto webNotifyUrlRegKey = L"webNotifyUrl";
 
 struct web_config
 {
@@ -55,6 +57,8 @@ struct web_config
 	uint16_t port{0};
 	std::string bindAddress{"127.0.0.1"};
 	std::string token;
+	// a webhook to POST the summary to when it changes
+	std::string notifyUrl;
 };
 
 // Non template parts of the filter impl
@@ -236,6 +240,16 @@ public:
 
 	STDMETHODIMP SetWebBindAddress(const std::wstring& address) override;
 	STDMETHODIMP NewWebToken() override;
+
+	STDMETHODIMP GetWebNotifyUrl(std::wstring* url) override
+	{
+		CheckPointer(url, E_POINTER)
+		std::lock_guard lock{mSettingsLock};
+		url->assign(mWebConfig.notifyUrl.begin(), mWebConfig.notifyUrl.end());
+		return S_OK;
+	}
+
+	STDMETHODIMP SetWebNotifyUrl(const std::wstring& url) override;
 
 	DWORD GetMCProfileId(bool hdr)
 	{
@@ -434,8 +448,8 @@ protected:
 		                   mSdrProfile, mHighThreadPriorityEnabled, mAudioCaptureEnabled);
 		cb->ReloadMetricsControls(mMetricsConfig.enabled, mMetricsConfig.bindAddress, mMetricsConfig.port,
 		                          mMetricsStatus);
-		cb->ReloadWebControls(mWebConfig.enabled, mWebConfig.bindAddress, mWebConfig.port, mWebStatus, mWebUrl,
-		                      mWebConfig.token);
+		cb->ReloadWebControls(mWebConfig.enabled, mWebConfig.bindAddress, mWebConfig.port, mWebConfig.notifyUrl,
+		                      WebStatus(), mWebUrl, mWebConfig.token);
 	}
 
 	// sets (or clears, with nullptr) the status callback and sends it everything; not part of ISignalInfo so the
@@ -513,6 +527,13 @@ protected:
 	std::unique_ptr<web_adapter> mWeb;
 	std::shared_ptr<web_server> mWebServer;
 	std::shared_ptr<web_registration> mWebRegistration;
+	std::unique_ptr<web_notifier> mWebNotifier;
+
+	// the web API status plus the webhook's
+	std::string WebStatus() const
+	{
+		return mWebNotifier ? mWebStatus + "; webhook: " + mWebNotifier->Status() : mWebStatus;
+	}
 
 private:
 	// the quill backend is shared by every filter in the module so is started/stopped by reference count

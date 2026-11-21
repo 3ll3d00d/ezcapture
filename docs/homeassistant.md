@@ -233,6 +233,48 @@ automation:
               - action: script.projector_sdr_mode
 ```
 
+## Instant updates with a webhook
+
+Polling every 10 seconds means an automation can react up to 10 seconds late, e.g. to a change from SDR to HDR. For
+an instant reaction, put a Home Assistant webhook URL in the **Webhook** box on the property page, e.g.
+`http://homeassistant.local:8123/api/webhook/ezcapture-lounge`. Apply, then restart playback.
+
+The filter then POSTs this whenever the summary or the filter state changes, and once when it is loaded:
+
+```json
+{"filter": "magewell-a3f21c", "name": "Magewell Pro Capture", "state": "running",
+ "summary": {"signal": true, "video_mode": "3840x2160p23.976", "dynamic_range": "hdr10", "audio": "truehd", "audio_channels": 8}}
+```
+
+* It waits 500 ms after a change for any more, so a signal that drops for a moment sends one update, and only the
+  latest summary is sent.
+* An update identical to the last one sent is skipped.
+* It gives up after 2 seconds and does not retry. The result is shown after "webhook:" in the property page status
+  line.
+* It is sent from a Windows thread pool thread, so a slow or missing Home Assistant never holds up capture.
+* No update is sent when the filter unloads. The REST sensors going `unavailable` show that.
+
+Use it as a trigger for template sensors:
+
+```yaml
+template:
+  - trigger:
+      - trigger: webhook
+        webhook_id: ezcapture-lounge
+        local_only: true
+        allowed_methods: [POST]
+    sensor:
+      - name: Capture dynamic range (instant)
+        unique_id: ezcapture_dynamic_range_push
+        device_class: enum
+        state: "{{ trigger.json.summary.dynamic_range or 'none' }}"
+      - name: Capture video mode (instant)
+        unique_id: ezcapture_video_mode_push
+        state: "{{ trigger.json.summary.video_mode or 'none' }}"
+```
+
+or directly in an automation (`trigger: webhook` with the same `webhook_id`).
+
 ## State document
 
 `GET /api/v1/filters/<id>/state` returns one JSON document with everything. Its shape never changes:

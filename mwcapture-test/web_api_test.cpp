@@ -22,9 +22,11 @@
 #include "status_snapshot.h"
 #include "web_api.h"
 #include "web_json.h"
+#include "web_notifier.h"
 #include "web_server.h"
 
 #include <map>
+#include <thread>
 #include <set>
 
 #pragma comment(lib, "ws2_32.lib")
@@ -865,4 +867,218 @@ TEST(WebServer, DISABLED_ServeForPageDevelopment)
 		Sleep(500);
 	}
 	server->Api().Unregister(reg);
+}
+
+namespace
+{
+	// accepts connections on 127.0.0.1:port and records each request, answering with status (or not at all)
+	struct webhook_receiver
+	{
+		explicit webhook_receiver(uint16_t port, int status = 200, bool answer = true) : answerWith(status),
+			respond(answer)
+		{
+			WSADATA wsa;
+			WSAStartup(MAKEWORD(2, 2), &wsa);
+			listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+			sockaddr_in addr{};
+			addr.sin_family = AF_INET;
+			addr.sin_port = htons(port);
+			inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
+			bind(listener, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
+			listen(listener, 4);
+			worker = std::thread([this] { Run(); });
+		}
+
+		~webhook_receiver()
+		{
+			closesocket(listener);
+			worker.join();
+			WSACleanup();
+		}
+
+		void Run()
+		{
+			for (;;)
+			{
+				SOCKET c = accept(listener, nullptr, nullptr);
+				if (c == INVALID_SOCKET)
+				{
+					return;
+				}
+				std::string req;
+				char buf[2048];
+				int n;
+				// read the headers then the body by Content-Length
+				size_t want = std::string::npos;
+				while ((n = recv(c, buf, sizeof(buf), 0)) > 0)
+				{
+					req.append(buf, static_cast<size_t>(n));
+					const auto end = req.find("\r\n\r\n");
+					if (end != std::string::npos && want == std::string::npos)
+					{
+						const auto cl = req.find("Content-Length: ");
+						want = end + 4 + (cl == std::string::npos ? 0 : std::stoul(req.substr(cl + 16)));
+					}
+					if (want != std::string::npos && req.size() >= want)
+					{
+						break;
+					}
+				}
+				{
+					std::lock_guard lock{mutex};
+					requests.push_back(req);
+				}
+				if (respond)
+				{
+					const auto resp = std::format("HTTP/1.1 {} X\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+					                              answerWith);
+					send(c, resp.data(), static_cast<int>(resp.size()), 0);
+				}
+				else
+				{
+					// hold the connection open so the sender waits
+					Sleep(3000);
+				}
+				closesocket(c);
+			}
+		}
+
+		std::vector<std::string> Requests()
+		{
+			std::lock_guard lock{mutex};
+			return requests;
+		}
+
+		int answerWith;
+		bool respond;
+		SOCKET listener;
+		std::thread worker;
+		std::mutex mutex;
+		std::vector<std::string> requests;
+	};
+
+	notify_event event_for(const std::string& mode, const std::string& range = "sdr")
+	{
+		notify_event e;
+		e.summary.signal = true;
+		e.summary.videoMode = mode;
+		e.summary.dynamicRange = range;
+		e.summary.audio = "pcm";
+		e.summary.audioChannels = 2;
+		e.state = filter_run_state::RUNNING;
+		return e;
+	}
+
+	// polls for up to timeoutMs
+	template <typename F>
+	bool eventually(F&& f, int timeoutMs = 1000)
+	{
+		for (int i = 0; i < timeoutMs / 10; ++i)
+		{
+			if (f())
+			{
+				return true;
+			}
+			Sleep(10);
+		}
+		return false;
+	}
+}
+
+TEST(WebNotifier, Payload)
+{
+	EXPECT_EQ(web_notifier::Payload("magewell-abc", "Magewell", event_for("3840x2160p23.976", "hdr10")),
+	          R"({"filter":"magewell-abc","name":"Magewell","state":"running","summary":{"signal":true,"video_mode":"3840x2160p23.976","dynamic_range":"hdr10","audio":"pcm","audio_channels":2}})");
+}
+
+TEST(WebNotifier, RejectsBadUrls)
+{
+	for (const auto* url : {"", "ftp://x/y", "not a url", "http://"})
+	{
+		web_notifier n{"id", "name"};
+		EXPECT_FALSE(n.Start(url).empty()) << url;
+	}
+	web_notifier ok{"id", "name"};
+	EXPECT_EQ(ok.Start("https://ha.local:8123/api/webhook/abc?x=1"), "");
+}
+
+TEST(WebNotifier, SendsTheLatestOnceAfterTheDebounce)
+{
+	webhook_receiver receiver{19490};
+	web_notifier n{"magewell-abc", "Magewell", std::chrono::milliseconds{100}};
+	ASSERT_EQ(n.Start("http://127.0.0.1:19490/api/webhook/ezcapture"), "");
+	n.Notify(event_for("1920x1080p50"));
+	n.Notify(event_for("3840x2160p24"));
+	n.Notify(event_for("3840x2160p23.976", "hdr10"));
+	ASSERT_TRUE(eventually([&] { return receiver.Requests().size() == 1; }));
+	Sleep(300);
+	const auto requests = receiver.Requests();
+	ASSERT_EQ(requests.size(), 1u);
+	EXPECT_TRUE(requests[0].starts_with("POST /api/webhook/ezcapture HTTP/1.1")) << requests[0];
+	EXPECT_TRUE(has(requests[0], "Content-Type: application/json")) << requests[0];
+	EXPECT_TRUE(has(requests[0], R"("video_mode":"3840x2160p23.976","dynamic_range":"hdr10")")) << requests[0];
+	EXPECT_TRUE(eventually([&] { return n.Status() == "Last sent, answered 200"; })) << n.Status();
+
+	// the same event again is not sent
+	n.Notify(event_for("3840x2160p23.976", "hdr10"));
+	Sleep(300);
+	EXPECT_EQ(receiver.Requests().size(), 1u);
+
+	n.Notify(event_for("3840x2160p23.976", "dv"));
+	EXPECT_TRUE(eventually([&] { return receiver.Requests().size() == 2; }));
+}
+
+TEST(WebNotifier, ReportsErrors)
+{
+	webhook_receiver receiver{19491, 404};
+	web_notifier n{"id", "name", std::chrono::milliseconds{10}};
+	ASSERT_EQ(n.Start("http://127.0.0.1:19491/x"), "");
+	n.Notify(event_for("1920x1080p50"));
+	EXPECT_TRUE(eventually([&] { return n.Status() == "The webhook answered 404"; })) << n.Status();
+
+	web_notifier nobody{"id", "name", std::chrono::milliseconds{10}};
+	ASSERT_EQ(nobody.Start("http://127.0.0.1:19492/x"), "");
+	nobody.Notify(event_for("1920x1080p50"));
+	// Windows retries a refused connection for about 2s
+	EXPECT_TRUE(eventually([&] { return nobody.Status().starts_with("Unable to send"); }, 5000)) << nobody.Status();
+}
+
+TEST(WebNotifier, DestructionAbortsASendInProgress)
+{
+	webhook_receiver receiver{19493, 200, false};
+	auto n = std::make_unique<web_notifier>("id", "name", std::chrono::milliseconds{10},
+	                                        std::chrono::milliseconds{2000});
+	ASSERT_EQ(n->Start("http://127.0.0.1:19493/x"), "");
+	n->Notify(event_for("1920x1080p50"));
+	ASSERT_TRUE(eventually([&] { return receiver.Requests().size() == 1; }));
+	const auto t0 = std::chrono::steady_clock::now();
+	n.reset();
+	const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0);
+	EXPECT_LT(ms.count(), 500);
+}
+
+TEST(StatusSnapshot, SummaryListenerSeesOnlyChanges)
+{
+	status_snapshot snap;
+	std::vector<notify_event> seen;
+	snap.SetSummaryListener([&](const status_summary& s, filter_run_state st) { seen.push_back({s, st}); });
+	ASSERT_EQ(seen.size(), 1u);
+	EXPECT_FALSE(seen[0].summary.signal);
+
+	double fps = 23.976;
+	snap.ReloadVfps(&fps);
+	EXPECT_EQ(seen.size(), 1u);
+
+	signal_fixture f;
+	snap.Reload(&f.vin);
+	ASSERT_EQ(seen.size(), 2u);
+	EXPECT_EQ(seen[1].summary.videoMode, "3840x2160p23.976");
+
+	snap.SetRunState(filter_run_state::RUNNING);
+	ASSERT_EQ(seen.size(), 3u);
+	EXPECT_EQ(seen[2].state, filter_run_state::RUNNING);
+
+	snap.SetSummaryListener(nullptr);
+	snap.SetRunState(filter_run_state::PAUSED);
+	EXPECT_EQ(seen.size(), 3u);
 }

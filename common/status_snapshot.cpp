@@ -118,7 +118,39 @@ void status_snapshot::Changed()
 {
 	++mVersion;
 	mUpdated = std::chrono::system_clock::now();
-	OnChanged();
+	if (mListener)
+	{
+		auto summary = Summarise(mVideoInput, mVideoOutput, mHdr, mDv, mAudioInput, mAudioOutput);
+		if (summary != mLastSummary || mRunState != mLastState)
+		{
+			mLastSummary = std::move(summary);
+			mLastState = mRunState;
+			mListener(mLastSummary, mLastState);
+		}
+	}
+}
+
+void status_snapshot::SetSummaryListener(summary_listener listener)
+{
+	std::lock_guard lock{mLock};
+	mListener = std::move(listener);
+	if (mListener)
+	{
+		mLastSummary = Summarise(mVideoInput, mVideoOutput, mHdr, mDv, mAudioInput, mAudioOutput);
+		mLastState = mRunState;
+		mListener(mLastSummary, mLastState);
+	}
+}
+
+void status_snapshot::WriteSummary(web_json::writer& w, const status_summary& summary)
+{
+	w.begin_object();
+	w.key("signal").value(summary.signal);
+	w.key("video_mode").value_or_null(summary.videoMode);
+	w.key("dynamic_range").value_or_null(summary.dynamicRange);
+	w.key("audio").value(summary.audio);
+	w.key("audio_channels").value(summary.audioChannels);
+	w.end_object();
 }
 
 HRESULT status_snapshot::Reload(audio_input_status* payload)
@@ -402,13 +434,8 @@ std::string status_snapshot::ToJson(const std::string& id, const std::string& na
 	w.key("state").value(to_string(runState));
 	w.end_object();
 
-	w.key("summary").begin_object();
-	w.key("signal").value(summary.signal);
-	w.key("video_mode").value_or_null(summary.videoMode);
-	w.key("dynamic_range").value_or_null(summary.dynamicRange);
-	w.key("audio").value(summary.audio);
-	w.key("audio_channels").value(summary.audioChannels);
-	w.end_object();
+	w.key("summary");
+	WriteSummary(w, summary);
 
 	w.key("device").begin_object();
 	w.key("description").value_or_null(dev.deviceDesc);

@@ -19,6 +19,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -32,6 +33,11 @@ enum class filter_run_state : uint8_t
 };
 
 const char* to_string(filter_run_state state);
+
+namespace web_json
+{
+	class writer;
+}
 
 // the values most automations want, worked out from the status, see docs/homeassistant.md
 struct status_summary
@@ -99,7 +105,7 @@ public:
 	HRESULT Reload(dv_status* payload) override;
 	// the web settings are not part of the state document, the token must never be served
 	HRESULT ReloadWebControls(const bool&, const std::string&, const DWORD&, const std::string&, const std::string&,
-	                          const std::string&) override
+	                          const std::string&, const std::string&) override
 	{
 		return S_OK;
 	}
@@ -132,12 +138,19 @@ public:
 	// the codec name the filter reports (codecNames) as a summary audio value
 	static std::string AudioCodecId(const std::string& codecName);
 
-protected:
-	// called with the lock held after every change, so a subclass can see the summary change
-	virtual void OnChanged()
-	{
-	}
+	// writes the summary as the JSON object used by the state document and the webhook
+	static void WriteSummary(web_json::writer& w, const status_summary& summary);
 
+	using summary_listener = std::function<void(const status_summary&, filter_run_state)>;
+
+	/**
+	 * Calls listener whenever the summary or the run state changes, and once straight away with the current values.
+	 * It is called with the snapshot's lock held so must be quick and must not call back into the snapshot. Clearing
+	 * it (nullptr) waits for a call in progress.
+	 */
+	void SetSummaryListener(summary_listener listener);
+
+protected:
 	mutable std::mutex mLock;
 
 	// everything below is guarded by mLock
@@ -157,6 +170,9 @@ protected:
 	double mMeasuredFps{0.0};
 	video_headroom mHeadroom{};
 	status_controls mControls{};
+	summary_listener mListener;
+	status_summary mLastSummary{};
+	filter_run_state mLastState{filter_run_state::STOPPED};
 
 private:
 	void Changed();

@@ -408,6 +408,7 @@
     <ClCompile Include="web_json.cpp" />
     <ClCompile Include="web_api.cpp" />
     <ClCompile Include="web_server.cpp" />
+    <ClCompile Include="web_notifier.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="bgr10_rgb48.h" />
@@ -441,6 +442,7 @@
     <ClInclude Include="web_api.h" />
     <ClInclude Include="web_server.h" />
     <ClInclude Include="web_page.h" />
+    <ClInclude Include="web_notifier.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\directshow_baseclasses\directshow_baseclasses.vcxproj">

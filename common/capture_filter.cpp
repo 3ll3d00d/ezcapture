@@ -287,6 +287,10 @@ capture_filter::capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSI
 		{
 			mWebConfig.token = to_narrow(res.GetValue());
 		}
+		if (auto res = key.TryGetStringValue(webNotifyUrlRegKey))
+		{
+			mWebConfig.notifyUrl = to_narrow(res.GetValue());
+		}
 		#ifndef NO_LOGGING
 		LOG_INFO(mLogData.logger,
 		         "[{}] Loaded properties from registry [hdrProfile:{}, sdrProfile: {}, profileSwitch: {}, rateSwitch: {}, highPriority: {}, audio: {}]",
@@ -776,6 +780,23 @@ void capture_filter::StartWebApi()
 	{
 		mWebStatus += std::format(", port {} is not covered by the installed firewall rule", mWebConfig.port);
 	}
+	if (!mWebConfig.notifyUrl.empty())
+	{
+		auto notifier = std::make_unique<web_notifier>(mWebRegistration->id, mWebRegistration->name);
+		if (auto err = notifier->Start(mWebConfig.notifyUrl); err.empty())
+		{
+			mWebNotifier = std::move(notifier);
+			// sends the current summary straight away, so Home Assistant knows the filter is loaded
+			mWeb->snapshot.SetSummaryListener([n = mWebNotifier.get()](const status_summary& s, filter_run_state st)
+			{
+				n->Notify(notify_event{s, st});
+			});
+		}
+		else
+		{
+			mWebStatus += "; " + err;
+		}
+	}
 	#ifndef NO_LOGGING
 	LOG_INFO(mLogData.logger, "[{}] Web API {}", mLogData.prefix, mWebStatus);
 	#endif
@@ -783,6 +804,12 @@ void capture_filter::StartWebApi()
 
 void capture_filter::StopWebApi()
 {
+	if (mWebNotifier)
+	{
+		// waits for a listener call in progress, then aborts a send in progress
+		mWeb->snapshot.SetSummaryListener(nullptr);
+		mWebNotifier.reset();
+	}
 	if (mWebServer)
 	{
 		// waits for a request in progress, none can start once this returns
@@ -816,8 +843,8 @@ void capture_filter::NotifyControls(bool includePage)
 		                   mHighThreadPriorityEnabled, mAudioCaptureEnabled);
 		cb->ReloadMetricsControls(mMetricsConfig.enabled, mMetricsConfig.bindAddress, mMetricsConfig.port,
 		                          mMetricsStatus);
-		cb->ReloadWebControls(mWebConfig.enabled, mWebConfig.bindAddress, mWebConfig.port, mWebStatus, mWebUrl,
-		                      mWebConfig.token);
+		cb->ReloadWebControls(mWebConfig.enabled, mWebConfig.bindAddress, mWebConfig.port, mWebConfig.notifyUrl,
+		                      WebStatus(), mWebUrl, mWebConfig.token);
 	}
 	if (mWeb)
 	{
@@ -945,6 +972,28 @@ HRESULT capture_filter::SetWebBindAddress(const std::wstring& address)
 			if (auto narrow = to_narrow(address); mWebConfig.bindAddress != narrow)
 			{
 				mWebConfig.bindAddress = std::move(narrow);
+				mWebStatus = webPendingStatus;
+			}
+			return S_OK;
+		}
+	}
+	return E_FAIL;
+}
+
+HRESULT capture_filter::SetWebNotifyUrl(const std::wstring& url)
+{
+	std::lock_guard lock{mSettingsLock};
+	if (!url.empty() && !url.starts_with(L"http://") && !url.starts_with(L"https://"))
+	{
+		return E_INVALIDARG;
+	}
+	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
+	{
+		if (const auto res = key.TrySetStringValue(webNotifyUrlRegKey, url))
+		{
+			if (auto narrow = to_narrow(url); mWebConfig.notifyUrl != narrow)
+			{
+				mWebConfig.notifyUrl = std::move(narrow);
 				mWebStatus = webPendingStatus;
 			}
 			return S_OK;

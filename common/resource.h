@@ -143,6 +143,8 @@
 #define IDC_WEB_COPY_TOKEN              1139
 #define IDC_WEB_NEW_TOKEN               1140
 #define IDC_WEB_STATUS                  1141
+#define IDC_WEB_NOTIFY_LABEL            1142
+#define IDC_WEB_NOTIFY_URL              1143
 
 // Next default values for new objects
 // 
@@ -150,7 +152,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        103
 #define _APS_NEXT_COMMAND_VALUE         40001
-#define _APS_NEXT_CONTROL_VALUE         1142
+#define _APS_NEXT_CONTROL_VALUE         1144
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

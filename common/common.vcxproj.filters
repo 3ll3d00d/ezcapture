@@ -48,6 +48,9 @@
     <ClCompile Include="web_server.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="web_notifier.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ISpecifyPropertyPages2.h">
@@ -141,6 +144,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="web_page.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="web_notifier.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

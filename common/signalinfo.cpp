@@ -169,11 +169,19 @@ HRESULT CSignalInfoProp::OnApplyChanges()
 	SendDlgItemMessage(m_Dlg, IDC_WEB_BIND_ADDRESS, WM_GETTEXT, 64, reinterpret_cast<LPARAM>(&webBindAddress));
 	auto hr12 = mSignalInfo->SetWebBindAddress(webBindAddress);
 
+	WCHAR notifyUrl[256];
+	SendDlgItemMessage(m_Dlg, IDC_WEB_NOTIFY_URL, WM_GETTEXT, 256, reinterpret_cast<LPARAM>(&notifyUrl));
+	auto hr13 = mSignalInfo->SetWebNotifyUrl(notifyUrl);
+	if (hr13 == E_INVALIDARG)
+	{
+		MessageBoxW(m_Dlg, L"The webhook URL must start with http:// or https://", L"Web API", MB_OK | MB_ICONWARNING);
+	}
+
 	// show the outcome (e.g. that a restart is required)
 	mSignalInfo->Reload();
 
 	return hr1 == S_OK && hr2 == S_OK && hr3 == S_OK && hr4 == S_OK && hr5 == S_OK && hr6 == S_OK && hr7 == S_OK
-	       && hr8 == S_OK && hr9 == S_OK && hr10 == S_OK && hr11 == S_OK && hr12 == S_OK
+	       && hr8 == S_OK && hr9 == S_OK && hr10 == S_OK && hr11 == S_OK && hr12 == S_OK && hr13 == S_OK
 		       ? S_OK
 		       : E_FAIL;
 }
@@ -313,6 +321,7 @@ INT_PTR CSignalInfoProp::OnReceiveMessage(HWND hwnd, UINT uMsg, WPARAM wParam, L
 
 			EnableWindow(GetDlgItem(m_Dlg, IDC_WEB_PORT), bFlag);
 			EnableWindow(GetDlgItem(m_Dlg, IDC_WEB_BIND_ADDRESS), bFlag);
+			EnableWindow(GetDlgItem(m_Dlg, IDC_WEB_NOTIFY_URL), bFlag);
 			if (bFlag != existing)
 			{
 				SetDirty();
@@ -346,6 +355,19 @@ INT_PTR CSignalInfoProp::OnReceiveMessage(HWND hwnd, UINT uMsg, WPARAM wParam, L
 			std::wstring existing;
 			mSignalInfo->GetWebBindAddress(&existing);
 			if (bindAddress[0] != L'\0' && existing != bindAddress)
+			{
+				SetDirty();
+				return TRUE;
+			}
+			return FALSE;
+		}
+		if (LOWORD(wParam) == IDC_WEB_NOTIFY_URL && HIWORD(wParam) == EN_CHANGE)
+		{
+			WCHAR notifyUrl[256];
+			SendDlgItemMessage(m_Dlg, IDC_WEB_NOTIFY_URL, WM_GETTEXT, 256, reinterpret_cast<LPARAM>(&notifyUrl));
+			std::wstring existing;
+			mSignalInfo->GetWebNotifyUrl(&existing);
+			if (existing != notifyUrl)
 			{
 				SetDirty();
 				return TRUE;
@@ -1029,12 +1051,12 @@ HRESULT CSignalInfoProp::ReloadControls(const bool& rateEnabled, const bool& pro
 }
 
 HRESULT CSignalInfoProp::ReloadWebControls(const bool& enabled, const std::string& bindAddress, const DWORD& port,
-                                           const std::string& status, const std::string& url,
-                                           const std::string& token)
+                                           const std::string& notifyUrl, const std::string& status,
+                                           const std::string& url, const std::string& token)
 {
-	if (PostToUiThread([this, enabled, bindAddress, port, status, url, token]
+	if (PostToUiThread([this, enabled, bindAddress, port, notifyUrl, status, url, token]
 	{
-		ReloadWebControls(enabled, bindAddress, port, status, url, token);
+		ReloadWebControls(enabled, bindAddress, port, notifyUrl, status, url, token);
 	}))
 	{
 		return S_OK;
@@ -1053,6 +1075,12 @@ HRESULT CSignalInfoProp::ReloadWebControls(const bool& enabled, const std::strin
 	SendDlgItemMessage(m_Dlg, IDC_WEB_PORT, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 	EnableWindow(GetDlgItem(m_Dlg, IDC_WEB_PORT), enabled);
 	SendDlgItemMessage(m_Dlg, IDC_ENABLE_WEB, BM_SETCHECK, enabled, 0);
+
+	WCHAR notifyBuffer[256];
+	_snwprintf_s(notifyBuffer, _TRUNCATE, L"%hs", notifyUrl.c_str());
+	SendDlgItemMessage(m_Dlg, IDC_WEB_NOTIFY_URL, EM_SETLIMITTEXT, 255, 0);
+	SendDlgItemMessage(m_Dlg, IDC_WEB_NOTIFY_URL, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(notifyBuffer));
+	EnableWindow(GetDlgItem(m_Dlg, IDC_WEB_NOTIFY_URL), enabled);
 
 	WCHAR urlBuffer[256];
 	_snwprintf_s(urlBuffer, _TRUNCATE, L"%hs", url.c_str());
