@@ -404,6 +404,8 @@
     <ClCompile Include="modeswitcher.cpp" />
     <ClCompile Include="signalinfo.cpp" />
     <ClCompile Include="video_capture_pin.cpp" />
+    <ClCompile Include="status_snapshot.cpp" />
+    <ClCompile Include="web_json.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="bgr10_rgb48.h" />
@@ -432,6 +434,8 @@
     <ClInclude Include="version.h" />
     <ClInclude Include="VideoFrameWriter.h" />
     <ClInclude Include="yuy2_yv16.h" />
+    <ClInclude Include="status_snapshot.h" />
+    <ClInclude Include="web_json.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\directshow_baseclasses\directshow_baseclasses.vcxproj">

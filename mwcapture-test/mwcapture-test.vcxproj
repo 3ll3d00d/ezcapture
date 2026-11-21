@@ -177,6 +177,7 @@
     <ClCompile Include="metrics_test.cpp" />
     <ClCompile Include="dv_tunnel_test.cpp" />
     <ClCompile Include="test.cpp" />
+    <ClCompile Include="web_api_test.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\common\common.vcxproj">

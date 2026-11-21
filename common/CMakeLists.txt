@@ -8,7 +8,9 @@ add_library(common STATIC
     metrics.cpp
     modeswitcher.cpp
     signalinfo.cpp
+    status_snapshot.cpp
     video_capture_pin.cpp
+    web_json.cpp
 )
 
 target_include_directories(common PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
