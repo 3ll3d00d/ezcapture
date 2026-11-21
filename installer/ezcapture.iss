@@ -84,6 +84,7 @@ Name: "bm"; Description: "Blackmagic filter (DeckLink)"; Types: full bm
 
 [Tasks]
 Name: "trace"; Description: "Also install the trace builds"; Components: mw bm; Flags: unchecked
+Name: "firewall"; Description: "Allow the web API through Windows Firewall (private networks only)"; Components: mw bm
 
 [Files]
 ; AVX2 or no-arch build, chosen to suit this CPU
@@ -112,15 +113,26 @@ Root: HKLM64; Subkey: "Software\ezcapture"; ValueType: string; ValueName: "Build
 Type: files; Name: "{app}\version.txt"
 
 [Run]
+; the web API firewall rules are always deleted first, so running setup again neither duplicates them nor keeps one
+; that is no longer wanted, then added back for the filters installed. netsh failing to delete a rule that does not
+; exist is expected, Inno Setup ignores the exit code.
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""ezcapture Magewell web API"""; StatusMsg: "Updating firewall rules..."; Flags: runhidden
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""ezcapture DeckLink web API"""; StatusMsg: "Updating firewall rules..."; Flags: runhidden
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""ezcapture Magewell web API"" dir=in action=allow protocol=TCP localport=9474 profile=private remoteip=localsubnet"; StatusMsg: "Updating firewall rules..."; Flags: runhidden; Tasks: firewall; Components: mw
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""ezcapture DeckLink web API"" dir=in action=allow protocol=TCP localport=9475 profile=private remoteip=localsubnet"; StatusMsg: "Updating firewall rules..."; Flags: runhidden; Tasks: firewall; Components: bm
 Filename: "https://www.blackmagicdesign.com/support/family/capture-and-playback"; Description: "Open the Blackmagic Desktop Video download page"; Flags: postinstall shellexec skipifsilent nowait; Check: NeedDesktopVideo
 Filename: "https://github.com/Nevcairiel/LAVFilters/releases"; Description: "Open the LAV Filters download page"; Flags: postinstall shellexec skipifsilent nowait unchecked; Check: NeedLav
 Filename: "{#AppUrl}#configuration"; Description: "Open the player setup guide"; Flags: postinstall shellexec skipifsilent nowait unchecked
 
+[UninstallRun]
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""ezcapture Magewell web API"""; Flags: runhidden; RunOnceId: "DeleteMagewellFirewallRule"
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""ezcapture DeckLink web API"""; Flags: runhidden; RunOnceId: "DeleteDeckLinkFirewallRule"
+
 [Messages]
-SelectTasksDesc=Do you want the trace builds as well?
+SelectTasksDesc=Do you want the trace builds or the firewall rule?
 
 [CustomMessages]
-TraceExplain=The trace builds are a second copy of each filter that writes a detailed log (signal and format changes, frame timings, errors) to your Windows temp folder.%n%nThey are registered alongside the normal filters under their own names, e.g. "Magewell Pro Capture (Trace)", so in your player you choose which one to use. Use them when diagnosing a problem or when asked for a log in a bug report; use the normal filters day to day as logging costs CPU and disk space.%n%nYou can add or remove them later by running this installer again.
+TraceExplain=The trace builds are a second copy of each filter that writes a detailed log to your Windows temp folder. They are registered under their own names, e.g. "Magewell Pro Capture (Trace)", so in your player you choose which one to use. Use them when diagnosing a problem or when asked for a log in a bug report.%n%nThe firewall rule lets Home Assistant or a browser on another PC reach the filter's web API, which stays off until you enable it on the property page. It opens TCP port 9474 (Magewell) and 9475 (Blackmagic) on private networks, to the local subnet only.%n%nYou can change either later by running this installer again.
 
 [Code]
 const
@@ -366,11 +378,11 @@ begin
         'ezcapture ' + PreviousVersion + ' is currently installed and will be replaced by {#AppVersion}.';
   end;
 
-  { make room for the trace build explanation above the task list }
+  { make room for the trace build and firewall explanation above the task list }
   Gap := WizardForm.TasksList.Top - WizardForm.SelectTasksLabel.Top - WizardForm.SelectTasksLabel.Height;
   WizardForm.SelectTasksLabel.Caption := CustomMessage('TraceExplain');
   WizardForm.SelectTasksLabel.WordWrap := True;
-  WizardForm.SelectTasksLabel.Height := ScaleY(140);
+  WizardForm.SelectTasksLabel.Height := ScaleY(150);
   WizardForm.TasksList.Top := WizardForm.SelectTasksLabel.Top + WizardForm.SelectTasksLabel.Height + Gap;
   WizardForm.TasksList.Height := WizardForm.SelectTasksPage.Height - WizardForm.TasksList.Top;
 

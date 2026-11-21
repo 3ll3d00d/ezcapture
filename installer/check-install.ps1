@@ -33,6 +33,29 @@ foreach ($name in $filters.Keys) {
     Show $name "$path; $inCat"
 }
 
+'--- web API firewall rules'
+foreach ($rule in @(@{ Name = 'ezcapture Magewell web API'; Port = '9474' }, @{ Name = 'ezcapture DeckLink web API'; Port = '9475' })) {
+    $r = Get-NetFirewallRule -DisplayName $rule.Name
+    if ($r) {
+        $port = ($r | Get-NetFirewallPortFilter).LocalPort
+        $remote = ($r | Get-NetFirewallAddressFilter).RemoteAddress
+        Show $rule.Name "enabled=$($r.Enabled) action=$($r.Action) profile=$($r.Profile) port=$port remote=$remote (expect port $($rule.Port), Private, LocalSubnet)"
+    } else {
+        Show $rule.Name 'absent'
+    }
+}
+# dismissing the Windows Firewall prompt for a player creates a block rule for its exe, which beats the port rule
+$players = 'mpc-be', 'mpc-hc', 'Media Center'
+$blocks = Get-NetFirewallRule -Direction Inbound -Action Block -Enabled True | Where-Object {
+    $app = ($_ | Get-NetFirewallApplicationFilter).Program
+    $app -and ($players | Where-Object { $app -like "*$_*" })
+}
+if ($blocks) {
+    foreach ($b in $blocks) { Show 'Player block rule' "$($b.DisplayName): $(($b | Get-NetFirewallApplicationFilter).Program) (blocks the web API, delete it in Windows Defender Firewall)" }
+} else {
+    Show 'Player block rules' 'none'
+}
+
 '--- prerequisites'
 $vc = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64'
 Show 'VC++ x64 runtime' $(if ($vc.Installed -eq 1) { "$($vc.Major).$($vc.Minor).$($vc.Bld)" } else { 'not installed' })

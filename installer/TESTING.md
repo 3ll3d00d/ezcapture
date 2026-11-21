@@ -29,9 +29,9 @@ Notes:
 | Welcome              | "ezcapture 0.0.0-ci.64", no "currently installed" sentence                               |
 | Destination          | `C:\Program Files\ezcapture`                                                             |
 | Components           | Types: both / Magewell only / Blackmagic only / Custom. Unticking both and pressing Next gives "Select at least one filter" |
-| Tasks                | Trace explanation is fully readable, not clipped or overlapping the "Also install the trace builds" box, which is unticked |
+| Tasks                | Trace and firewall explanation is fully readable, not clipped or overlapping the task boxes. "Also install the trace builds" is unticked, "Allow the web API through Windows Firewall" is ticked |
 | Prerequisites        | VC++ and Magewell runtimes are not listed (already current). "Do it yourself" lists Desktop Video if missing, the Magewell driver reminder and LAV Filters if not registered. If nothing is missing the page reads "Everything setup can install for you is already present" |
-| Ready                | Version, Build "AVX2 optimised" (or no-arch on an older CPU), both components, the trace task, no prerequisites to install |
+| Ready                | Version, Build "AVX2 optimised" (or no-arch on an older CPU), both components, the trace and firewall tasks, no prerequisites to install |
 | Finish               | "Open the Blackmagic Desktop Video download page" (ticked, only if Desktop Video is missing), LAV Filters page (unticked, only if LAV is not registered), player setup guide (unticked). Ticked ones open in the browser |
 
 Tick the trace task and install. Check:
@@ -41,6 +41,8 @@ Tick the trace task and install. Check:
 - [ ] Files: `mwcapture.ax`, `mwcapture-trace.ax`, `bmcapture.ax`, `bmcapture-trace.ax`, `COPYING`, `version.txt`,
       `licenses\MWCaptureRT-RedistLicense.rtf`, `unins000.exe/.dat`
 - [ ] All four filters registered to the Program Files paths and listed as video capture sources
+- [ ] Firewall rules `ezcapture Magewell web API` (port 9474) and `ezcapture DeckLink web API` (port 9475), both
+      enabled, action Allow, profile Private, remote LocalSubnet
 - [ ] No "could not be registered" error box
 
 Functional:
@@ -60,6 +62,7 @@ Run A again:
 Choose "Magewell only", untick trace, install. Check:
 
 - [ ] `bmcapture.ax`, `bmcapture-trace.ax` and `mwcapture-trace.ax` deleted, and those three filters not registered
+- [ ] Only the Magewell firewall rule remains, and only one of it (not a duplicate)
 - [ ] `mwcapture.ax` still registered, and JRiver still plays the Magewell channel
 - [ ] Still a single Installed apps entry
 
@@ -121,7 +124,8 @@ ezcapture-0.0.0-ci.64-setup.exe /VERYSILENT /SUPPRESSMSGBOXES /COMPONENTS="mw" /
 
 From Settings > Apps > Installed apps > ezcapture > Uninstall:
 
-- [ ] Check: no Installed apps entry, no `HKLM\Software\ezcapture`, no install folder, none of the four filters registered
+- [ ] Check: no Installed apps entry, no `HKLM\Software\ezcapture`, no install folder, none of the four filters registered,
+      no ezcapture firewall rules
 - [ ] JRiver no longer lists the filters
 - [ ] VC++ and Magewell runtimes remain installed (expected, other software may need them)
 - [ ] Filter settings under HKCU remain (expected)
@@ -145,7 +149,26 @@ On a PC whose CPU lacks AVX2 (Check prints "no (NoArch)"):
 - [ ] Ready page shows the no-arch build, and `HKLM\Software\ezcapture\Build` is `NoArch`
 - [ ] Capture works (the AVX2 build would crash with an illegal instruction on such a CPU)
 
-## 9. Release build
+## 9. Web API and firewall rule (capture PC)
+
+Run setup again with the firewall task unticked:
+
+- [ ] Check shows both firewall rules absent
+
+Run it again with the task ticked, then enable the web API on the Magewell property page with address `0.0.0.0` and
+port 9474, apply, and restart playback:
+
+- [ ] The status line reads `Serving http://0.0.0.0:9474/ as magewell-<serial>`
+- [ ] No Windows Firewall prompt appears. If one does, choose Allow, never Cancel: Cancel creates a block rule for the
+      player that beats the installer's rule. Check lists any such block rules under "Player block rules"
+- [ ] From another PC on the LAN, **Copy Link** opens the status page and it updates every second
+- [ ] `curl http://<capture-pc>:9474/api/v1/filters/default/state` gives 401, and with
+      `-H "Authorization: Bearer <token>"` gives the JSON
+- [ ] Change the port to 9480, apply, restart playback: the status line adds "port 9480 is not covered by the
+      installed firewall rule", and the other PC cannot connect
+- [ ] Set the port back to 9474
+
+## 10. Release build
 
 After tagging a release:
 
