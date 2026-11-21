@@ -621,6 +621,20 @@
 
 /**
  * @ingroup group_fourcc
+ * @brief Y210
+ * @details YUV 10bits 4:2:2 packed(32bits)\n
+ * A single pixel takes 4 bytes.\n
+ * Data structure:\n
+ * 			   {[Y00 U00][Y01 V01]} {[Y02 U02][Y03 V03]} ...\n
+ * 			   ...\n
+ * Converts to YUV data as:\n
+ * 			   [Y00 U00 V01][Y01 U00 V01][Y02 U02 V03][Y03 U02 V03] ...\n
+ * 			   ...\n
+*/
+#define MWFOURCC_Y210       MWFOURCC('Y', '2', '1', '0')
+
+/**
+ * @ingroup group_fourcc
  * @brief Y410
  * @details Packed YUV 10bits 4:4:4 (32bits Y10U10V10A2) \n
  * A single pixel takes 4 bytes.\n
@@ -783,6 +797,7 @@ inline int FOURCC_GetBpp(
 	case MWFOURCC_ABGR:
 	case MWFOURCC_Y410:
 	case MWFOURCC_V410:
+	case MWFOURCC_Y210:
 	case MWFOURCC_P210:
 	case MWFOURCC_RGB10:
 	case MWFOURCC_BGR10:

@@ -3460,6 +3460,46 @@ MW_RESULT
 	HCHANNEL										hChannel,
 	MWCAP_VIDEO_CONNECTION_FORMAT*					paConnectionFormat
 	);
+
+/**
+ * @ingroup group_functions_common
+ * @brief Gets the direct show path of the capture device.
+ * @param[in] hChannel					Channel handle
+ * @param[out] pszPath					Direct show device path
+ * @return Function return values are as follows:
+ * <table>
+ * 	<tr>
+ * 		<td> #MW_SUCCEEDED </td>
+ * 		<td> Function call succeeded. </td>
+ * 	</tr>
+ * 	<tr>
+ * 		<td> #MW_FAILED </td>
+ * 		<td> Function call failed.  </td>
+ * 	</tr>
+ * 	<tr>
+ * 		<td> #MW_INVALID_PARAMS </td>
+ * 		<td> Input invalid value(s).</td>
+ * 	</tr>
+ * </table>
+ * @details Usage: \n
+ * @code
+ * WCHAR path[128];
+ * WCHAR directShowPath[256];
+ * MWGetDevicePath(k,path);
+ * HCHANNEL t_channel=MWOpenChannelByPath(path);
+ * ...
+ * MWGetDeviceDShowPath(t_channel, directShowPath);
+ * ...
+ * MWCloseChannel(t_channel);
+ * @endcode
+ */
+MW_RESULT
+LIBMWCAPTURE_API
+MWGetDeviceDShowPath(
+	HCHANNEL 						hChannel,
+	WCHAR*                          pszPath
+	);
+
 #ifdef __cplusplus
 }
 #endif

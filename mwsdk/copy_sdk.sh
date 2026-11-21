@@ -35,7 +35,7 @@ done
 for p in x64 Win32
 do
 	cp "${SDK_DIR}/SDKv3/Lib/${p}/LibMWCapture.lib" lib/${p}/Release/
-	cp "${SDK_DIR}/SDKv3/Lib/${p}/LibMWCaptured.lib" lib/${p}/Debug/
+	cp "${SDK_DIR}/SDKv3/Lib/${p}/LibMWCaptured.lib" lib/${p}/Debug/LibMWCapture.lib
 done
 
 cp "${SDK_DIR}/Runtime/RedistLicense.rtf" .
