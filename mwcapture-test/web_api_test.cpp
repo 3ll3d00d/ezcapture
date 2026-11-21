@@ -864,6 +864,8 @@ TEST(WebServer, DISABLED_ServeForPageDevelopment)
 		target.snap.ReloadV1(&lat);
 		double fps = 23.976 + (i % 3) * 0.001;
 		target.snap.ReloadVfps(&fps);
+		video_headroom h{41.7, 5.0 + (i % 7), 9.0 + (i % 5)};
+		target.snap.ReloadVHeadroom(&h);
 		Sleep(500);
 	}
 	server->Api().Unregister(reg);
@@ -1081,4 +1083,122 @@ TEST(StatusSnapshot, SummaryListenerSeesOnlyChanges)
 	snap.SetSummaryListener(nullptr);
 	snap.SetRunState(filter_run_state::PAUSED);
 	EXPECT_EQ(seen.size(), 3u);
+}
+
+namespace
+{
+	// one video metrics window as the filter sends it
+	void video_window(status_snapshot& snap, uint64_t captureMax, double busyMaxMs = 6.0)
+	{
+		latency_stats capture{"Capture", 10000, 12000.0, captureMax};
+		latency_stats conversion{"Conversion", 20000, 25000.0, 30000};
+		latency_stats none{};
+		snap.ReloadV1(&capture);
+		snap.ReloadV2(&conversion);
+		snap.ReloadV3(&none);
+		double fps = 23.976;
+		snap.ReloadVfps(&fps);
+		video_headroom h{41.7, 5.0, busyMaxMs};
+		snap.ReloadVHeadroom(&h);
+	}
+
+	size_t count_of(const std::string& s, const std::string& what)
+	{
+		size_t n = 0;
+		for (auto pos = s.find(what); pos != std::string::npos; pos = s.find(what, pos + 1))
+		{
+			++n;
+		}
+		return n;
+	}
+}
+
+TEST(StatusHistory, KeepsTheLastFiveMinutesOfWindowsOldestFirst)
+{
+	status_snapshot snap;
+	for (uint64_t i = 0; i < status_snapshot::latencyHistorySize + 5; ++i)
+	{
+		video_window(snap, 20000 + i * 10000);
+	}
+	const auto json = snap.LatencyHistoryJson();
+	EXPECT_TRUE(has(json, R"("video":{"stages":["capture","conversion"],"samples":[{"t":)")) << json.substr(0, 200);
+	EXPECT_EQ(count_of(json, R"("fps":)"), status_snapshot::latencyHistorySize);
+	// the first 5 windows (max 2, 3, 4, 5, 6 ms) were dropped, so the oldest kept has max 7 ms
+	EXPECT_TRUE(has(json, R"("stages":[[1,1.2,7],[2,2.5,3]]})")) << json.substr(0, 300);
+	EXPECT_TRUE(has(json, R"("audio":{"stages":[],"samples":[]})")) << json.substr(json.size() - 100);
+}
+
+TEST(StatusHistory, AudioWindows)
+{
+	status_snapshot snap;
+	latency_stats a1{"Capture", 30000, 35000.0, 40000};
+	latency_stats a2{"Conversion", 1000, 1500.0, 2000};
+	snap.ReloadA1(&a1);
+	snap.ReloadA2(&a2);
+	const auto json = snap.LatencyHistoryJson();
+	EXPECT_TRUE(has(json, R"("audio":{"stages":["capture","conversion"],"samples":[{"t":)")) << json;
+	EXPECT_TRUE(has(json, R"("stages":[[3,3.5,4],[0.1,0.15,0.2]]})")) << json;
+}
+
+TEST(StatusHistory, CountsOverrunWindows)
+{
+	status_snapshot snap;
+	video_window(snap, 20000, 6.0);
+	video_window(snap, 20000, 45.0);
+	video_window(snap, 20000, 41.0);
+	video_window(snap, 20000, 50.0);
+	EXPECT_TRUE(has(snap.ToJson("id", "name"), R"("overrun_windows_total":2)"));
+}
+
+TEST(StatusHistory, SignalChanges)
+{
+	status_snapshot snap;
+	signal_fixture f;
+	snap.Reload(&f.vin);
+	f.hdr.hdrOn = true;
+	snap.Reload(&f.hdr);
+	snap.Reload(&f.hdr);
+	snap.SetRunState(filter_run_state::RUNNING);
+	const auto json = snap.SignalHistoryJson();
+	EXPECT_EQ(count_of(json, R"("t":)"), 3u) << json;
+	EXPECT_TRUE(has(json, R"("state":"stopped","summary":{"signal":true,"video_mode":"3840x2160p23.976","dynamic_range":"sdr")"))
+		<< json;
+	EXPECT_TRUE(has(json, R"("state":"running","summary":{"signal":true,"video_mode":"3840x2160p23.976","dynamic_range":"hdr10")"))
+		<< json;
+	EXPECT_TRUE(has(snap.ToJson("id", "name"), R"("signal_changes_total":3)"));
+
+	for (int i = 0; i < 60; ++i)
+	{
+		f.vin.inX = 1000 + i;
+		snap.Reload(&f.vin);
+	}
+	EXPECT_EQ(count_of(snap.SignalHistoryJson(), R"("t":)"), status_snapshot::signalHistorySize);
+}
+
+TEST(StatusHistory, DisplayChanges)
+{
+	status_snapshot snap;
+	display_status d{24, L"Switched to 24 Hz"};
+	snap.Reload(&d);
+	snap.Reload(&d);
+	d.freq = 60;
+	d.status = L"Switched to 60 Hz";
+	snap.Reload(&d);
+	const auto json = snap.DisplayHistoryJson();
+	EXPECT_EQ(count_of(json, R"("t":)"), 2u) << json;
+	EXPECT_TRUE(has(json, R"("refresh_hz":24,"status_text":"Switched to 24 Hz")")) << json;
+	EXPECT_TRUE(has(json, R"("refresh_hz":60,"status_text":"Switched to 60 Hz")")) << json;
+}
+
+TEST(StatusHistory, Routes)
+{
+	web_api api{true, 9474, "1.0"};
+	fake_target target;
+	api.Register(&target, "magewell-abc", "Magewell", token);
+	for (const auto* kind : {"latency", "signal", "display"})
+	{
+		EXPECT_EQ(api.Handle(get(std::string{"/api/v1/filters/default/history/"} + kind)).status, 200) << kind;
+	}
+	EXPECT_EQ(api.Handle(get("/api/v1/filters/default/history/nope")).status, 404);
+	EXPECT_EQ(api.Handle(get("/api/v1/filters/default/history/signal", "evil.example:9474")).status, 401);
 }

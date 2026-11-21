@@ -1,6 +1,6 @@
 # Plan: web UI and HTTP API for the capture filters
 
-Status: proposed. No code yet.
+Status: implemented on `feature/web-api`. Testing on the capture host has not started.
 
 ## Goal
 
@@ -150,7 +150,7 @@ can use `default` and never need to know the id.
 | GET | `/api/v1/filters/<id>/controls` | every control with its value, type and range |
 | GET | `/api/v1/filters/<id>/controls/<name>` | `{"value":true,"pending_reload":false}` |
 | POST, PUT | `/api/v1/filters/<id>/controls/<name>` | body `{"value":...}`, returns the same as GET |
-| GET | `/api/v1/filters/<id>/history/<kind>` | phase 4, see [Extra data](#extra-data-phase-4) |
+| GET | `/api/v1/filters/<id>/history/<kind>` | `latency`, `signal` or `display`, see [Extra data](#extra-data-phase-5) |
 
 Responses are `application/json; charset=utf-8` with `Cache-Control: no-store`, except the page. Errors are
 `{"error":"code","message":"..."}` with `400` (bad value or unknown control), `401` (no token or a wrong one), `404`
@@ -421,7 +421,7 @@ and the token and URL copy buttons. These go through a new `ReloadWebControls` o
   `gen_web_page.py --check` to fail if the header's hash does not match `index.html`.
 * No change to compiler flags.
 
-## Extra data (phase 4)
+## Extra data (phase 5)
 
 Things the property page cannot show that are cheap to keep. Each has its own endpoint, so the state poll stays
 small and the page or HA asks for history only when it needs it.
@@ -431,11 +431,14 @@ small and the page or HA asks for history only when it needs it.
   window callback that already runs.
 * `history/signal`: the last 50 changes to the summary block with timestamps, so a dropout overnight can be seen the
   next morning.
-* `history/modeswitch`: mode switch results (`OnModeUpdated`) with timing.
-* Counters for frame drops and headroom, added to the state document. Totals, not rates, so HA's
-  `state_class: total_increasing` and long-term statistics work.
-* The full HDR and DV metadata, which the page has to cut short.
-* `log`: the tail of the log through a fixed-size quill sink. Optional, and only filled while the server is on.
+* `history/display`: the refresh rate switches (`OnModeUpdated`). The switch result has no timing, so only the time
+  each one was reported is kept.
+* Counters, added to the state document. Totals, not rates, so HA's `state_class: total_increasing` and long-term
+  statistics work. The filter does not count dropped frames, so `overrun_windows_total` counts the metrics windows
+  in which the busiest frame took longer than the frame interval, which is when frames drop.
+* The full HDR and DV metadata. The state document already has all of it.
+* `log`: the tail of the log through a fixed-size quill sink. Not done: it needs a custom quill sink, and the Trace
+  builds already write the log to a file.
 
 ## Phases
 

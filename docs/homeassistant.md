@@ -43,6 +43,9 @@ Send the token as a header: `Authorization: Bearer <token>`.
 | GET | `/api/v1/filters/<id>/controls` | every [control](#controls) with its value, type and range |
 | GET | `/api/v1/filters/<id>/controls/<name>` | one control |
 | PUT or POST | `/api/v1/filters/<id>/controls/<name>` | sets it from a body like `{"value": true}`, returns it |
+| GET | `/api/v1/filters/<id>/history/latency` | the last 5 minutes of metrics windows, see [History](#history) |
+| GET | `/api/v1/filters/<id>/history/signal` | the last 50 changes to the summary or filter state |
+| GET | `/api/v1/filters/<id>/history/display` | the last 20 refresh rate switches |
 
 `<id>` can be `default`, which is the first filter loaded, so most setups never need the real id.
 
@@ -275,6 +278,28 @@ template:
 
 or directly in an automation (`trigger: webhook` with the same `webhook_id`).
 
+## History
+
+The filter keeps a little history in memory so the status page can show what happened recently, e.g. a dropout
+overnight. It is lost when the filter unloads. Times (`t`) are milliseconds since the Unix epoch.
+
+`history/latency` has one sample per metrics window (about every 1.5 seconds), up to 300 for video and 300 for
+audio:
+
+```json
+{"video": {"stages": ["capture", "conversion"],
+           "samples": [{"t": 1795301590176, "fps": 23.976, "busy_mean_ms": 5.1, "busy_max_ms": 9.2,
+                        "stages": [[1.0, 1.25, 2.0], [2.0, 2.5, 3.0]]}]},
+ "audio": {"stages": ["capture"], "samples": [{"t": 1795301590180, "stages": [[3.0, 3.5, 4.0]]}]}}
+```
+
+Each entry in a sample's `stages` is `[min_ms, mean_ms, max_ms]` for the stage at the same position in `stages`.
+
+`history/signal` has `{"changes": [{"t": ..., "state": "running", "summary": {...}}]}`, oldest first, with the same
+`summary` as the state document.
+
+`history/display` has `{"changes": [{"t": ..., "refresh_hz": 24, "status_text": "..."}]}`.
+
 ## State document
 
 `GET /api/v1/filters/<id>/state` returns one JSON document with everything. Its shape never changes:
@@ -432,6 +457,15 @@ last metrics window. The stages depend on the card and the pixel format, so look
 [Controls](#controls)).
 
 `metrics` holds the Prometheus settings: `enabled`, `bind_address`, `port`, `status_text`.
+
+### `counters`
+
+Totals since the filter was loaded, for `state_class: total_increasing` sensors:
+
+| Key | Notes |
+|---|---|
+| `signal_changes_total` | changes to the summary or filter state |
+| `overrun_windows_total` | metrics windows in which the busiest frame took longer than the frame interval, so frames were probably dropped |
 
 ### `updated`
 

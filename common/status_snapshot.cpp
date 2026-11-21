@@ -15,6 +15,7 @@
 #include "status_snapshot.h"
 #include "web_json.h"
 
+#include <algorithm>
 #include <cmath>
 #include <format>
 
@@ -114,19 +115,51 @@ const char* to_string(filter_run_state state)
 	return "stopped";
 }
 
-void status_snapshot::Changed()
+int64_t status_snapshot::NowMs()
+{
+	return std::chrono::duration_cast<std::chrono::milliseconds>(
+		std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
+status_snapshot::stage_sample status_snapshot::ToStage(const latency_stats& lat)
+{
+	return {
+		static_cast<float>(static_cast<double>(lat.min) / 10000.0), static_cast<float>(lat.mean / 10000.0),
+		static_cast<float>(static_cast<double>(lat.max) / 10000.0)
+	};
+}
+
+void status_snapshot::latency_ring::push(const latency_sample& s)
+{
+	samples[next] = s;
+	next = (next + 1) % samples.size();
+	count = std::min(count + 1, samples.size());
+}
+
+void status_snapshot::Changed(bool signal)
 {
 	++mVersion;
 	mUpdated = std::chrono::system_clock::now();
+	if (!signal)
+	{
+		return;
+	}
+	auto summary = Summarise(mVideoInput, mVideoOutput, mHdr, mDv, mAudioInput, mAudioOutput);
+	if (summary == mLastSummary && mRunState == mLastState)
+	{
+		return;
+	}
+	mLastSummary = std::move(summary);
+	mLastState = mRunState;
+	++mSignalChanges;
+	mSignalHistory.push_back({NowMs(), mLastSummary, mLastState});
+	if (mSignalHistory.size() > signalHistorySize)
+	{
+		mSignalHistory.pop_front();
+	}
 	if (mListener)
 	{
-		auto summary = Summarise(mVideoInput, mVideoOutput, mHdr, mDv, mAudioInput, mAudioOutput);
-		if (summary != mLastSummary || mRunState != mLastState)
-		{
-			mLastSummary = std::move(summary);
-			mLastState = mRunState;
-			mListener(mLastSummary, mLastState);
-		}
+		mListener(mLastSummary, mLastState);
 	}
 }
 
@@ -136,8 +169,6 @@ void status_snapshot::SetSummaryListener(summary_listener listener)
 	mListener = std::move(listener);
 	if (mListener)
 	{
-		mLastSummary = Summarise(mVideoInput, mVideoOutput, mHdr, mDv, mAudioInput, mAudioOutput);
-		mLastState = mRunState;
 		mListener(mLastSummary, mLastState);
 	}
 }
@@ -157,7 +188,7 @@ HRESULT status_snapshot::Reload(audio_input_status* payload)
 {
 	std::lock_guard lock{mLock};
 	mAudioInput = *payload;
-	Changed();
+	Changed(true);
 	return S_OK;
 }
 
@@ -165,7 +196,7 @@ HRESULT status_snapshot::Reload(audio_output_status* payload)
 {
 	std::lock_guard lock{mLock};
 	mAudioOutput = *payload;
-	Changed();
+	Changed(true);
 	return S_OK;
 }
 
@@ -173,7 +204,7 @@ HRESULT status_snapshot::Reload(video_input_status* payload)
 {
 	std::lock_guard lock{mLock};
 	mVideoInput = *payload;
-	Changed();
+	Changed(true);
 	return S_OK;
 }
 
@@ -181,7 +212,7 @@ HRESULT status_snapshot::Reload(video_output_status* payload)
 {
 	std::lock_guard lock{mLock};
 	mVideoOutput = *payload;
-	Changed();
+	Changed(true);
 	return S_OK;
 }
 
@@ -189,7 +220,7 @@ HRESULT status_snapshot::Reload(hdr_status* payload)
 {
 	std::lock_guard lock{mLock};
 	mHdr = *payload;
-	Changed();
+	Changed(true);
 	return S_OK;
 }
 
@@ -204,6 +235,14 @@ HRESULT status_snapshot::Reload(device_status* payload)
 HRESULT status_snapshot::Reload(display_status* payload)
 {
 	std::lock_guard lock{mLock};
+	if (payload->freq != mDisplay.freq || payload->status != mDisplay.status)
+	{
+		mDisplayHistory.push_back({NowMs(), payload->freq, web_json::to_utf8(payload->status)});
+		if (mDisplayHistory.size() > displayHistorySize)
+		{
+			mDisplayHistory.pop_front();
+		}
+	}
 	mDisplay = *payload;
 	Changed();
 	return S_OK;
@@ -245,6 +284,24 @@ HRESULT status_snapshot::ReloadVHeadroom(video_headroom* payload)
 {
 	std::lock_guard lock{mLock};
 	mHeadroom = *payload;
+	// the last of a video metrics window's updates, after V1-V3 and the fps
+	if (mHeadroom.intervalMs > 0.0)
+	{
+		latency_sample s;
+		s.timeMs = NowMs();
+		s.fps = static_cast<float>(mMeasuredFps);
+		s.busyMeanMs = static_cast<float>(mHeadroom.busyMeanMs);
+		s.busyMaxMs = static_cast<float>(mHeadroom.busyMaxMs);
+		for (size_t i = 0; i < 3; ++i)
+		{
+			s.stages[i] = mVideoLatency[i].name.empty() ? stage_sample{} : ToStage(mVideoLatency[i]);
+		}
+		mVideoHistory.push(s);
+		if (mHeadroom.busyMaxMs > mHeadroom.intervalMs)
+		{
+			++mOverrunWindows;
+		}
+	}
 	Changed();
 	return S_OK;
 }
@@ -261,6 +318,14 @@ HRESULT status_snapshot::ReloadA2(latency_stats* payload)
 {
 	std::lock_guard lock{mLock};
 	mAudioLatency[1] = *payload;
+	// the last of an audio metrics window's updates
+	latency_sample s;
+	s.timeMs = NowMs();
+	for (size_t i = 0; i < 2; ++i)
+	{
+		s.stages[i] = mAudioLatency[i].name.empty() ? stage_sample{} : ToStage(mAudioLatency[i]);
+	}
+	mAudioHistory.push(s);
 	Changed();
 	return S_OK;
 }
@@ -295,7 +360,7 @@ HRESULT status_snapshot::Reload(dv_status* payload)
 {
 	std::lock_guard lock{mLock};
 	mDv = *payload;
-	Changed();
+	Changed(true);
 	return S_OK;
 }
 
@@ -311,7 +376,7 @@ void status_snapshot::SetRunState(filter_run_state state)
 	if (mRunState != state)
 	{
 		mRunState = state;
-		Changed();
+		Changed(true);
 	}
 }
 
@@ -417,6 +482,8 @@ std::string status_snapshot::ToJson(const std::string& id, const std::string& na
 	const auto fps = mMeasuredFps;
 	const auto headroom = mHeadroom;
 	const auto controls = mControls;
+	const auto signalChanges = mSignalChanges;
+	const auto overrunWindows = mOverrunWindows;
 	lock.unlock();
 
 	if (version != nullptr)
@@ -631,6 +698,11 @@ std::string status_snapshot::ToJson(const std::string& id, const std::string& na
 	w.key("status_text").value_or_null(controls.metricsStatus);
 	w.end_object();
 
+	w.key("counters").begin_object();
+	w.key("signal_changes_total").value(signalChanges);
+	w.key("overrun_windows_total").value(overrunWindows);
+	w.end_object();
+
 	if (ver == 0)
 	{
 		w.key("updated").null();
@@ -641,6 +713,132 @@ std::string status_snapshot::ToJson(const std::string& id, const std::string& na
 		w.key("updated").value(std::format("{:%FT%T}Z", ms));
 	}
 
+	w.end_object();
+	return w.take();
+}
+
+namespace
+{
+	template <typename Ring, typename F>
+	void for_each_oldest_first(const Ring& ring, F&& f)
+	{
+		const auto size = ring.samples.size();
+		const auto start = (ring.next + size - ring.count) % size;
+		for (size_t i = 0; i < ring.count; ++i)
+		{
+			f(ring.samples[(start + i) % size]);
+		}
+	}
+}
+
+std::string status_snapshot::LatencyHistoryJson() const
+{
+	std::unique_lock lock{mLock};
+	const auto video = mVideoHistory;
+	const auto audio = mAudioHistory;
+	std::array<std::string, 3> videoStages;
+	std::array<std::string, 2> audioStages;
+	for (size_t i = 0; i < 3; ++i)
+	{
+		videoStages[i] = web_json::slug(mVideoLatency[i].name);
+	}
+	for (size_t i = 0; i < 2; ++i)
+	{
+		audioStages[i] = web_json::slug(mAudioLatency[i].name);
+	}
+	lock.unlock();
+
+	auto write_ring = [](web_json::writer& w, const latency_ring& ring, const auto& stages, bool isVideo)
+	{
+		w.begin_object();
+		w.key("stages").begin_array();
+		for (const auto& s : stages)
+		{
+			if (!s.empty())
+			{
+				w.value(s);
+			}
+		}
+		w.end_array();
+		w.key("samples").begin_array();
+		for_each_oldest_first(ring, [&](const latency_sample& s)
+		{
+			w.begin_object();
+			w.key("t").value(s.timeMs);
+			if (isVideo)
+			{
+				w.key("fps").value(static_cast<double>(s.fps));
+				w.key("busy_mean_ms").value(static_cast<double>(s.busyMeanMs));
+				w.key("busy_max_ms").value(static_cast<double>(s.busyMaxMs));
+			}
+			w.key("stages").begin_array();
+			for (size_t i = 0; i < stages.size(); ++i)
+			{
+				if (!stages[i].empty())
+				{
+					const auto& st = s.stages[i];
+					w.begin_array().value(static_cast<double>(st.min)).value(static_cast<double>(st.mean)).value(
+						static_cast<double>(st.max)).end_array();
+				}
+			}
+			w.end_array();
+			w.end_object();
+		});
+		w.end_array();
+		w.end_object();
+	};
+
+	web_json::writer w;
+	w.begin_object();
+	w.key("video");
+	write_ring(w, video, videoStages, true);
+	w.key("audio");
+	write_ring(w, audio, audioStages, false);
+	w.end_object();
+	return w.take();
+}
+
+std::string status_snapshot::SignalHistoryJson() const
+{
+	std::unique_lock lock{mLock};
+	const auto history = mSignalHistory;
+	lock.unlock();
+
+	web_json::writer w;
+	w.begin_object();
+	w.key("changes").begin_array();
+	for (const auto& c : history)
+	{
+		w.begin_object();
+		w.key("t").value(c.timeMs);
+		w.key("state").value(to_string(c.state));
+		w.key("summary");
+		WriteSummary(w, c.summary);
+		w.end_object();
+	}
+	w.end_array();
+	w.end_object();
+	return w.take();
+}
+
+std::string status_snapshot::DisplayHistoryJson() const
+{
+	std::unique_lock lock{mLock};
+	const auto history = mDisplayHistory;
+	lock.unlock();
+
+	web_json::writer w;
+	w.begin_object();
+	w.key("changes").begin_array();
+	for (const auto& c : history)
+	{
+		w.begin_object();
+		w.key("t").value(c.timeMs);
+		w.key("refresh_hz").value(c.refreshHz > 0 ? std::optional{c.refreshHz} : std::nullopt);
+		w.key("status_text").value_or_null(c.status);
+		w.end_object();
+	}
+	w.end_array();
 	w.end_object();
 	return w.take();
 }

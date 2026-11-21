@@ -17,8 +17,10 @@
 
 #include "signalinfo.h"
 
+#include <array>
 #include <chrono>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <mutex>
 #include <optional>
@@ -150,6 +152,17 @@ public:
 	 */
 	void SetSummaryListener(summary_listener listener);
 
+	// the last 5 minutes of metrics windows, see docs/homeassistant.md
+	std::string LatencyHistoryJson() const;
+	// the last 50 changes to the summary or run state
+	std::string SignalHistoryJson() const;
+	// the last 20 refresh rate switches
+	std::string DisplayHistoryJson() const;
+
+	static constexpr size_t latencyHistorySize{300};
+	static constexpr size_t signalHistorySize{50};
+	static constexpr size_t displayHistorySize{20};
+
 protected:
 	mutable std::mutex mLock;
 
@@ -174,8 +187,59 @@ protected:
 	status_summary mLastSummary{};
 	filter_run_state mLastState{filter_run_state::STOPPED};
 
+	struct stage_sample
+	{
+		float min{0.0f};
+		float mean{0.0f};
+		float max{0.0f};
+	};
+
+	// one metrics window
+	struct latency_sample
+	{
+		int64_t timeMs{0};
+		float fps{0.0f};
+		float busyMeanMs{0.0f};
+		float busyMaxMs{0.0f};
+		std::array<stage_sample, 3> stages{};
+	};
+
+	// a ring of the last latencyHistorySize windows
+	struct latency_ring
+	{
+		std::array<latency_sample, latencyHistorySize> samples{};
+		size_t next{0};
+		size_t count{0};
+		void push(const latency_sample& s);
+	};
+
+	struct signal_change
+	{
+		int64_t timeMs{0};
+		status_summary summary;
+		filter_run_state state{filter_run_state::STOPPED};
+	};
+
+	struct display_change
+	{
+		int64_t timeMs{0};
+		int refreshHz{0};
+		std::string status;
+	};
+
+	latency_ring mVideoHistory;
+	latency_ring mAudioHistory;
+	std::deque<signal_change> mSignalHistory;
+	std::deque<display_change> mDisplayHistory;
+	uint64_t mSignalChanges{0};
+	// windows in which the busiest frame took longer than the frame interval, i.e. frames were probably dropped
+	uint64_t mOverrunWindows{0};
+
 private:
-	void Changed();
+	// signal true when something the summary depends on may have changed
+	void Changed(bool signal = false);
+	static int64_t NowMs();
+	static stage_sample ToStage(const latency_stats& lat);
 };
 
 #endif

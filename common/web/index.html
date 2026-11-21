@@ -32,6 +32,11 @@ footer{padding:0 16px 16px;color:var(--muted);font-size:12px}
 .hint{color:var(--muted);font-size:12px}
 .pending{color:var(--warn);font-size:12px}
 #settings-msg{min-height:1.2em;font-size:12px;color:var(--bad)}
+.spark{display:block;width:100%;height:36px;margin:2px 0 8px}
+.spark polyline{fill:none;stroke-width:1.5;vector-effect:non-scaling-stroke}
+.spark .mean{stroke:var(--accent)}.spark .max{stroke:var(--muted);stroke-dasharray:3 2}.spark .limit{stroke:var(--bad);stroke-width:1}
+.spark-label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
+.wide{grid-column:1/-1}
 </style>
 </head>
 <body>
@@ -47,7 +52,8 @@ footer{padding:0 16px 16px;color:var(--muted);font-size:12px}
 "use strict";
 const token = new URLSearchParams(location.hash.slice(1)).get("t") || "";
 const headers = token ? {Authorization: "Bearer " + token} : {};
-let filterId = "default", etag = "", timer = 0, controlDefs = null;
+let filterId = "default", etag = "", timer = 0, controlDefs = null, historyTimer = 0;
+const history = {latency: null, signal: null, display: null};
 
 const units = [["_bytes_per_sec", " B/s"], ["_mhz", " MHz"], ["_hz", " Hz"], ["_ms", " ms"], ["_nits", " nits"], ["_c", " °C"], ["_rpm", " rpm"], ["_db", " dB"]];
 const sections = [
@@ -100,7 +106,7 @@ function render(d) {
     ...(s.dynamic_range ? [chip(s.dynamic_range.toUpperCase())] : []),
     chip(s.audio === "none" ? "no audio" : s.audio + (s.audio_channels ? " " + s.audio_channels + "ch" : "")));
   renderControls(d);
-  document.getElementById("cards").replaceChildren(...sections.map(([title, pick]) => {
+  document.getElementById("cards").replaceChildren(...historyCards(d), ...sections.map(([title, pick]) => {
     const sec = el("section"), table = el("table");
     sec.append(el("h2", title), table);
     for (const [k, v] of Object.entries(pick(d))) {
@@ -181,6 +187,71 @@ async function setControl(c, input) {
   poll();
 }
 
+async function loadHistory() {
+  clearTimeout(historyTimer);
+  for (const kind of Object.keys(history)) {
+    try {
+      const r = await fetch("api/v1/filters/" + encodeURIComponent(filterId) + "/history/" + kind, {headers, cache: "no-store"});
+      history[kind] = r.ok ? await r.json() : null;
+    } catch (e) { history[kind] = null; }
+  }
+  historyTimer = setTimeout(loadHistory, 5000);
+}
+
+const svgNs = "http://www.w3.org/2000/svg";
+// a line chart of each series (arrays of numbers) scaled to the largest value, limit draws a horizontal line
+function spark(series, limit) {
+  const svg = document.createElementNS(svgNs, "svg");
+  svg.setAttribute("class", "spark");
+  svg.setAttribute("viewBox", "0 0 100 36");
+  svg.setAttribute("preserveAspectRatio", "none");
+  const all = series.flatMap(s => s.values).concat(limit ? [limit] : []);
+  const top = Math.max(...all, 0.001) * 1.1, n = Math.max(...series.map(s => s.values.length), 2);
+  const y = v => (36 - v / top * 34 - 1).toFixed(2);
+  const add = (cls, pts) => { const p = document.createElementNS(svgNs, "polyline"); p.setAttribute("class", cls); p.setAttribute("points", pts); svg.append(p); };
+  if (limit) add("limit", "0," + y(limit) + " 100," + y(limit));
+  for (const s of series) add(s.cls, s.values.map((v, i) => (i / (n - 1) * 100).toFixed(2) + "," + y(v)).join(" "));
+  return svg;
+}
+
+function chart(title, series, limit, unit) {
+  const box = el("div"), lbl = el("div", undefined, "spark-label");
+  const last = series[0].values.at(-1), peak = Math.max(...series.flatMap(s => s.values));
+  lbl.append(el("span", title), el("span", "now " + (last ?? 0).toFixed(2) + unit + ", peak " + peak.toFixed(2) + unit));
+  box.append(lbl, spark(series, limit));
+  return box;
+}
+
+function historyCards(d) {
+  const cards = [];
+  const v = history.latency && history.latency.video;
+  if (v && v.samples.length > 1) {
+    const sec = el("section", undefined, "wide");
+    sec.append(el("h2", "Last " + Math.round((v.samples.at(-1).t - v.samples[0].t) / 60000) + " minutes (mean, dashed max)"));
+    v.stages.forEach((stage, i) => sec.append(chart("Video " + stage,
+      [{cls: "mean", values: v.samples.map(s => s.stages[i][1])}, {cls: "max", values: v.samples.map(s => s.stages[i][2])}], 0, " ms")));
+    sec.append(chart("Time per frame (red: frame interval)",
+      [{cls: "mean", values: v.samples.map(s => s.busy_mean_ms)}, {cls: "max", values: v.samples.map(s => s.busy_max_ms)}],
+      d.video.headroom.interval_ms, " ms"));
+    sec.append(chart("Measured fps", [{cls: "mean", values: v.samples.map(s => s.fps)}], 0, ""));
+    cards.push(sec);
+  }
+  const changes = history.signal ? history.signal.changes.slice(-10).reverse() : [];
+  const display = history.display ? history.display.changes.slice(-5).reverse() : [];
+  if (changes.length || display.length) {
+    const sec = el("section"), table = el("table");
+    sec.append(el("h2", "Recent changes"), table);
+    const row = (t, text) => { const tr = el("tr"); tr.append(el("td", new Date(t).toLocaleTimeString()), el("td", text)); table.append(tr); };
+    for (const c of changes) {
+      const s = c.summary;
+      row(c.t, s.signal ? [s.video_mode, (s.dynamic_range || "").toUpperCase(), s.audio, c.state].join(" \u00b7 ") : "no signal \u00b7 " + c.state);
+    }
+    for (const c of display) row(c.t, "display " + (c.refresh_hz ? c.refresh_hz + " Hz" : "") + (c.status_text ? " \u00b7 " + c.status_text : ""));
+    cards.push(sec);
+  }
+  return cards;
+}
+
 function message(text) { const m = document.getElementById("msg"); m.textContent = text; m.style.display = text ? "block" : "none"; }
 
 async function poll() {
@@ -212,8 +283,8 @@ async function loadFilters() {
   } catch (e) { /* poll reports it */ }
 }
 
-document.getElementById("filter").addEventListener("change", e => { filterId = e.target.value; etag = ""; controlDefs = null; poll(); });
-loadFilters().then(poll);
+document.getElementById("filter").addEventListener("change", e => { filterId = e.target.value; etag = ""; controlDefs = null; poll(); loadHistory(); });
+loadFilters().then(() => { poll(); loadHistory(); });
 </script>
 </body>
 </html>

@@ -592,6 +592,33 @@ http_response web_api::Handle(const http_request& request) const
 		}
 		return Controls(*reg);
 	}
+	if (resource.starts_with("history/"))
+	{
+		if (!get)
+		{
+			return json_error(405, "method_not_allowed", "Use GET");
+		}
+		const auto kind = resource.substr(8);
+		const auto& status = reg->target->Status();
+		http_response r;
+		if (kind == "latency")
+		{
+			r.body = status.LatencyHistoryJson();
+		}
+		else if (kind == "signal")
+		{
+			r.body = status.SignalHistoryJson();
+		}
+		else if (kind == "display")
+		{
+			r.body = status.DisplayHistoryJson();
+		}
+		else
+		{
+			return json_error(404, "not_found", "No such history, use latency, signal or display");
+		}
+		return no_store(std::move(r));
+	}
 	if (resource.starts_with("controls/"))
 	{
 		const auto* def = find_control(resource.substr(9));
