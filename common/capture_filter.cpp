@@ -680,7 +680,7 @@ STDMETHODIMP capture_filter::GetPages(CAUUID* pPages)
 	{
 		return E_OUTOFMEMORY;
 	}
-	pPages->pElems[0] = CLSID_SignalInfoProps;
+	pPages->pElems[0] = GetPropertyPageClsid();
 	return S_OK;
 }
 
@@ -694,7 +694,7 @@ STDMETHODIMP capture_filter::CreatePage(const GUID& guid, IPropertyPage** ppPage
 		return E_INVALIDARG;
 	}
 
-	if (guid == CLSID_SignalInfoProps)
+	if (guid == GetPropertyPageClsid())
 	{
 		*ppPage = new CSignalInfoProp(nullptr, &hr);
 	}

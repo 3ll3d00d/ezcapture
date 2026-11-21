@@ -30,6 +30,7 @@
 #include <chrono>
 
 EXTERN_C const GUID CLSID_BMCAPTURE_FILTER;
+EXTERN_C const GUID CLSID_BMCAPTURE_PROPS;
 EXTERN_C const AMOVIESETUP_PIN sMIPPins[];
 
 const std::function DeleteString = SysFreeString;
@@ -90,6 +91,8 @@ class blackmagic_capture_filter final :
 public:
 	// Provide the way for COM to create a Filter object
 	static CUnknown* WINAPI CreateInstance(LPUNKNOWN punk, HRESULT* phr);
+
+	const GUID& GetPropertyPageClsid() const override { return CLSID_BMCAPTURE_PROPS; }
 
 	// Callbacks to update the prop page data
 	void OnVideoSignalLoaded(video_signal* vs) override;

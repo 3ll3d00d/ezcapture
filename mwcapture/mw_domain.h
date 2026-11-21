@@ -274,6 +274,7 @@ constexpr int maxFrameLengthInBytes = MWCAP_AUDIO_SAMPLES_PER_FRAME * MWCAP_AUDI
 constexpr int usbAudioSamplesPerFrame = 480;
 
 EXTERN_C const GUID CLSID_MWCAPTURE_FILTER;
+EXTERN_C const GUID CLSID_MWCAPTURE_PROPS;
 
 struct usb_capture_formats
 {

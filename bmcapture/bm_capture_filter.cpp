@@ -25,6 +25,9 @@
 #elif CAPTURE_NAME_SUFFIX == 2
 #define LOG_PREFIX_NAME "BlackmagicWarn"
 #define WLOG_PREFIX_NAME L"BlackmagicWarn"
+#elif defined(_DEBUG)
+#define LOG_PREFIX_NAME "BlackmagicDebug"
+#define WLOG_PREFIX_NAME L"BlackmagicDebug"
 #else
 #define LOG_PREFIX_NAME "Blackmagic"
 #define WLOG_PREFIX_NAME L"Blackmagic"

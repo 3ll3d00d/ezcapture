@@ -22,21 +22,39 @@
 
 #define CreateComObject(clsid, iid, var) CoCreateInstance( clsid, NULL, CLSCTX_INPROC_SERVER, iid, (void **)&var);
 
+// each build variant has its own filter and property page CLSIDs so they can be registered side by side
 #if CAPTURE_NAME_SUFFIX == 1
 #define FILTER_NAME L"Magewell Pro Capture (Trace)"
  // {9E53337D-9E32-40B4-AD39-B8525CDECD45}
 DEFINE_GUID(CLSID_MWCAPTURE_FILTER,
     0x9e53337d, 0x9e32, 0x40b4, 0xad, 0x39, 0xb8, 0x52, 0x5c, 0xde, 0xcd, 0x45);
+ // {003D3F1D-7012-4E6D-84EE-E9C27C450FBD}
+DEFINE_GUID(CLSID_MWCAPTURE_PROPS,
+    0x003d3f1d, 0x7012, 0x4e6d, 0x84, 0xee, 0xe9, 0xc2, 0x7c, 0x45, 0x0f, 0xbd);
 #elif CAPTURE_NAME_SUFFIX == 2
 #define FILTER_NAME L"Magewell Pro Capture (Warn)"
  // {87A31069-9A13-40D6-9C84-5499D8A44519}
 DEFINE_GUID(CLSID_MWCAPTURE_FILTER,
     0x87a31069, 0x9a13, 0x40d6, 0x9c, 0x84, 0x54, 0x99, 0xd8, 0xa4, 0x45, 0x19);
+ // {BC5EFA58-4944-4FB8-837D-C346A45E596A}
+DEFINE_GUID(CLSID_MWCAPTURE_PROPS,
+    0xbc5efa58, 0x4944, 0x4fb8, 0x83, 0x7d, 0xc3, 0x46, 0xa4, 0x5e, 0x59, 0x6a);
+#elif defined(_DEBUG)
+#define FILTER_NAME L"Magewell Pro Capture (Debug)"
+ // {5CBA12FE-F219-45B4-AF6A-4BDEC9BD58C6}
+DEFINE_GUID(CLSID_MWCAPTURE_FILTER,
+    0x5cba12fe, 0xf219, 0x45b4, 0xaf, 0x6a, 0x4b, 0xde, 0xc9, 0xbd, 0x58, 0xc6);
+ // {53E70734-100E-4EED-8B9A-9CE9052F9AE8}
+DEFINE_GUID(CLSID_MWCAPTURE_PROPS,
+    0x53e70734, 0x100e, 0x4eed, 0x8b, 0x9a, 0x9c, 0xe9, 0x05, 0x2f, 0x9a, 0xe8);
 #else
 #define FILTER_NAME L"Magewell Pro Capture"
  // {4E3B0A92-2476-4016-81F0-201F19F6FBAE}
 DEFINE_GUID(CLSID_MWCAPTURE_FILTER,
     0x4e3b0a92, 0x2476, 0x4016, 0x81, 0xf0, 0x20, 0x1f, 0x19, 0xf6, 0xfb, 0xae);
+ // {8DC689DB-68FE-4C30-AAE5-0E515CF9324C}
+DEFINE_GUID(CLSID_MWCAPTURE_PROPS,
+    0x8dc689db, 0x68fe, 0x4c30, 0xaa, 0xe5, 0xe, 0x51, 0x5c, 0xf9, 0x32, 0x4c);
 #endif
 
 // LAV compatibility
@@ -107,7 +125,7 @@ CFactoryTemplate g_Templates[] = {
     },
     {
         L"MWCapture Properties",
-        &CLSID_SignalInfoProps,
+        &CLSID_MWCAPTURE_PROPS,
         CSignalInfoProp::CreateInstance,
         nullptr,
         nullptr

@@ -31,6 +31,9 @@
 #elif CAPTURE_NAME_SUFFIX == 2
 #define LOG_PREFIX_NAME "MagewellWarn"
 #define WLOG_PREFIX_NAME L"MagewellWarn"
+#elif defined(_DEBUG)
+#define LOG_PREFIX_NAME "MagewellDebug"
+#define WLOG_PREFIX_NAME L"MagewellDebug"
 #else
 #define LOG_PREFIX_NAME "Magewell"
 #define WLOG_PREFIX_NAME L"Magewell"

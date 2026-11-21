@@ -27,21 +27,39 @@
 
 #define CreateComObject(clsid, iid, var) CoCreateInstance( clsid, NULL, CLSCTX_INPROC_SERVER, iid, (void **)&(var));
 
+// each build variant has its own filter and property page CLSIDs so they can be registered side by side
 #if CAPTURE_NAME_SUFFIX == 1
 #define FILTER_NAME L"Blackmagic Capture (Trace)"
  // {1BCB1E63-505B-4E66-ABEB-95913C7B081D}
 DEFINE_GUID(CLSID_BMCAPTURE_FILTER,
     0x1bcb1e63, 0x505b, 0x4e66, 0xab, 0xeb, 0x95, 0x91, 0x3c, 0x7b, 0x8, 0x1d);
+ // {34DA6D33-60C7-4154-8F5D-9C4796EC294D}
+DEFINE_GUID(CLSID_BMCAPTURE_PROPS,
+    0x34da6d33, 0x60c7, 0x4154, 0x8f, 0x5d, 0x9c, 0x47, 0x96, 0xec, 0x29, 0x4d);
 #elif CAPTURE_NAME_SUFFIX == 2
 #define FILTER_NAME L"Blackmagic Capture (Warn)"
  // {D430B305-857C-475A-96B6-1E8EB86C4BF9}
 DEFINE_GUID(CLSID_BMCAPTURE_FILTER,
     0xd430b305, 0x857c, 0x475a, 0x96, 0xb6, 0x1e, 0x8e, 0xb8, 0x6c, 0x4b, 0xf9);
+ // {51668787-66E3-40CD-A53D-1210198FE9EF}
+DEFINE_GUID(CLSID_BMCAPTURE_PROPS,
+    0x51668787, 0x66e3, 0x40cd, 0xa5, 0x3d, 0x12, 0x10, 0x19, 0x8f, 0xe9, 0xef);
+#elif defined(_DEBUG)
+#define FILTER_NAME L"Blackmagic Capture (Debug)"
+ // {B653595C-A17D-4548-A265-D5153F55428C}
+DEFINE_GUID(CLSID_BMCAPTURE_FILTER,
+    0xb653595c, 0xa17d, 0x4548, 0xa2, 0x65, 0xd5, 0x15, 0x3f, 0x55, 0x42, 0x8c);
+ // {AA97A5D2-21C4-41E3-9EF0-94F1DDEFC718}
+DEFINE_GUID(CLSID_BMCAPTURE_PROPS,
+    0xaa97a5d2, 0x21c4, 0x41e3, 0x9e, 0xf0, 0x94, 0xf1, 0xdd, 0xef, 0xc7, 0x18);
 #else
 #define FILTER_NAME L"Blackmagic Capture"
  // {64116B3A-1E04-4CA7-BCFE-F42A0CE7BF16}
 DEFINE_GUID(CLSID_BMCAPTURE_FILTER,
     0x64116b3a, 0x1e04, 0x4ca7, 0xbc, 0xfe, 0xf4, 0x2a, 0xc, 0xe7, 0xbf, 0x16);
+ // {4F330B84-2CB4-4391-99BE-01B32648C69B}
+DEFINE_GUID(CLSID_BMCAPTURE_PROPS,
+    0x4f330b84, 0x2cb4, 0x4391, 0x99, 0xbe, 0x01, 0xb3, 0x26, 0x48, 0xc6, 0x9b);
 #endif
 
 // LAV compatibility
@@ -112,7 +130,7 @@ CFactoryTemplate g_Templates[] = {
     },
     {
         L"bmcapture Properties",
-        &CLSID_SignalInfoProps,
+        &CLSID_BMCAPTURE_PROPS,
         CSignalInfoProp::CreateInstance,
         nullptr,
         nullptr

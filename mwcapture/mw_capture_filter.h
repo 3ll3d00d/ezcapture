@@ -69,6 +69,8 @@ public:
 
 	HCHANNEL GetChannelHandle() const;
 
+	const GUID& GetPropertyPageClsid() const override { return CLSID_MWCAPTURE_PROPS; }
+
 	device_type GetDeviceType() const;
 
 	// estimated usable capture bandwidth of the card's PCIe or USB link in bytes per second, 0 if unknown

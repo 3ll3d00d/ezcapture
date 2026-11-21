@@ -212,6 +212,8 @@ public:
 	//////////////////////////////////////////////////////////////////////////
 	STDMETHODIMP GetPages(CAUUID* pPages) override;
 	STDMETHODIMP CreatePage(const GUID& guid, IPropertyPage** ppPage) override;
+	// the property page CLSID, unique to each filter and build variant so they can be registered side by side
+	virtual const GUID& GetPropertyPageClsid() const = 0;
 
 	void OnModeUpdated(const mode_switch_result& result);
 	void OnVideoFormatLoaded(video_format* vf);
