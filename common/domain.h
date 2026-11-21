@@ -797,8 +797,9 @@ public:
 				metrics.m2.sample(mTs[CONVERTED] - mTs[READ]);
 				metrics.m3.sample(mTs[READ] - mTs[BUFFERED]);
 				metrics.name3 = "Host";
-				// from the frame being complete on the card to it being ready to deliver, i.e. Host + Conversion
-				metrics.busy.sample(mTs[CONVERTED] - mTs[BUFFERED]);
+				// the CPU work once the frame has landed; the card's copy overlaps the previous frame's work when the
+				// capture is pipelined and is limited by the PCIe link instead, which the bandwidth figure shows
+				metrics.busy.sample(mTs[CONVERTED] - mTs[READ]);
 			}
 			else
 			{

@@ -22,6 +22,7 @@
 #endif
 #include <streams.h>
 #include "../common/dv_tunnel_lav.h"
+#include "../common/row_workers.h"
 
 #include <algorithm>
 #include <cmath>
@@ -726,5 +727,79 @@ TEST(DvUnpack, Bgr24MatchesScalarReference)
 				}
 			}
 		}
+	}
+}
+
+TEST(DvUnpack, Bgr24AcrossThreadsMatchesSingleThread)
+{
+	// the frame split into bands of rows across worker threads must give exactly the single threaded result, including
+	// frames with fewer rows than bands
+	row_workers workers{3};
+	for (const uint32_t height : {1u, 2u, 3u, 4u, 5u, 17u, 2160u})
+	{
+		for (const bool bottomUp : {false, true})
+		{
+			constexpr uint32_t width = 100;
+			const ptrdiff_t stride = (static_cast<ptrdiff_t>(width) * 3 + 3) / 4 * 4;
+			std::vector<uint8_t> src(static_cast<size_t>(stride) * height);
+			uint32_t s = 0x9E3779B9u ^ height;
+			for (auto& b : src)
+			{
+				s ^= s << 13;
+				s ^= s >> 17;
+				s ^= s << 5;
+				b = static_cast<uint8_t>(s);
+			}
+			const uint8_t* top = bottomUp ? src.data() + stride * (height - 1) : src.data();
+			const ptrdiff_t srcStride = bottomUp ? -stride : stride;
+			const size_t dstStride = static_cast<size_t>(width) * 2;
+			const size_t planeSize = dstStride * height;
+			std::vector<uint8_t> expected(planeSize * 2, 0xA5);
+			std::vector<uint8_t> actual(planeSize * 2, 0xA5);
+			dv_tunnel::unpack_bgr24(top, srcStride, expected.data(), expected.data() + planeSize, dstStride, width,
+			                        height);
+			workers.run(height, [&](uint32_t begin, uint32_t end)
+			{
+				dv_tunnel::unpack_bgr24_rows(top, srcStride, actual.data(), actual.data() + planeSize, dstStride, width,
+				                             begin, end);
+			});
+			ASSERT_EQ(expected, actual) << "height " << height << (bottomUp ? " bottom-up" : " top-down");
+
+			// streaming stores need 32 byte aligned rows, check both an aligned and a misaligned destination
+			for (const size_t offset : {size_t{0}, size_t{16}})
+			{
+				std::vector<uint8_t> storage(planeSize * 2 + 64, 0xA5);
+				uint8_t* planes = storage.data() + (32 - reinterpret_cast<uintptr_t>(storage.data()) % 32) % 32 + offset;
+				workers.run(height, [&](uint32_t begin, uint32_t end)
+				{
+					dv_tunnel::unpack_bgr24_rows(top, srcStride, planes, planes + planeSize, dstStride, width, begin,
+					                             end, true);
+				});
+				ASSERT_TRUE(std::equal(expected.begin(), expected.end(), planes))
+					<< "streaming, height " << height << " offset " << offset;
+			}
+		}
+	}
+}
+
+TEST(DvUnpack, StoreModeTunerKeepsTheFasterMode)
+{
+	for (const bool streamingFaster : {true, false})
+	{
+		dv_tunnel::store_mode_tuner tuner;
+		unsigned regular = 0;
+		unsigned streaming = 0;
+		while (!tuner.decided())
+		{
+			const bool s = tuner.streaming();
+			(s ? streaming : regular)++;
+			tuner.record(s, s == streamingFaster ? 2000.0 : 3500.0);
+			ASSERT_LT(regular + streaming, 1000u);
+		}
+		EXPECT_EQ(streamingFaster, tuner.streaming());
+		// it alternated, so both modes were tried about equally
+		EXPECT_LE(regular > streaming ? regular - streaming : streaming - regular, 1u);
+		tuner.reset();
+		EXPECT_FALSE(tuner.decided());
 	}
 }

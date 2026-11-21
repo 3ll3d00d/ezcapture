@@ -19,10 +19,11 @@
 // memory, so no input file is needed, and the source rotates through several
 // buffers so successive frames are not artificially cache-resident.
 //
-// usage: kernelbench <uyvy|yuy2|v210|y210|r210|bgr10|dvtunnel|dvtunnelscalar> <width> <height> [frames] [pad]
+// usage: kernelbench <uyvy|yuy2|v210|y210|r210|bgr10|dvtunnel|dvtunnelscalar|dvtunnelmt|dvtunnelnt|dvtunnelmtnt> <width> <height> [frames] [pad]
 
 #include "../common/conversion_kernels.h"
 #include "../common/dv_tunnel.h"
+#include "../common/row_workers.h"
 
 #include <algorithm>
 #include <chrono>
@@ -82,7 +83,7 @@ int main(int argc, char* argv[])
 {
 	if (argc < 4)
 	{
-		fprintf(stderr, "usage: kernelbench <uyvy|yuy2|v210|y210|r210|bgr10|dvtunnel|dvtunnelscalar> <width> <height> [frames] [pad]\n");
+		fprintf(stderr, "usage: kernelbench <uyvy|yuy2|v210|y210|r210|bgr10|dvtunnel|dvtunnelscalar|dvtunnelmt|dvtunnelnt|dvtunnelmtnt> <width> <height> [frames] [pad]\n");
 		return 1;
 	}
 	const std::string fmt = argv[1];
@@ -183,6 +184,48 @@ int main(int argc, char* argv[])
 		});
 	}
 	#endif
+	else if (fmt == "dvtunnelnt" || fmt == "dvtunnelmtnt")
+	{
+		// streaming stores into 32 byte aligned planes, single threaded or split across 3 workers like the pin
+		const ptrdiff_t srcStride = (static_cast<ptrdiff_t>(width) * 3 + 3) / 4 * 4;
+		const size_t dstStride = static_cast<size_t>(width + pad) * 2;
+		const size_t planeSize = (dstStride * height + 31) / 32 * 32;
+		for (int i = 0; i < SRC_ROTATION; ++i)
+			srcs.push_back(randomBuffer(static_cast<size_t>(srcStride) * height, 7u + i));
+		std::vector<uint8_t> storage(planeSize * 2 + 32);
+		uint8_t* planes = storage.data() + (32 - reinterpret_cast<uintptr_t>(storage.data()) % 32) % 32;
+		const bool threaded = fmt == "dvtunnelmtnt";
+		row_workers workers{threaded ? 3u : 0u};
+		result = run(frames, [&](int i)
+		{
+			const uint8_t* top = srcs[i].data() + srcStride * (height - 1);
+			workers.run(static_cast<uint32_t>(height), [&](uint32_t begin, uint32_t end)
+			{
+				dv_tunnel::unpack_bgr24_rows(top, -srcStride, planes, planes + planeSize, dstStride, width, begin, end,
+				                             true);
+			});
+		});
+	}
+	else if (fmt == "dvtunnelmt")
+	{
+		// as dvtunnel but split across the capture thread and 3 workers, as the Magewell pin does
+		const ptrdiff_t srcStride = (static_cast<ptrdiff_t>(width) * 3 + 3) / 4 * 4;
+		const size_t dstStride = static_cast<size_t>(width + pad) * 2;
+		const size_t planeSize = dstStride * height;
+		for (int i = 0; i < SRC_ROTATION; ++i)
+			srcs.push_back(randomBuffer(static_cast<size_t>(srcStride) * height, 7u + i));
+		std::vector<uint8_t> planes(planeSize * 2);
+		row_workers workers{3};
+		result = run(frames, [&](int i)
+		{
+			const uint8_t* top = srcs[i].data() + srcStride * (height - 1);
+			workers.run(static_cast<uint32_t>(height), [&](uint32_t begin, uint32_t end)
+			{
+				dv_tunnel::unpack_bgr24_rows(top, -srcStride, planes.data(), planes.data() + planeSize, dstStride, width,
+				                             begin, end);
+			});
+		});
+	}
 	else if (fmt == "dvtunnel" || fmt == "dvtunnelscalar")
 	{
 		// the DV RGB tunnel as the Magewell Pro captures it: BGR24, bottom-up (negative stride), into P210 planes

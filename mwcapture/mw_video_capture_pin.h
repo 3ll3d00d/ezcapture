@@ -24,6 +24,8 @@
 #include "mw_capture_filter.h"
 #include "video_capture_pin.h"
 #include "dv_tunnel_lav.h"
+#include "row_workers.h"
+#include <array>
 #include <memory>
 #include <vector>
 
@@ -96,6 +98,53 @@ protected:
 	void ProbeDvTunnel(const uint8_t* frame, DWORD stride, bool bottomUp);
 	// writes the captured tunnel frame, or black if length is too short to hold it
 	void WriteDvTunnelFrame(const uint8_t* frame, DWORD stride, size_t length, bool bottomUp, IMediaSample* pms);
+
+	// Magewell Pro captures that land in an intermediate buffer (the DV tunnel, CPU conversions) are pipelined: the
+	// next frame is requested as soon as the current one has landed, so the card's copy (close to the PCIe limit at
+	// 4K60) overlaps the CPU work on the frame instead of following it
+	struct capture_target
+	{
+		uint8_t* buffer{nullptr};
+		DWORD size{0};
+		DWORD stride{0};
+		DWORD fourcc{0};
+		int cx{0};
+		int cy{0};
+		MWCAP_VIDEO_COLOR_FORMAT colourFormat{MWCAP_VIDEO_COLOR_FORMAT_UNKNOWN};
+		MWCAP_VIDEO_QUANTIZATION_RANGE quantisation{MWCAP_VIDEO_QUANTIZATION_UNKNOWN};
+		MWCAP_VIDEO_SATURATION_RANGE saturation{MWCAP_VIDEO_SATURATION_UNKNOWN};
+		bool dvTunnel{false};
+
+		// the same capture apart from the buffer it lands in
+		bool sameFormat(const capture_target& o) const
+		{
+			return size == o.size && stride == o.stride && fourcc == o.fourcc && cx == o.cx && cy == o.cy
+				&& colourFormat == o.colourFormat && quantisation == o.quantisation && saturation == o.saturation
+				&& dvTunnel == o.dvTunnel;
+		}
+	};
+
+	struct pending_capture
+	{
+		bool active{false};
+		int slot{0};
+		// the frame index asked for, negative for a symbolic id (MWCAP_VIDEO_FRAME_ID_*)
+		int frameId{0};
+		int64_t requestedAt{0};
+		capture_target target{};
+	};
+
+	bool IsPipelinedCapture() const;
+	// what to capture for the current format into the given intermediate buffer, sized and pinned
+	capture_target IntermediateTarget(int slot);
+	HRESULT StartCapture(HCHANNEL hChannel, int frameId, const capture_target& target);
+	// waits for the capture in flight to complete, false if it did not (mustExit is set if the stream should stop)
+	bool WaitForCapture(HCHANNEL hChannel, bool& mustExit);
+	bool StartPipelinedCapture(HCHANNEL hChannel, int frameId, const capture_target* mustMatch);
+	// one pipelined frame into the sample, false if there is no frame to deliver (yet)
+	bool GrabPipelined(HCHANNEL hChannel, IMediaSample* pms, bool& mustExit);
+	// lets a capture still in flight complete so its buffer can be released or reused
+	void DrainPendingCapture();
 	void AppendDvSideData(IMediaSample* pms);
 	void LogDvTunnelStats();
 	void PublishDvStatus();
@@ -171,7 +220,15 @@ protected:
 	// dv tunnel
 	dv_tunnel::decoder mDvDecoder{};
 	bool mDvLocked{false};
-	std::vector<uint8_t> mDvCapture{};
+	// intermediate capture buffers, two so one can be processed while the card copies into the other
+	std::array<std::vector<uint8_t>, 2> mCaptureBuffers{};
+	pending_capture mPendingCapture{};
+	// splits the DV tunnel unpack across threads, at 4K60 one thread is too slow once it competes with the card's copy
+	std::unique_ptr<row_workers> mUnpackWorkers{};
+	static constexpr unsigned unpackWorkerCount{3};
+	// whether the unpack uses streaming stores, chosen by timing both when the tunnel starts
+	dv_tunnel::store_mode_tuner mUnpackStoreMode{};
+	int mNextCaptureSlot{0};
 	struct pinned_buffer
 	{
 		uint8_t* data;

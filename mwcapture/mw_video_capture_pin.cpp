@@ -106,8 +106,14 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 	int64_t now;
 	while (!hasFrame && !mustExit)
 	{
-		if (proDevice)
+		if (proDevice && pin->IsPipelinedCapture())
 		{
+			hasFrame = pin->GrabPipelined(hChannel, pms, mustExit);
+		}
+		else if (proDevice)
+		{
+			// a capture left in flight by the pipelined path must finish before another is started
+			pin->DrainPendingCapture();
 			auto hr = MWGetVideoBufferInfo(hChannel, &pin->mVideoSignal.bufferInfo);
 			if (hr != MW_SUCCEEDED)
 			{
@@ -152,14 +158,15 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 				// capture the tunnel exactly as sent, i.e. RGB in and out so the card does no conversion
 				DWORD imageSize;
 				BGR24.GetImageDimensions(pin->mVideoFormat.cx, pin->mVideoFormat.cy, &captureStride, &imageSize);
-				if (pin->mDvCapture.size() < imageSize)
+				auto& dvCapture = pin->mCaptureBuffers[0];
+				if (dvCapture.size() < imageSize)
 				{
 					// growing may reallocate so it must not be pinned
-					pin->Unpin(pin->mDvCapture.data());
-					pin->mDvCapture.resize(imageSize);
+					pin->Unpin(dvCapture.data());
+					dvCapture.resize(imageSize);
 				}
 				pin->mDvCaptureStride = captureStride;
-				writeBuffer = pin->mDvCapture.data();
+				writeBuffer = dvCapture.data();
 				captureSize = imageSize;
 				captureFourcc = BGR24.fourcc;
 				captureColourFormat = static_cast<MWCAP_VIDEO_COLOR_FORMAT>(pin->mVideoSignal.signalStatus.colorFormat);
@@ -177,9 +184,9 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 			{
 				pin->PinForCapture(writeBuffer, static_cast<DWORD>(pms->GetSize()));
 			}
-			else if (writeBuffer == pin->mDvCapture.data())
+			else if (writeBuffer == pin->mCaptureBuffers[0].data())
 			{
-				pin->PinForCapture(writeBuffer, static_cast<DWORD>(pin->mDvCapture.size()));
+				pin->PinForCapture(writeBuffer, static_cast<DWORD>(pin->mCaptureBuffers[0].size()));
 			}
 			else
 			{
@@ -289,8 +296,8 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 
 				if (pin->mVideoFormat.dvTunnel)
 				{
-					pin->WriteDvTunnelFrame(pin->mDvCapture.data(), pin->mDvCaptureStride, pin->mDvCapture.size(), false,
-					                        pms);
+					pin->WriteDvTunnelFrame(pin->mCaptureBuffers[0].data(), pin->mDvCaptureStride,
+					                        pin->mCaptureBuffers[0].size(), false, pms);
 				}
 				else if (pin->mFrameWriterStrategy != STRAIGHT_THROUGH)
 				{
@@ -685,6 +692,214 @@ void magewell_video_capture_pin::PinForCapture(uint8_t* data, DWORD size)
 	#endif
 }
 
+bool magewell_video_capture_pin::IsPipelinedCapture() const
+{
+	return mFilter->GetDeviceType() == MW_PRO && mHasSignal
+		&& (mVideoFormat.dvTunnel || mFrameWriterStrategy != STRAIGHT_THROUGH);
+}
+
+magewell_video_capture_pin::capture_target magewell_video_capture_pin::IntermediateTarget(int slot)
+{
+	capture_target t;
+	t.cx = mVideoFormat.cx;
+	t.cy = mVideoFormat.cy;
+	t.dvTunnel = mVideoFormat.dvTunnel;
+	if (t.dvTunnel)
+	{
+		// the tunnel is captured exactly as sent, i.e. RGB in and out so the card does no conversion
+		DWORD imageSize;
+		BGR24.GetImageDimensions(t.cx, t.cy, &t.stride, &imageSize);
+		t.size = imageSize;
+		t.fourcc = BGR24.fourcc;
+		t.colourFormat = static_cast<MWCAP_VIDEO_COLOR_FORMAT>(mVideoSignal.signalStatus.colorFormat);
+		t.quantisation = static_cast<MWCAP_VIDEO_QUANTIZATION_RANGE>(mVideoSignal.signalStatus.quantRange);
+		t.saturation = static_cast<MWCAP_VIDEO_SATURATION_RANGE>(mVideoSignal.signalStatus.satRange);
+	}
+	else
+	{
+		t.size = mVideoFormat.imageSize;
+		t.stride = mVideoFormat.lineLength;
+		t.fourcc = mVideoFormat.pixelFormat.fourcc;
+		t.colourFormat = mVideoFormat.pixelFormat.GetBiCompression() == BI_RGB
+			                 ? MWCAP_VIDEO_COLOR_FORMAT_RGB
+			                 : static_cast<MWCAP_VIDEO_COLOR_FORMAT>(mVideoFormat.colourFormat);
+		t.quantisation = static_cast<MWCAP_VIDEO_QUANTIZATION_RANGE>(mVideoFormat.quantisation);
+		t.saturation = static_cast<MWCAP_VIDEO_SATURATION_RANGE>(mVideoFormat.saturation);
+	}
+	auto& buffer = mCaptureBuffers[slot];
+	if (buffer.size() < t.size)
+	{
+		// growing may reallocate so it must not be pinned, this slot is never the one the card is copying into
+		Unpin(buffer.data());
+		buffer.resize(t.size);
+	}
+	t.buffer = buffer.data();
+	PinForCapture(t.buffer, static_cast<DWORD>(buffer.size()));
+	return t;
+}
+
+HRESULT magewell_video_capture_pin::StartCapture(HCHANNEL hChannel, int frameId, const capture_target& target)
+{
+	return MWCaptureVideoFrameToVirtualAddressEx(hChannel, frameId, target.buffer, target.size, target.stride, FALSE,
+	                                             nullptr, target.fourcc, target.cx, target.cy, 0, 64, nullptr,
+	                                             nullptr, 0, 100, 0, 100, 0, MWCAP_VIDEO_DEINTERLACE_BLEND,
+	                                             MWCAP_VIDEO_ASPECT_RATIO_IGNORE, nullptr, nullptr,
+	                                             mVideoFormat.aspectX, mVideoFormat.aspectY, target.colourFormat,
+	                                             target.quantisation, target.saturation);
+}
+
+bool magewell_video_capture_pin::WaitForCapture(HCHANNEL hChannel, bool& mustExit)
+{
+	auto hr = MW_SUCCEEDED;
+	auto completed = false;
+	do
+	{
+		const DWORD dwRet = WaitForSingleObject(mCaptureEvent, 1000);
+		if (dwRet != WAIT_OBJECT_0)
+		{
+			#ifndef NO_LOGGING
+			LOG_TRACE_L1(mLogData.logger, "[{}] Unexpected capture event ({:#08x})", mLogData.prefix, dwRet);
+			#endif
+			if (dwRet == STATUS_TIMEOUT)
+			{
+				#ifndef NO_LOGGING
+				LOG_TRACE_L1(mLogData.logger, "[{}] Wait for frame has timed out", mLogData.prefix);
+				#endif
+				mustExit = true;
+				return false;
+			}
+			if (CheckStreamState(nullptr) == STREAM_DISCARDING)
+			{
+				mustExit = true;
+				return false;
+			}
+			continue;
+		}
+		hr = MWGetVideoCaptureStatus(hChannel, &mVideoSignal.captureStatus);
+		#ifndef NO_LOGGING
+		if (hr != MW_SUCCEEDED)
+		{
+			LOG_TRACE_L1(mLogData.logger, "[{}] MWGetVideoCaptureStatus failed ({})", mLogData.prefix,
+			             static_cast<int>(hr));
+		}
+		#endif
+		completed = mVideoSignal.captureStatus.bFrameCompleted;
+	}
+	while (hr == MW_SUCCEEDED && !completed);
+	return completed;
+}
+
+bool magewell_video_capture_pin::StartPipelinedCapture(HCHANNEL hChannel, int frameId, const capture_target* mustMatch)
+{
+	const auto slot = mNextCaptureSlot;
+	const auto target = IntermediateTarget(slot);
+	if (mustMatch != nullptr && !target.sameFormat(*mustMatch))
+	{
+		// the format changed while the last frame was copied, start afresh on the next call
+		return false;
+	}
+	int64_t now;
+	GetReferenceTime(&now);
+	if (const auto hr = StartCapture(hChannel, frameId, target); hr != MW_SUCCEEDED)
+	{
+		#ifndef NO_LOGGING
+		LOG_WARNING(mLogData.logger, "[{}] Unexpected failed call to MWCaptureVideoFrameToVirtualAddressEx ({})",
+		            mLogData.prefix, static_cast<int>(hr));
+		#endif
+		return false;
+	}
+	mPendingCapture = {.active = true, .slot = slot, .frameId = frameId, .requestedAt = now, .target = target};
+	mNextCaptureSlot = 1 - slot;
+	return true;
+}
+
+bool magewell_video_capture_pin::GrabPipelined(HCHANNEL hChannel, IMediaSample* pms, bool& mustExit)
+{
+	if (!mPendingCapture.active)
+	{
+		// the frame now arriving, by index so it is known once captured
+		int first = MWCAP_VIDEO_FRAME_ID_NEWEST_BUFFERING;
+		if (MW_SUCCEEDED == MWGetVideoBufferInfo(hChannel, &mVideoSignal.bufferInfo))
+		{
+			first = mVideoSignal.bufferInfo.iNewestBuffering;
+		}
+		if (!StartPipelinedCapture(hChannel, first, nullptr))
+		{
+			mustExit = true;
+			return false;
+		}
+	}
+	if (!WaitForCapture(hChannel, mustExit))
+	{
+		mPendingCapture.active = false;
+		return false;
+	}
+	const auto done = mPendingCapture;
+	mPendingCapture.active = false;
+	const int frame = done.frameId >= 0 ? done.frameId : mVideoSignal.captureStatus.iFrame;
+
+	// request the next frame now so the card copies it while this one is processed; if it has not started
+	// arriving yet the newest buffering frame is still this one, so ask for the next one instead
+	int nextFrame = MWCAP_VIDEO_FRAME_ID_NEXT_BUFFERING;
+	if (MW_SUCCEEDED == MWGetVideoBufferInfo(hChannel, &mVideoSignal.bufferInfo)
+		&& mVideoSignal.bufferInfo.iNewestBuffering != frame)
+	{
+		nextFrame = mVideoSignal.bufferInfo.iNewestBuffering;
+	}
+	if (!StartPipelinedCapture(hChannel, nextFrame, &done.target))
+	{
+		// captured in a format that no longer applies
+		return false;
+	}
+
+	int64_t now;
+	GetReferenceTime(&now);
+	mFrameTs.snap(done.requestedAt, READING);
+	if (frame >= 0 && MW_SUCCEEDED == MWGetVideoFrameInfo(hChannel, frame, &mVideoSignal.frameInfo))
+	{
+		mFrameTs.snap(mVideoSignal.frameInfo.allFieldStartTimes[0], BUFFERING);
+		mFrameTs.snap(mVideoSignal.frameInfo.allFieldBufferedTimes[0], BUFFERED);
+	}
+	else
+	{
+		// the frame is still good, only the card's timestamps for it are missing
+		#ifndef NO_LOGGING
+		LOG_TRACE_L1(mLogData.logger, "[{}] Can't get VideoFrameInfo ({})", mLogData.prefix, frame);
+		#endif
+		mFrameTs.snap(done.requestedAt, BUFFERING);
+		mFrameTs.snap(now, BUFFERED);
+	}
+	mFrameTs.snap(now, READ);
+	mFrameCounter++;
+
+	if (done.target.dvTunnel)
+	{
+		WriteDvTunnelFrame(done.target.buffer, done.target.stride, done.target.size, false, pms);
+	}
+	else
+	{
+		video_sample_buffer buffer{
+			.index = mFrameCounter,
+			.data = done.target.buffer,
+			.width = done.target.cx,
+			.height = done.target.cy,
+			.length = done.target.size
+		};
+		mFrameWriter->WriteTo(&buffer, pms);
+	}
+	return true;
+}
+
+void magewell_video_capture_pin::DrainPendingCapture()
+{
+	if (mPendingCapture.active)
+	{
+		bool ignored = false;
+		WaitForCapture(mFilter->GetChannelHandle(), ignored);
+		mPendingCapture.active = false;
+	}
+}
+
 void magewell_video_capture_pin::Unpin(const uint8_t* data)
 {
 	const auto existing = std::ranges::find_if(mPinnedBuffers, [data](const pinned_buffer& b) { return b.data == data; });
@@ -720,6 +935,7 @@ void magewell_video_capture_pin::UnpinAll()
 
 void magewell_video_capture_pin::OnBuffersReleasing()
 {
+	DrainPendingCapture();
 	UnpinAll();
 }
 
@@ -1180,6 +1396,8 @@ void magewell_video_capture_pin::ProbeDvTunnel(const uint8_t* frame, DWORD strid
 	if (mDvDecoder.locked())
 	{
 		mDvLocked = true;
+		// time both store modes again, the format and so the memory traffic may have changed
+		mUnpackStoreMode.reset();
 		mDvOutputWidth = 0;
 		if (mDvDecoder.active().valid)
 		{
@@ -1245,7 +1463,31 @@ void magewell_video_capture_pin::WriteDvTunnelFrame(const uint8_t* frame, DWORD 
 	}
 	if (complete && mDvDecoder.render())
 	{
-		dv_tunnel::unpack_bgr24(top, srcStride, out, out + planeSize, dstStride, cx, cy);
+		if (!mUnpackWorkers)
+		{
+			// created on the capture thread so the workers can match its priority
+			mUnpackWorkers = std::make_unique<row_workers>(unpackWorkerCount);
+			mUnpackWorkers->set_priority(GetThreadPriority(GetCurrentThread()));
+		}
+		const bool streaming = mUnpackStoreMode.streaming();
+		const auto unpackStart = std::chrono::steady_clock::now();
+		mUnpackWorkers->run(static_cast<uint32_t>(cy), [&](uint32_t begin, uint32_t end)
+		{
+			dv_tunnel::unpack_bgr24_rows(top, srcStride, out, out + planeSize, dstStride, cx, begin, end, streaming);
+		});
+		if (!mUnpackStoreMode.decided())
+		{
+			mUnpackStoreMode.record(streaming, std::chrono::duration<double, std::micro>(
+				                        std::chrono::steady_clock::now() - unpackStart).count());
+			#ifndef NO_LOGGING
+			if (mUnpackStoreMode.decided())
+			{
+				LOG_INFO(mLogData.logger, "[{}] DV unpack uses {} stores [regular: {:.2f}ms, streaming: {:.2f}ms]",
+				         mLogData.prefix, mUnpackStoreMode.streaming() ? "streaming" : "regular",
+				         mUnpackStoreMode.regular_mean() / 1000.0, mUnpackStoreMode.streaming_mean() / 1000.0);
+			}
+			#endif
+		}
 	}
 	else
 	{
@@ -1847,6 +2089,8 @@ void magewell_video_capture_pin::StopCapture()
 	if (deviceType == MW_PRO)
 	{
 		MWStopVideoCapture(mFilter->GetChannelHandle());
+		// stopping ends any capture in flight
+		mPendingCapture.active = false;
 		// as per the SDK example, after the capture stops and before the allocator decommits on Inactive
 		UnpinAll();
 	}

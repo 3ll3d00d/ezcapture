@@ -379,8 +379,23 @@ namespace dv_tunnel
 	 * Each 128-bit lane handles 16 pixels: the B, G and R bytes are gathered with pshufb, then each output sample
 	 * is formed by interleaving a low byte (the B nibble) with a high byte (G or R).
 	 */
-	inline void unpack_bgr24_row_avx2(const uint8_t* in, uint16_t* y, uint16_t* uv, uint32_t width)
+	inline void unpack_bgr24_row_avx2(const uint8_t* in, uint16_t* y, uint16_t* uv, uint32_t width,
+	                                  bool streaming = false)
 	{
+		// streaming (non temporal) stores skip reading each destination line before it is written, a third less memory
+		// traffic for a frame far bigger than the cache; they need 32 byte aligned rows
+		const bool stream = streaming && ((reinterpret_cast<uintptr_t>(y) | reinterpret_cast<uintptr_t>(uv)) & 31) == 0;
+		const auto store = [stream](uint16_t* p, __m256i v)
+		{
+			if (stream)
+			{
+				_mm256_stream_si256(reinterpret_cast<__m256i*>(p), v);
+			}
+			else
+			{
+				_mm256_storeu_si256(reinterpret_cast<__m256i*>(p), v);
+			}
+		};
 		// for each of the 3 16-byte loads that make up 16 BGR pixels, where its B, G and R bytes go (-1 = none)
 		const __m256i b0 = _mm256_broadcastsi128_si256(
 			_mm_setr_epi8(0, 3, 6, 9, 12, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1));
@@ -427,10 +442,10 @@ namespace dv_tunnel
 			const __m256i yHi = _mm256_unpackhi_epi8(yLow, green);
 			const __m256i uvLo = _mm256_unpacklo_epi8(uvLow, red);
 			const __m256i uvHi = _mm256_unpackhi_epi8(uvLow, red);
-			_mm256_storeu_si256(reinterpret_cast<__m256i*>(y + x), _mm256_permute2x128_si256(yLo, yHi, 0x20));
-			_mm256_storeu_si256(reinterpret_cast<__m256i*>(y + x + 16), _mm256_permute2x128_si256(yLo, yHi, 0x31));
-			_mm256_storeu_si256(reinterpret_cast<__m256i*>(uv + x), _mm256_permute2x128_si256(uvLo, uvHi, 0x20));
-			_mm256_storeu_si256(reinterpret_cast<__m256i*>(uv + x + 16), _mm256_permute2x128_si256(uvLo, uvHi, 0x31));
+			store(y + x, _mm256_permute2x128_si256(yLo, yHi, 0x20));
+			store(y + x + 16, _mm256_permute2x128_si256(yLo, yHi, 0x31));
+			store(uv + x, _mm256_permute2x128_si256(uvLo, uvHi, 0x20));
+			store(uv + x + 16, _mm256_permute2x128_si256(uvLo, uvHi, 0x31));
 		}
 		for (; x < width; ++x)
 		{
@@ -441,18 +456,106 @@ namespace dv_tunnel
 	}
 	#endif
 
+	/**
+	 * unpack_bgr24 for rows [rowBegin, rowEnd) only, so a frame can be split across threads. src, dstY and dstUV are
+	 * the starts of the whole frame and planes as for unpack_bgr24.
+	 */
+	inline void unpack_bgr24_rows(const uint8_t* src, ptrdiff_t srcStride, uint8_t* dstY, uint8_t* dstUV,
+	                              size_t dstStride, uint32_t width, uint32_t rowBegin, uint32_t rowEnd,
+	                              bool streaming = false)
+	{
+		for (uint32_t row = rowBegin; row < rowEnd; ++row)
+		{
+			const uint8_t* in = row_start(src, srcStride, row);
+			auto* y = reinterpret_cast<uint16_t*>(dstY + row * dstStride);
+			auto* uv = reinterpret_cast<uint16_t*>(dstUV + row * dstStride);
+			#ifdef __AVX2__
+			unpack_bgr24_row_avx2(in, y, uv, width, streaming);
+			#else
+			for (uint32_t x = 0; x < width; ++x)
+			{
+				const auto [r, g, b] = read_rgb<pixel_layout::BGR24>(in + x * 3);
+				y[x] = static_cast<uint16_t>(g << 8 | (b & 0x0F) << 4);
+				uv[x] = static_cast<uint16_t>(r << 8 | (b & 0xF0));
+			}
+			#endif
+		}
+		#ifdef __AVX2__
+		if (streaming)
+		{
+			// streaming stores are weakly ordered, make them visible before the caller signals the band is done
+			_mm_sfence();
+		}
+		#else
+		(void)streaming;
+		#endif
+	}
+
+	/**
+	 * Picks regular or streaming stores for the unpack by timing both on the machine it runs on: streaming stores were
+	 * 41% faster on one memory bound host and 7% slower on another. The modes alternate frame by frame, so both see the
+	 * same conditions, until each has enough samples, then the faster one is kept.
+	 */
+	class store_mode_tuner
+	{
+	public:
+		static constexpr unsigned warmup = 10;
+		static constexpr unsigned samples = 60;
+
+		void reset() { *this = store_mode_tuner{}; }
+
+		bool decided() const { return mDecided; }
+
+		// the mode to use for the next frame
+		bool streaming() const
+		{
+			return mDecided ? mStreaming : (mFrames % 2) == 1;
+		}
+
+		void record(bool streaming, double micros)
+		{
+			if (mDecided)
+			{
+				return;
+			}
+			if (mFrames++ < warmup)
+			{
+				return;
+			}
+			if (streaming)
+			{
+				mStreamingTotal += micros;
+				++mStreamingCount;
+			}
+			else
+			{
+				mRegularTotal += micros;
+				++mRegularCount;
+			}
+			if (mStreamingCount >= samples && mRegularCount >= samples)
+			{
+				mStreaming = streaming_mean() < regular_mean();
+				mDecided = true;
+			}
+		}
+
+		double streaming_mean() const { return mStreamingCount ? mStreamingTotal / mStreamingCount : 0.0; }
+		double regular_mean() const { return mRegularCount ? mRegularTotal / mRegularCount : 0.0; }
+
+	private:
+		bool mDecided{false};
+		bool mStreaming{false};
+		unsigned mFrames{0};
+		unsigned mStreamingCount{0};
+		unsigned mRegularCount{0};
+		double mStreamingTotal{0.0};
+		double mRegularTotal{0.0};
+	};
+
 	inline void unpack_bgr24(const uint8_t* src, ptrdiff_t srcStride, uint8_t* dstY, uint8_t* dstUV, size_t dstStride,
 	                         uint32_t width, uint32_t height)
 	{
-		#ifdef __AVX2__
-		for (uint32_t row = 0; row < height; ++row)
-		{
-			unpack_bgr24_row_avx2(row_start(src, srcStride, row), reinterpret_cast<uint16_t*>(dstY + row * dstStride),
-			                      reinterpret_cast<uint16_t*>(dstUV + row * dstStride), width);
-		}
-		#else
-		unpack<pixel_layout::BGR24>(src, srcStride, dstY, dstUV, dstStride, width, height);
-		#endif
+		unpack_bgr24_rows(src, srcStride, dstY, dstUV, dstStride, width, 0, height);
 	}
 
 	// black in the same layout, used when the tunnel is locked but there is no usable metadata
