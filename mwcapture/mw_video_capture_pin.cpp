@@ -140,7 +140,11 @@ HRESULT magewell_video_capture_pin::video_frame_grabber::grab() const
 			auto captureSize = pin->mVideoFormat.imageSize;
 			auto captureStride = pin->mVideoFormat.lineLength;
 			auto captureFourcc = pin->mVideoFormat.pixelFormat.fourcc;
-			auto captureColourFormat = static_cast<MWCAP_VIDEO_COLOR_FORMAT>(pin->mVideoFormat.colourFormat);
+			// the card converts to the requested fourcc using this colour format, so an RGB fourcc must be asked for in
+			// RGB even when the signal is YCbCr (e.g. a bandwidth fallback from AYUV to BGR24)
+			auto captureColourFormat = pin->mVideoFormat.pixelFormat.GetBiCompression() == BI_RGB
+				                           ? MWCAP_VIDEO_COLOR_FORMAT_RGB
+				                           : static_cast<MWCAP_VIDEO_COLOR_FORMAT>(pin->mVideoFormat.colourFormat);
 			auto captureQuantisation = static_cast<MWCAP_VIDEO_QUANTIZATION_RANGE>(pin->mVideoFormat.quantisation);
 			auto captureSaturation = static_cast<MWCAP_VIDEO_SATURATION_RANGE>(pin->mVideoFormat.saturation);
 			if (pin->mVideoFormat.dvTunnel)
@@ -776,6 +780,12 @@ void magewell_video_capture_pin::LoadFormat(video_format* videoFormat, video_sig
 		const auto preferred = videoFormat->pixelFormat;
 		videoFormat->pixelFormat = fitToBandwidth(preferred, videoFormat->cx, videoFormat->cy, videoFormat->fps,
 		                                          bandwidth);
+		if (videoFormat->pixelFormat.GetBiCompression() != BI_RGB && videoFormat->colourFormat == RGB)
+		{
+			// an RGB signal captured as YCbCr (e.g. BGR10 to P010), the card converts it using this matrix and the
+			// media type must describe the same one
+			videoFormat->colourFormat = videoFormat->hdrMeta.transferFunction == 15 ? BT2020 : REC709;
+		}
 		#ifndef NO_LOGGING
 		// LoadFormat runs on every signal check so only log when the decision changes
 		std::string decision;
