@@ -18,6 +18,7 @@ while the same card locks 4K60 RGB directly from a PC.
 | `vertex2-lg-dv60-4k-4000nit.bin` | up to 60Hz | standard incl. 4K60, 4000 nit | yes | LPCM + bitstream | derived from videoprocessor | Did not work on the tested chain |
 | `vertex2-full-no-dv-approx.bin` | up to 60Hz | none | yes | LPCM + bitstream | approximation of Vertex2 **Full no DV** | FULL + LG DV with the Dolby Vision block removed, not verified against the original |
 | `magewell-vsdb340.bin` | up to 60Hz | none | no | LPCM + bitstream | derived from the default EDID of the card | HDMI VSDB max TMDS 340MHz, no change to the failure above 340MHz |
+| `magewell-vsdb340-atmos.bin` | up to 60Hz | none | no | LPCM + bitstream incl. MAT (Atmos) | `magewell-vsdb340.bin` with the MAT flag set | Untested, see [Atmos (MAT)](#atmos-mat) |
 
 ## SHA-256
 
@@ -32,6 +33,7 @@ while the same card locks 4K60 RGB directly from a PC.
 | `vertex2-lg-dv60-4k-4000nit.bin` | `0b2c664d624fa4630327da576941e75f429f0e834cce71baac43f3f81c42d15a` |
 | `vertex2-full-no-dv-approx.bin` | `2cb63b5985c5fd5da02cb667b24a9e62361b9cea68c9709da45278d42fedc937` |
 | `magewell-vsdb340.bin` | `4dbfe91324c3bee03c9470b001a1e0dd167561959bfa5bb2f118e93dfd3c2170` |
+| `magewell-vsdb340-atmos.bin` | `19403f81500da2e86d84754df3e2bc5719857162c2ccdee2c569510775e01c0a` |
 
 ## Dolby Vision at up to 1080p
 
@@ -77,6 +79,16 @@ both blocks have valid checksums.
 The Apple TV maps its output to the target display described by the VSVDB, with the original 350 nit target the
 tunnel's metadata reported a 0.001-350 nit source and scene peaks never exceeded 250 nits. With a 4000 nit target it
 reports a 4000 nit source and the renderer does the tone mapping for the real display.
+
+## Atmos (MAT)
+
+An Apple TV sends Dolby Atmos as Dolby MAT over HDMI HBR audio. The flag for MAT support is bit 0 of the third byte of
+the Dolby TrueHD/MAT short audio descriptor. The card's default EDID lists TrueHD with that bit clear and the Apple TV
+does not send Atmos to it, the Vertex2 derived EDIDs all have it set and the Apple TV does.
+
+`magewell-vsdb340-atmos.bin` is `magewell-vsdb340.bin` with that bit set (byte 175, `0x00` to `0x01`) and the CTA
+block checksum updated, nothing else changes. It is for testing whether the card captures HBR audio when the source
+reads the card's own EDID.
 
 ## Apply on Vertex2
 

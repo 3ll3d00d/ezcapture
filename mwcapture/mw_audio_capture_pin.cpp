@@ -335,6 +335,59 @@ HRESULT magewell_audio_capture_pin::LoadSignal(HCHANNEL* hChannel)
 
 	if (mAudioSignal.signalStatus.wChannelValid == 0)
 	{
+		auto& st = mAudioSignal.signalStatus;
+		const auto& ai = mAudioSignal.audioInfo;
+
+		#ifndef NO_LOGGING
+		// log the full status whenever it changes, to show what the driver reports for e.g. HDMI HBR audio
+		if (!mNoChannelsLogged || memcmp(&mNoChannelsStatus, &st, sizeof(st)) != 0
+			|| memcmp(&mNoChannelsInfo, &ai, sizeof(ai)) != 0)
+		{
+			mNoChannelsLogged = true;
+			mNoChannelsStatus = st;
+			mNoChannelsInfo = ai;
+			std::string channelStatus;
+			for (auto b : st.channelStatus.abyData)
+			{
+				char hex[4];
+				sprintf_s(hex, "%02x ", b);
+				channelStatus += hex;
+			}
+			LOG_WARNING(mLogData.logger,
+			            "[{}] No valid audio channels: lpcm {} bits {} fs {} channelStatusValid {} channelStatus [{}] "
+			            "infoframe codingType {} channels {} sampleSize {} sampleFreq {} codingExt {} allocation {:#04x}",
+			            mLogData.prefix, static_cast<int>(st.bLPCM), static_cast<int>(st.cBitsPerSample),
+			            st.dwSampleRate, static_cast<int>(st.bChannelStatusValid), channelStatus,
+			            static_cast<int>(ai.byAudioCodingType), static_cast<int>(ai.byChannelCount) + 1,
+			            static_cast<int>(ai.bySampleSize), static_cast<int>(ai.bySampleFrequency),
+			            static_cast<int>(ai.byAudioCodingExtensionType), static_cast<int>(ai.byChannelAllocation));
+		}
+		#endif
+
+		// Experimental: an audio infoframe is present but the driver reports no valid channels. This is what it shows for HDMI HBR audio (8 channels at 192 kHz, e.g. Dolby MAT from an
+		// Apple TV). Assume 8 channels of 16-bit IEC 61937 data so the bitstream probe gets to see it. Before this,
+		// the state delivered no audio at all.
+		// IEC 60958-3 signals HBR as 768 kHz in the channel status, which is 4 lines of 192 kHz carried as 8 channels.
+		// The SDK never clears bLPCM for a bitstream (hence the bitstream probe) so debug builds capture regardless,
+		// the probe and the raw recording then show what the frames hold.
+		#ifdef _DEBUG
+		constexpr bool captureWithoutValidChannels = true;
+		#else
+		constexpr bool captureWithoutValidChannels = false;
+		#endif
+		if (captureWithoutValidChannels || !st.bLPCM || st.dwSampleRate == 768000)
+		{
+			st.wChannelValid = 0x0F;
+			// IEC 61937 words are 16 bits whatever bit depth the driver reports
+			st.cBitsPerSample = 16;
+			if (st.dwSampleRate == 0 || st.dwSampleRate == 768000) st.dwSampleRate = 192000;
+			#ifndef NO_LOGGING
+			LOG_TRACE_L1(mLogData.logger, "[{}] Assuming HBR, 8 channels {} bits {} Hz", mLogData.prefix,
+			             static_cast<int>(st.cBitsPerSample), st.dwSampleRate);
+			#endif
+			return S_OK;
+		}
+
 		#ifndef NO_LOGGING
 		LOG_TRACE_L1(mLogData.logger, "[{}] No valid audio channels detected {}", mLogData.prefix,
 		             mAudioSignal.signalStatus.wChannelValid);
@@ -1130,8 +1183,8 @@ void magewell_audio_capture_pin::CopyToBitstreamBuffer(BYTE* buf)
 			int inStartL = (sampleIdx * MWCAP_AUDIO_MAX_NUM_CHANNELS + pairIdx) * maxBitDepthInBytes;
 			int inStartR = (sampleIdx * MWCAP_AUDIO_MAX_NUM_CHANNELS + pairIdx + MWCAP_AUDIO_MAX_NUM_CHANNELS / 2) *
 				maxBitDepthInBytes;
-			int outStart = (sampleIdx * mAudioFormat.inputChannelCount + pairIdx * mAudioFormat.inputChannelCount) *
-				mAudioFormat.bitDepthInBytes;
+			// a pair is 2 channels wide so pair N starts at channel 2N in the interleaved output
+			int outStart = (sampleIdx * mAudioFormat.inputChannelCount + pairIdx * 2) * mAudioFormat.bitDepthInBytes;
 			for (int byteIdx = 0; byteIdx < mAudioFormat.bitDepthInBytes; ++byteIdx)
 			{
 				auto outL = outStart + byteIdx;

@@ -40,6 +40,7 @@ target_compile_definitions(mwcapture PRIVATE
     _USRDLL
     $<$<CONFIG:Debug>:_DEBUG>
     $<$<CONFIG:Debug>:_WINDOWS>
+    $<$<CONFIG:Debug>:RECORD_RAW>
     $<$<CONFIG:Release>:NDEBUG>
     $<$<CONFIG:Release>:_WINSOCK_DEPRECATED_NO_WARNINGS>
     $<$<CONFIG:Release>:WIN32_LEAN_AND_MEAN>

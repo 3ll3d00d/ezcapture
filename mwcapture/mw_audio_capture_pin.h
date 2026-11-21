@@ -96,6 +96,10 @@ protected:
 
 	double minus_10db{pow(10.0, -10.0 / 20.0)};
 	audio_signal mAudioSignal{};
+	// last status logged when the driver reported no valid channels
+	bool mNoChannelsLogged{false};
+	MWCAP_AUDIO_SIGNAL_STATUS mNoChannelsStatus{};
+	HDMI_AUDIO_INFOFRAME_PAYLOAD mNoChannelsInfo{};
 	BYTE mFrameBuffer[maxFrameLengthInBytes];
 	// usb only
 	uint64_t mFrameBufferLen{0}; // reportedly always be 480 samples (so 1920 bytes)
