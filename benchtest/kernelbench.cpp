@@ -19,9 +19,10 @@
 // memory, so no input file is needed, and the source rotates through several
 // buffers so successive frames are not artificially cache-resident.
 //
-// usage: kernelbench <uyvy|yuy2|v210|y210|r210|bgr10> <width> <height> [frames] [pad]
+// usage: kernelbench <uyvy|yuy2|v210|y210|r210|bgr10|dvtunnel|dvtunnelscalar> <width> <height> [frames] [pad]
 
 #include "../common/conversion_kernels.h"
+#include "../common/dv_tunnel.h"
 
 #include <algorithm>
 #include <chrono>
@@ -81,7 +82,7 @@ int main(int argc, char* argv[])
 {
 	if (argc < 4)
 	{
-		fprintf(stderr, "usage: kernelbench <uyvy|yuy2|v210|y210|r210|bgr10> <width> <height> [frames] [pad]\n");
+		fprintf(stderr, "usage: kernelbench <uyvy|yuy2|v210|y210|r210|bgr10|dvtunnel|dvtunnelscalar> <width> <height> [frames] [pad]\n");
 		return 1;
 	}
 	const std::string fmt = argv[1];
@@ -182,6 +183,31 @@ int main(int argc, char* argv[])
 		});
 	}
 	#endif
+	else if (fmt == "dvtunnel" || fmt == "dvtunnelscalar")
+	{
+		// the DV RGB tunnel as the Magewell Pro captures it: BGR24, bottom-up (negative stride), into P210 planes
+		const ptrdiff_t srcStride = (static_cast<ptrdiff_t>(width) * 3 + 3) / 4 * 4;
+		const size_t dstStride = static_cast<size_t>(width + pad) * 2;
+		const size_t planeSize = dstStride * height;
+		for (int i = 0; i < SRC_ROTATION; ++i)
+			srcs.push_back(randomBuffer(static_cast<size_t>(srcStride) * height, 7u + i));
+		std::vector<uint8_t> planes(planeSize * 2);
+		const bool scalar = fmt == "dvtunnelscalar";
+		result = run(frames, [&](int i)
+		{
+			const uint8_t* top = srcs[i].data() + srcStride * (height - 1);
+			if (scalar)
+			{
+				dv_tunnel::unpack<dv_tunnel::pixel_layout::BGR24>(top, -srcStride, planes.data(),
+				                                                  planes.data() + planeSize, dstStride, width, height);
+			}
+			else
+			{
+				dv_tunnel::unpack_bgr24(top, -srcStride, planes.data(), planes.data() + planeSize, dstStride, width,
+				                        height);
+			}
+		});
+	}
 	else if (fmt == "r210" || fmt == "bgr10")
 	{
 		const size_t srcStride = (static_cast<size_t>(width) * 4 + 255) / 256 * 256;

@@ -685,3 +685,46 @@ TEST(DvVsif, PqToNits)
 	EXPECT_NEAR(100.0, dv_tunnel::pq12_to_nits(static_cast<uint16_t>(std::lround(0.5081 * 4095))), 1.0);
 	EXPECT_NEAR(1000.0, dv_tunnel::pq12_to_nits(static_cast<uint16_t>(std::lround(0.7518 * 4095))), 5.0);
 }
+
+TEST(DvUnpack, Bgr24MatchesScalarReference)
+{
+	// unpack_bgr24 is the AVX2 kernel when built with /arch:AVX2, it must match the scalar template exactly for every
+	// width (full 32 pixel blocks and the scalar tail), top-down and bottom-up, and write nothing past each row
+	constexpr uint16_t canary = 0xA5A5;
+	for (const uint32_t width : {1u, 7u, 31u, 32u, 33u, 63u, 64u, 100u, 1920u, 3840u})
+	{
+		for (const bool bottomUp : {false, true})
+		{
+			constexpr uint32_t height = 5;
+			const ptrdiff_t stride = (static_cast<ptrdiff_t>(width) * 3 + 3) / 4 * 4;
+			std::vector<uint8_t> src(static_cast<size_t>(stride) * height);
+			uint32_t s = 0x12345678u ^ width;
+			for (auto& b : src)
+			{
+				s ^= s << 13;
+				s ^= s >> 17;
+				s ^= s << 5;
+				b = static_cast<uint8_t>(s);
+			}
+			const uint8_t* top = bottomUp ? src.data() + stride * (height - 1) : src.data();
+			const ptrdiff_t srcStride = bottomUp ? -stride : stride;
+			// 8 guard samples after each row of each plane
+			const size_t dstStride = (static_cast<size_t>(width) + 8) * 2;
+			const size_t planeSize = dstStride * height;
+			std::vector<uint16_t> expected(planeSize, canary);
+			std::vector<uint16_t> actual(planeSize, canary);
+			auto* e = reinterpret_cast<uint8_t*>(expected.data());
+			auto* a = reinterpret_cast<uint8_t*>(actual.data());
+			dv_tunnel::unpack<dv_tunnel::pixel_layout::BGR24>(top, srcStride, e, e + planeSize, dstStride, width, height);
+			dv_tunnel::unpack_bgr24(top, srcStride, a, a + planeSize, dstStride, width, height);
+			ASSERT_EQ(expected, actual) << "width " << width << (bottomUp ? " bottom-up" : " top-down");
+			for (size_t row = 0; row < height * 2; ++row)
+			{
+				for (size_t g = width; g < width + 8; ++g)
+				{
+					ASSERT_EQ(canary, actual[row * (width + 8) + g]) << "width " << width << " row " << row;
+				}
+			}
+		}
+	}
+}

@@ -24,6 +24,9 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
+#ifdef __AVX2__
+#include <immintrin.h>
+#endif
 
 /*
  * Decoder for the HDMI Dolby Vision RGB tunnel (the "TV led" DV format) captured as 8-bit RGB, see
@@ -370,10 +373,86 @@ namespace dv_tunnel
 		});
 	}
 
+	#ifdef __AVX2__
+	/**
+	 * unpack<BGR24> for one row, 32 pixels (96 bytes) at a time, the remainder is done by the scalar code.
+	 * Each 128-bit lane handles 16 pixels: the B, G and R bytes are gathered with pshufb, then each output sample
+	 * is formed by interleaving a low byte (the B nibble) with a high byte (G or R).
+	 */
+	inline void unpack_bgr24_row_avx2(const uint8_t* in, uint16_t* y, uint16_t* uv, uint32_t width)
+	{
+		// for each of the 3 16-byte loads that make up 16 BGR pixels, where its B, G and R bytes go (-1 = none)
+		const __m256i b0 = _mm256_broadcastsi128_si256(
+			_mm_setr_epi8(0, 3, 6, 9, 12, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1));
+		const __m256i b1 = _mm256_broadcastsi128_si256(
+			_mm_setr_epi8(-1, -1, -1, -1, -1, -1, 2, 5, 8, 11, 14, -1, -1, -1, -1, -1));
+		const __m256i b2 = _mm256_broadcastsi128_si256(
+			_mm_setr_epi8(-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1, 4, 7, 10, 13));
+		const __m256i g0 = _mm256_broadcastsi128_si256(
+			_mm_setr_epi8(1, 4, 7, 10, 13, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1));
+		const __m256i g1 = _mm256_broadcastsi128_si256(
+			_mm_setr_epi8(-1, -1, -1, -1, -1, 0, 3, 6, 9, 12, 15, -1, -1, -1, -1, -1));
+		const __m256i g2 = _mm256_broadcastsi128_si256(
+			_mm_setr_epi8(-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 2, 5, 8, 11, 14));
+		const __m256i r0 = _mm256_broadcastsi128_si256(
+			_mm_setr_epi8(2, 5, 8, 11, 14, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1));
+		const __m256i r1 = _mm256_broadcastsi128_si256(
+			_mm_setr_epi8(-1, -1, -1, -1, -1, 1, 4, 7, 10, 13, -1, -1, -1, -1, -1, -1));
+		const __m256i r2 = _mm256_broadcastsi128_si256(
+			_mm_setr_epi8(-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, 3, 6, 9, 12, 15));
+		const __m256i highNibble = _mm256_set1_epi8(static_cast<char>(0xF0));
+
+		uint32_t x = 0;
+		for (; x + 32 <= width; x += 32)
+		{
+			const uint8_t* p = in + static_cast<size_t>(x) * 3;
+			// lane 0 = pixels 0-15, lane 1 = pixels 16-31
+			const __m256i a = _mm256_setr_m128i(_mm_loadu_si128(reinterpret_cast<const __m128i*>(p)),
+			                                    _mm_loadu_si128(reinterpret_cast<const __m128i*>(p + 48)));
+			const __m256i b = _mm256_setr_m128i(_mm_loadu_si128(reinterpret_cast<const __m128i*>(p + 16)),
+			                                    _mm_loadu_si128(reinterpret_cast<const __m128i*>(p + 64)));
+			const __m256i c = _mm256_setr_m128i(_mm_loadu_si128(reinterpret_cast<const __m128i*>(p + 32)),
+			                                    _mm_loadu_si128(reinterpret_cast<const __m128i*>(p + 80)));
+			const __m256i blue = _mm256_or_si256(_mm256_or_si256(_mm256_shuffle_epi8(a, b0), _mm256_shuffle_epi8(b, b1)),
+			                                     _mm256_shuffle_epi8(c, b2));
+			const __m256i green = _mm256_or_si256(_mm256_or_si256(_mm256_shuffle_epi8(a, g0), _mm256_shuffle_epi8(b, g1)),
+			                                      _mm256_shuffle_epi8(c, g2));
+			const __m256i red = _mm256_or_si256(_mm256_or_si256(_mm256_shuffle_epi8(a, r0), _mm256_shuffle_epi8(b, r1)),
+			                                    _mm256_shuffle_epi8(c, r2));
+			// Y = G << 8 | (B & 0x0F) << 4, CbCr = R << 8 | (B & 0xF0)
+			const __m256i yLow = _mm256_and_si256(_mm256_slli_epi16(blue, 4), highNibble);
+			const __m256i uvLow = _mm256_and_si256(blue, highNibble);
+			// per lane: lo = pixels 0-7 (16-23), hi = pixels 8-15 (24-31)
+			const __m256i yLo = _mm256_unpacklo_epi8(yLow, green);
+			const __m256i yHi = _mm256_unpackhi_epi8(yLow, green);
+			const __m256i uvLo = _mm256_unpacklo_epi8(uvLow, red);
+			const __m256i uvHi = _mm256_unpackhi_epi8(uvLow, red);
+			_mm256_storeu_si256(reinterpret_cast<__m256i*>(y + x), _mm256_permute2x128_si256(yLo, yHi, 0x20));
+			_mm256_storeu_si256(reinterpret_cast<__m256i*>(y + x + 16), _mm256_permute2x128_si256(yLo, yHi, 0x31));
+			_mm256_storeu_si256(reinterpret_cast<__m256i*>(uv + x), _mm256_permute2x128_si256(uvLo, uvHi, 0x20));
+			_mm256_storeu_si256(reinterpret_cast<__m256i*>(uv + x + 16), _mm256_permute2x128_si256(uvLo, uvHi, 0x31));
+		}
+		for (; x < width; ++x)
+		{
+			const uint8_t* px = in + static_cast<size_t>(x) * 3;
+			y[x] = static_cast<uint16_t>(px[1] << 8 | (px[0] & 0x0F) << 4);
+			uv[x] = static_cast<uint16_t>(px[2] << 8 | (px[0] & 0xF0));
+		}
+	}
+	#endif
+
 	inline void unpack_bgr24(const uint8_t* src, ptrdiff_t srcStride, uint8_t* dstY, uint8_t* dstUV, size_t dstStride,
 	                         uint32_t width, uint32_t height)
 	{
+		#ifdef __AVX2__
+		for (uint32_t row = 0; row < height; ++row)
+		{
+			unpack_bgr24_row_avx2(row_start(src, srcStride, row), reinterpret_cast<uint16_t*>(dstY + row * dstStride),
+			                      reinterpret_cast<uint16_t*>(dstUV + row * dstStride), width);
+		}
+		#else
 		unpack<pixel_layout::BGR24>(src, srcStride, dstY, dstUV, dstStride, width, height);
+		#endif
 	}
 
 	// black in the same layout, used when the tunnel is locked but there is no usable metadata
