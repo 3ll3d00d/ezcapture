@@ -74,6 +74,9 @@ foreach ($f in @(@{ Name = 'Magewell'; Key = 'MWCapture' }, @{ Name = 'Blackmagi
 '--- prerequisites'
 $vc = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64'
 Show 'VC++ x64 runtime' $(if ($vc.Installed -eq 1) { "$($vc.Major).$($vc.Minor).$($vc.Bld)" } else { 'not installed' })
+$mwDriver = Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e96c-e325-11ce-bfc1-08002be10318}' |
+    Get-ItemProperty | Where-Object { $_.ProviderName -like '*Magewell*' } | Select-Object -First 1
+Show 'Magewell Pro Capture driver' $(if ($mwDriver) { "$($mwDriver.DriverVersion) ($($mwDriver.DriverDesc))" } elseif (Test-Path 'HKLM:\SYSTEM\CurrentControlSet\Services\ProCapture') { 'installed, no card bound' } else { 'not installed' })
 $mw = Get-Item "$env:windir\System32\LibMWCapture.dll"
 Show 'Magewell runtime' $(if ($mw) { $mw.VersionInfo.FileVersion } else { 'not installed' })
 Show 'Blackmagic Desktop Video' $(if (Test-Path 'Registry::HKEY_CLASSES_ROOT\CLSID\{BA6C6F44-6DA5-4DCE-94AA-EE2D1372A676}') { 'installed' } else { 'not installed' })

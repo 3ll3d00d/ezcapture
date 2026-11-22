@@ -125,6 +125,7 @@ Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""e
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""ezcapture Magewell Prometheus metrics"" dir=in action=allow protocol=TCP localport=9464 profile=private remoteip=localsubnet"; StatusMsg: "Updating firewall rules..."; Flags: runhidden; Tasks: firewall; Components: mw
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""ezcapture DeckLink Prometheus metrics"" dir=in action=allow protocol=TCP localport=9465 profile=private remoteip=localsubnet"; StatusMsg: "Updating firewall rules..."; Flags: runhidden; Tasks: firewall; Components: bm
 Filename: "https://www.blackmagicdesign.com/support/family/capture-and-playback"; Description: "Open the Blackmagic Desktop Video download page"; Flags: postinstall shellexec skipifsilent nowait; Check: NeedDesktopVideo
+Filename: "https://www.magewell.com/downloads"; Description: "Open the Magewell download page (Pro Capture driver)"; Flags: postinstall shellexec skipifsilent nowait; Check: NeedMwDriver
 Filename: "https://github.com/Nevcairiel/LAVFilters/releases"; Description: "Open the LAV Filters download page"; Flags: postinstall shellexec skipifsilent nowait unchecked; Check: NeedLav
 Filename: "{#AppUrl}#configuration"; Description: "Open the player setup guide"; Flags: postinstall shellexec skipifsilent nowait unchecked
 
@@ -147,6 +148,10 @@ const
   DeckLinkIteratorClsid = 'CLSID\{BA6C6F44-6DA5-4DCE-94AA-EE2D1372A676}';
   LavAudioClsid = 'CLSID\{E8E73B6B-4CB3-44A4-BE99-4F7BCB96E491}';
   UninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#AppGuid}_is1';
+  { the Pro Capture driver binds cards in the MEDIA class and runs as the ProCapture service }
+  MediaClassKey = 'SYSTEM\CurrentControlSet\Control\Class\{4d36e96c-e325-11ce-bfc1-08002be10318}';
+  MwDriverServiceKey = 'SYSTEM\CurrentControlSet\Services\ProCapture';
+  MagewellDownloads = 'https://www.magewell.com/downloads';
   { where each filter keeps its settings, under HKCU (see capture_filter.cpp) }
   MwSettingsKey = 'Software\3ll3d00d\MWCapture';
   BmSettingsKey = 'Software\3ll3d00d\BMCapture';
@@ -250,6 +255,32 @@ begin
   Result := RegKeyExists(HKCR64, LavAudioClsid);
 end;
 
+{ the Pro Capture (PCIe) driver: its version from the driver key of a card it is bound to, or 'installed' if the
+  driver's service exists but no card is bound, empty if it is not installed. USB Capture devices use the Windows
+  driver and do not need it. }
+function MwDriverVersion: String;
+var
+  Keys: TArrayOfString;
+  I: Integer;
+  Provider: String;
+begin
+  Result := '';
+  if RegGetSubkeyNames(HKLM64, MediaClassKey, Keys) then
+    for I := 0 to GetArrayLength(Keys) - 1 do
+      if RegQueryStringValue(HKLM64, MediaClassKey + '\' + Keys[I], 'ProviderName', Provider)
+        and (Pos('magewell', Lowercase(Provider)) > 0)
+        and RegQueryStringValue(HKLM64, MediaClassKey + '\' + Keys[I], 'DriverVersion', Result)
+        and (Result <> '') then
+        Exit;
+  if RegKeyExists(HKLM64, MwDriverServiceKey) then
+    Result := 'installed';
+end;
+
+function NeedMwDriver: Boolean;
+begin
+  Result := WizardIsComponentSelected('mw') and (MwDriverVersion = '');
+end;
+
 { the file version of the DLL registered for a COM class, or 'installed' if it cannot be read }
 function ComServerVersion(const Clsid: String): String;
 var
@@ -306,9 +337,10 @@ begin
         Result := Result + Bullet('The Magewell runtime (LibMWCapture.dll) is not installed. The Magewell filter cannot be ' +
           'registered without it; run this installer again and let it install the runtime.');
     end;
-    Result := Result + Bullet('Magewell cards also need the Magewell driver: the Pro Capture driver for PCIe cards, or ' +
-      'the USB Capture Utility for USB devices, from https://www.magewell.com/downloads. USB Capture users must set the ' +
-      'output formats in the Utility, see the README.');
+    if MwDriverVersion = '' then
+      Result := Result + Bullet('The Magewell Pro Capture driver is not installed. Pro Capture (PCIe) cards need it, ' +
+        'download it from ' + MagewellDownloads + ' (setup can open that page when it finishes). USB Capture devices ' +
+        'do not need it, but their output formats must be set in the USB Capture Utility from the same page, see the README.');
   end;
   if NeedVc and DeclinedVc then
     Result := Result + Bullet('The Microsoft Visual C++ runtime {#VcRedistVersion} or later is needed. Download it from ' +
@@ -372,7 +404,7 @@ begin
   end;
   RowName[RowVc].Caption := 'Visual C++ runtime';
   RowName[RowMw].Caption := 'Magewell capture runtime';
-  RowName[RowMwDriver].Caption := 'Magewell driver';
+  RowName[RowMwDriver].Caption := 'Magewell Pro Capture driver';
   RowName[RowDv].Caption := 'Blackmagic Desktop Video';
   RowName[RowLav].Caption := 'LAV Filters';
   VcCheck := NewInstallCheck;
@@ -448,7 +480,11 @@ begin
   else
     ShowRow(RowMw, Mw, S, 'nothing', nil, Top);
 
-  ShowRow(RowMwDriver, Mw, 'not checked', 'check yourself', nil, Top);
+  S := MwDriverVersion;
+  if S <> '' then
+    ShowRow(RowMwDriver, Mw, S, 'nothing', nil, Top)
+  else
+    ShowRow(RowMwDriver, Mw, 'not installed', 'install for PCIe', nil, Top);
 
   if HasDesktopVideo then
     ShowRow(RowDv, Bm, ComServerVersion(DeckLinkIteratorClsid), 'nothing', nil, Top)

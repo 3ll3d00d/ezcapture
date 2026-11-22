@@ -31,9 +31,9 @@ Notes:
 | Components           | Types: both / Magewell only / Blackmagic only / Custom. Unticking both and pressing Next gives "Select at least one filter" |
 | Tasks                | Trace and firewall explanation (mentions Prometheus and ports 9474/9464/9475/9465) is fully readable, not clipped or overlapping the task boxes. "Install the trace builds" is unticked, "Allow the web API and Prometheus metrics through Windows Firewall" is ticked |
 | Remote access        | Both boxes match the current property page settings. "Listen on" lists 0.0.0.0, this PC's LAN address(es) and 127.0.0.1, and shows the address in use (0.0.0.0 if none set). The token box shows the existing token with "setup keeps it", or a new 32 hex digit token. Unticking both greys out the address, unticking the web API greys out the token |
-| Prerequisites        | A table with columns Dependency / Installed / To do: Visual C++ runtime, Magewell capture runtime, Magewell driver ("not checked", "check yourself"), Blackmagic Desktop Video, LAV Filters, each with its installed version. Current ones say "nothing". Rows line up and nothing is clipped. The box below lists the Magewell driver reminder, plus Desktop Video and LAV Filters if missing |
+| Prerequisites        | A table with columns Dependency / Installed / To do: Visual C++ runtime, Magewell capture runtime, Magewell Pro Capture driver (the version Check shows, e.g. 1.3.0.4437), Blackmagic Desktop Video, LAV Filters, each with its installed version. Current ones say "nothing". Rows line up and nothing is clipped. The box below lists Desktop Video and LAV Filters if missing, or "Nothing." |
 | Ready                | Version, Build "AVX2 optimised" (or no-arch on an older CPU), both components, the trace and firewall tasks, the remote access choices, no prerequisites to install |
-| Finish               | "Open the Blackmagic Desktop Video download page" (ticked, only if Desktop Video is missing), LAV Filters page (unticked, only if LAV is not registered), player setup guide (unticked). Ticked ones open in the browser |
+| Finish               | "Open the Magewell download page" (ticked, only if the Pro Capture driver is missing), "Open the Blackmagic Desktop Video download page" (ticked, only if Desktop Video is missing), LAV Filters page (unticked, only if LAV is not registered), player setup guide (unticked). Ticked ones open in the browser |
 
 Tick the trace task and install. Check:
 
@@ -109,6 +109,11 @@ Each test needs a fresh sandbox: close it and start again.
 4c. Blackmagic only (fresh sandbox):
 
 - [ ] The Magewell runtime is not offered (only VC++), and the Desktop Video bullet is shown
+
+4d. Magewell only (fresh sandbox, no Pro Capture driver):
+
+- [ ] The Pro Capture driver row says "not installed", "install for PCIe", the box below has the driver bullet with the
+      magewell.com/downloads link, and Finish offers "Open the Magewell download page"
 
 ## 5. Silent install (sandbox or capture PC)
 
