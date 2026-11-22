@@ -18,11 +18,26 @@ token to enter in Home Assistant. Then go straight to step 2.
    is serving, e.g. `Serving http://0.0.0.0:9474/ as magewell-a3f21c`.
 3. **Copy Link** copies the page address with the access token, e.g. `http://capture-pc:9474/#t=3f9c...`. Open it in
    a browser to see the status page.
-4. **Copy Token** copies only the token, for Home Assistant. **New Token** replaces it. Anything using the old token
-   stops working once the filter is next loaded.
+4. **Copy Token** copies only the token. **New Token** replaces it. Anything using the old token stops working once
+   the filter is next loaded.
+5. In Home Assistant's `secrets.yaml`, add the token with `Bearer ` in front of it:
+
+   ```yaml
+   ezcapture_auth: "Bearer 3f9c0a...e1"
+   ```
+
+   The secret has to hold the whole `Authorization` header value, not just the token. A `!secret` can only replace
+   a whole YAML value, templates cannot read secrets, and HA's REST integrations have no bearer token option, so
+   there is no way to add `Bearer ` in `configuration.yaml`. There is a space after `Bearer`, not a colon. With the
+   bare token the filter answers every request with `401` and the log shows `Got non-ok response from resource:
+   401`.
 
 The server only runs while a player has the filter loaded. When the player closes, Home Assistant marks the
 entities `unavailable`.
+
+The RESTful switches read their URL once at startup. If that fails, e.g. because the filter is not loaded, HA logs
+`Platform rest not ready yet` and retries every 30 seconds, and the switches do not exist until it succeeds. After
+fixing a wrong token, restart Home Assistant so they are set up again.
 
 When the server is on, it uses three threads that sleep until a request arrives. With it off, nothing runs.
 
@@ -139,6 +154,8 @@ template:
               entity_id: sensor.capture_controls
 ```
 
+`sdr_profile` works the same way, with `name: sdr_profile`.
+
 `sensor.capture_controls` holds the current values as attributes. Add it to the `rest:` block from
 [Home Assistant sensors](#home-assistant-sensors):
 
@@ -212,6 +229,14 @@ rest:
         unique_id: ezcapture_max_cll
         unit_of_measurement: "nits"
         value_template: "{{ value_json.hdr.max_cll_nits }}"
+      - name: Capture refresh rate
+        unique_id: ezcapture_refresh_rate
+        unit_of_measurement: "Hz"
+        value_template: "{{ value_json.display.refresh_hz }}"
+      - name: Capture overrun windows
+        unique_id: ezcapture_overrun_windows
+        state_class: total_increasing
+        value_template: "{{ value_json.counters.overrun_windows_total }}"
     binary_sensor:
       - name: Capture signal
         unique_id: ezcapture_signal
@@ -220,6 +245,9 @@ rest:
         unique_id: ezcapture_hdr
         value_template: "{{ value_json.summary.dynamic_range not in [none, 'sdr'] }}"
 ```
+
+HA makes the entity ids from the names, so `Capture MaxCLL` becomes `sensor.capture_maxcll`, not
+`sensor.capture_max_cll`. It is `unknown` for SDR sources, which have no MaxCLL.
 
 An automation that reacts to the dynamic range, e.g. to change a projector's picture mode:
 
