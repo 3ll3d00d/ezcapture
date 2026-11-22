@@ -378,6 +378,7 @@ automation:
       - trigger: state
         entity_id: media_player.jriver
         attribute: media_title
+        not_to: [Media Center]
         for: {seconds: 5}
         id: new_title
     conditions:
@@ -387,6 +388,22 @@ automation:
       - condition: state
         entity_id: media_player.jriver
         state: playing
+      - alias: not JRiver's transient title
+        condition: not
+        conditions:
+          - condition: state
+            entity_id: media_player.jriver
+            attribute: media_title
+            state: Media Center
+      - alias: a signal change, the projector coming on, or a file being chosen
+        condition: or
+        conditions:
+          - condition: trigger
+            id: [hdr, sdr, projector_on]
+          - condition: state
+            entity_id: sensor.jriver_dynamic_range
+            attribute: source
+            state: file
     actions:
       - choose:
           - conditions:
@@ -422,8 +439,10 @@ automation:
 * `unknown` and `none` match neither branch, so the projector is left alone when the mode can't be known.
 * The 5 second hold on a new title lets JRiver's fields settle; they go blank for a moment between items, which
   reads as `sdr`. The 60 second hold covers the same gap within a playlist.
-* The capture card keeps one title whatever the source is showing, so it is only switched by the start-playing
-  trigger and the signal holds.
+* As a file starts JRiver shows the title `Media Center` for a few seconds, with blank fields that read as `sdr`.
+  Ignore it or the projector drops to SDR just before an HDR film starts.
+* The capture card keeps one title whatever the source is showing, and JRiver can drop to idle and back on it by
+  itself, so for the capture card only the signal holds decide.
 * The projector-on trigger sets the mode when the projector is turned on part way through.
 * It only sends a command when the projector is in the wrong mode. Replace `sensor.projector` and its
   `picture_mode` attribute with whatever reports your projector's power and picture mode.
@@ -464,6 +483,7 @@ automation:
       - trigger: state
         entity_id: media_player.jriver
         attribute: media_title
+        not_to: [Media Center]
         for: {seconds: 5}
         id: new_title
     conditions:
@@ -473,6 +493,13 @@ automation:
       - condition: state
         entity_id: media_player.jriver
         state: playing
+      - alias: not JRiver's transient title
+        condition: not
+        conditions:
+          - condition: state
+            entity_id: media_player.jriver
+            attribute: media_title
+            state: Media Center
       - alias: a file, not the capture card
         condition: state
         entity_id: sensor.jriver_dynamic_range
@@ -511,6 +538,9 @@ automation:
   cooling down, so put the picture mode and lens back to their resting state in a script that then sends standby,
   and use that script for the power off button. Do the same when the projector next turns on with nothing playing,
   to cover it being turned off with the remote.
+* **Reset when playback stops.** When JRiver has been stopped (`idle`, `off` or `unavailable`, not `paused`) for
+  30 seconds, put the picture mode and lens back to their resting state. 30 seconds rides over the gap between
+  playlist items and picking the next title.
 * **One command at a time.** The picture mode and lens automations can fire together, e.g. when playback starts. A
   projector usually takes one command at a time and refuses commands while it is still changing mode, so whatever
   sends them should queue them and retry a refused one. cmdserver does both.
