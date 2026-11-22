@@ -249,23 +249,8 @@ rest:
 HA makes the entity ids from the names, so `Capture MaxCLL` becomes `sensor.capture_maxcll`, not
 `sensor.capture_max_cll`. It is `unknown` for SDR sources, which have no MaxCLL.
 
-An automation that reacts to the dynamic range, e.g. to change a projector's picture mode:
-
-```yaml
-automation:
-  - alias: Projector follows HDR
-    trigger:
-      - trigger: state
-        entity_id: sensor.capture_dynamic_range
-    action:
-      - choose:
-          - conditions: "{{ trigger.to_state.state in ['hdr10', 'dv', 'lldv'] }}"
-            sequence:
-              - action: script.projector_hdr_mode
-          - conditions: "{{ trigger.to_state.state == 'sdr' }}"
-            sequence:
-              - action: script.projector_sdr_mode
-```
+To change a projector's picture mode or lens from the dynamic range, see
+[Example: projector modes with JRiver](#example-projector-modes-with-jriver).
 
 ## Instant updates with a webhook
 
@@ -308,6 +293,211 @@ template:
 ```
 
 or directly in an automation (`trigger: webhook` with the same `webhook_id`).
+
+## Example: projector modes with JRiver
+
+A working setup where JRiver plays both files and the capture card (a playlist or zone item that shows the
+filter), and Home Assistant switches the projector's picture mode and lens to suit. It uses:
+
+* the [JRiver integration](https://github.com/3ll3d00d/jriver_homeassistant) for `media_player.jriver`, with the
+  `HDR Format` and `UseLens` library fields added under **Extra fields** in its options
+* the REST sensors and the webhook sensors from the sections above
+* `script.projector_hdr_mode`, `script.projector_sdr_mode`, `script.projector_scope` and `script.projector_16_9`,
+  whatever your projector needs (e.g. `rest_command`s to [cmdserver](https://github.com/3ll3d00d/cmdserver) for a
+  JVC)
+
+Replace `Capture` with the title JRiver shows while it is playing the capture card.
+
+### One dynamic range for files and the capture card
+
+JRiver's `HDR Format` describes the file being played, so while it shows the capture card it says nothing about the
+signal. This sensor uses the filter for the capture card and the file otherwise, with the same ids as
+`summary.dynamic_range`:
+
+```yaml
+template:
+  - sensor:
+      # sdr/hdr10/hlg/dv/lldv for whatever JRiver is showing; unknown = the capture card but the filter isn't
+      # answering; none = JRiver off
+      - name: JRiver dynamic range
+        unique_id: jriver_dynamic_range
+        device_class: enum
+        state: >-
+          {%- set title = state_attr('media_player.jriver', 'media_title') or '' -%}
+          {%- set f = (state_attr('media_player.jriver', 'HDR Format') or '') | lower -%}
+          {%- if states('media_player.jriver') in ['off', 'unavailable', 'unknown'] -%}
+            {%- set r = 'none' -%}
+          {%- elif title == 'Capture' -%}
+            {%- set r = states('sensor.capture_dynamic_range_instant') if has_value('sensor.capture_dynamic_range') else 'unknown' -%}
+          {%- else -%}
+            {%- set r = 'sdr' if f == '' else 'dv' if 'dolby' in f else 'hlg' if 'hlg' in f else 'hdr10' -%}
+          {%- endif -%}
+          {{ r }}
+        attributes:
+          source: >-
+            {{ 'capture' if (state_attr('media_player.jriver', 'media_title') or '') == 'Capture' else 'file' }}
+```
+
+* For the capture card it takes the webhook sensor, so it changes as soon as the signal does, but only while the
+  polled sensor is available, so a value left over from when the filter was last loaded is never used.
+* JRiver reports `HDR Format` values such as `HDR10`, `HDR10+` and `DolbyVision Profile 7 FEL, HDR10-compatible`,
+  and an empty value for SDR.
+
+### Picture mode: quick into HDR, slow out of it
+
+SDR is the resting state: menus, the gap between items and most trailers are SDR. HDR means real content has
+started. So switch to HDR quickly and back to SDR slowly. The slow return also stops the projector flapping
+between modes:
+
+```yaml
+automation:
+  - alias: Projector picture mode follows dynamic range
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: sensor.jriver_dynamic_range
+        to: [hdr10, hlg, dv, lldv]
+        for: {seconds: 5}
+      - trigger: state
+        entity_id: sensor.jriver_dynamic_range
+        to: sdr
+        for: {seconds: 60}
+      - trigger: state
+        entity_id: sensor.projector
+        to: "on"
+        for: {seconds: 10}
+      - trigger: state
+        entity_id: media_player.jriver
+        to: playing
+        for: {seconds: 10}
+    conditions:
+      - condition: state
+        entity_id: sensor.projector
+        state: "on"
+      - condition: state
+        entity_id: media_player.jriver
+        state: playing
+    actions:
+      - choose:
+          - conditions:
+              - condition: state
+                entity_id: sensor.jriver_dynamic_range
+                state: [hdr10, hlg, dv, lldv]
+                for: {seconds: 5}
+              - condition: not
+                conditions:
+                  - condition: state
+                    entity_id: sensor.projector
+                    attribute: picture_mode
+                    state: HDR
+            sequence:
+              - action: script.projector_hdr_mode
+          - conditions:
+              - condition: state
+                entity_id: sensor.jriver_dynamic_range
+                state: sdr
+                for: {seconds: 60}
+              - condition: not
+                conditions:
+                  - condition: state
+                    entity_id: sensor.projector
+                    attribute: picture_mode
+                    state: SDR
+            sequence:
+              - action: script.projector_sdr_mode
+```
+
+* `unknown` and `none` match neither branch, so the projector is left alone when the mode can't be known.
+* The 5 and 60 second holds also cover JRiver's fields going blank for a few seconds between items, which reads as
+  `sdr`.
+* The projector-on and start-playing triggers apply the same holds, so the mode is right when the projector is
+  turned on part way through.
+* It only sends a command when the projector is in the wrong mode. Replace `sensor.projector` and its
+  `picture_mode` attribute with whatever reports your projector's power and picture mode.
+
+### Lens: from the file, quick into scope, slow out of it
+
+The filter sees a 16:9 signal whatever the content's aspect ratio, so scope can't be detected for the capture card.
+For files, a `UseLens` library field (`1` for scope, `0` for 16:9) can drive the lens. 16:9 is the resting state
+here, so a short 16:9 item such as a trailer before a scope film doesn't move the lens out and back:
+
+```yaml
+automation:
+  - alias: Projector lens follows JRiver file
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: media_player.jriver
+        attribute: UseLens
+        to: "1"
+        for: {seconds: 5}
+        id: scope
+      - trigger: state
+        entity_id: media_player.jriver
+        attribute: UseLens
+        to: "0"
+        for: {seconds: 60}
+        id: flat
+      - trigger: state
+        entity_id: sensor.projector
+        to: "on"
+        for: {seconds: 10}
+        id: projector_on
+      - trigger: state
+        entity_id: media_player.jriver
+        to: playing
+        for: {seconds: 10}
+        id: playing
+    conditions:
+      - condition: state
+        entity_id: sensor.projector
+        state: "on"
+      - alias: a file, not the capture card
+        condition: state
+        entity_id: sensor.jriver_dynamic_range
+        attribute: source
+        state: file
+    actions:
+      - choose:
+          - conditions:
+              - condition: trigger
+                id: [scope, projector_on, playing]
+              - condition: state
+                entity_id: media_player.jriver
+                state: playing
+              - condition: state
+                entity_id: media_player.jriver
+                attribute: UseLens
+                state: "1"
+            sequence:
+              - action: script.projector_scope
+          - conditions:
+              - condition: trigger
+                id: flat
+              - condition: state
+                entity_id: media_player.jriver
+                attribute: UseLens
+                state: "0"
+            sequence:
+              - action: script.projector_16_9
+```
+
+* The holds are on the triggers, not the conditions. A `for:` on an attribute condition is measured from the
+  entity's last update, and a playing media player updates every few seconds, so it would never be met.
+* Only the 60 second `UseLens` trigger moves the lens out of scope; turning the projector on or starting playback
+  never does, otherwise a 16:9 pre-roll at the start of a scope film would cause a round trip.
+* Add a check that the lens isn't already in position, as for the picture mode, so the scripts only run when
+  needed.
+
+### Things that help
+
+* **Reset before turning the projector off.** Many projectors, including JVCs, ignore commands once they start
+  cooling down, so put the picture mode and lens back to their resting state in a script that then sends standby,
+  and use that script for the power off button. Do the same when the projector next turns on with nothing playing,
+  to cover it being turned off with the remote.
+* **One command at a time.** The picture mode and lens automations can fire together, e.g. when playback starts. A
+  projector usually takes one command at a time and refuses commands while it is still changing mode, so whatever
+  sends them should queue them and retry a refused one. cmdserver does both.
 
 ## History
 
