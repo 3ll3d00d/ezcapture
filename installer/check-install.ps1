@@ -49,13 +49,16 @@ foreach ($rule in @(
     }
 }
 # dismissing the Windows Firewall prompt for a player creates a block rule for its exe, which beats the port rule
-$players = 'mpc-be', 'mpc-hc', 'Media Center'
+# match the player exe itself, not its folder, e.g. madVR's madtpg.exe lives under JRiver's folder
+$players = 'mpc-be*.exe', 'mpc-hc*.exe', 'media center*.exe'
 $blocks = Get-NetFirewallRule -Direction Inbound -Action Block -Enabled True | Where-Object {
     $app = ($_ | Get-NetFirewallApplicationFilter).Program
-    $app -and ($players | Where-Object { $app -like "*$_*" })
+    $leaf = if ($app) { Split-Path $app -Leaf } else { '' }
+    $leaf -and ($players | Where-Object { $leaf -like $_ })
 }
 if ($blocks) {
-    foreach ($b in $blocks) { Show 'Player block rule' "$($b.DisplayName): $(($b | Get-NetFirewallApplicationFilter).Program) (blocks the web API, delete it in Windows Defender Firewall)" }
+    # Windows adds a TCP and a UDP rule when its prompt is cancelled, so show the protocol to tell them apart
+    foreach ($b in $blocks) { Show 'Player block rule' "$($b.DisplayName) ($(($b | Get-NetFirewallPortFilter).Protocol)): $(($b | Get-NetFirewallApplicationFilter).Program) (blocks the web API and metrics, delete it in Windows Defender Firewall)" }
 } else {
     Show 'Player block rules' 'none'
 }
