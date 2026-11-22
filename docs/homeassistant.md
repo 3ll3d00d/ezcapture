@@ -343,11 +343,12 @@ template:
 * JRiver reports `HDR Format` values such as `HDR10`, `HDR10+` and `DolbyVision Profile 7 FEL, HDR10-compatible`,
   and an empty value for SDR.
 
-### Picture mode: quick into HDR, slow out of it
+### Picture mode: playback switches quickly, the signal is quick into HDR and slow out of it
 
-SDR is the resting state: menus, the gap between items and most trailers are SDR. HDR means real content has
-started. So switch to HDR quickly and back to SDR slowly. The slow return also stops the projector flapping
-between modes:
+Starting playback or a new title is a deliberate choice, so apply that title's mode straight away, whichever way it
+goes. Within a title, SDR is the resting state: menus, the gap between items and a capture card source sitting on
+a menu are SDR, and HDR means real content has started. So a signal change switches to HDR quickly and back to SDR
+slowly. The slow return also stops the projector flapping between modes:
 
 ```yaml
 automation:
@@ -358,18 +359,27 @@ automation:
         entity_id: sensor.jriver_dynamic_range
         to: [hdr10, hlg, dv, lldv]
         for: {seconds: 5}
+        id: hdr
       - trigger: state
         entity_id: sensor.jriver_dynamic_range
         to: sdr
         for: {seconds: 60}
+        id: sdr
       - trigger: state
         entity_id: sensor.projector
         to: "on"
         for: {seconds: 10}
+        id: projector_on
       - trigger: state
         entity_id: media_player.jriver
         to: playing
-        for: {seconds: 10}
+        for: {seconds: 5}
+        id: playing
+      - trigger: state
+        entity_id: media_player.jriver
+        attribute: media_title
+        for: {seconds: 5}
+        id: new_title
     conditions:
       - condition: state
         entity_id: sensor.projector
@@ -380,10 +390,11 @@ automation:
     actions:
       - choose:
           - conditions:
+              - condition: trigger
+                id: [hdr, projector_on, playing, new_title]
               - condition: state
                 entity_id: sensor.jriver_dynamic_range
                 state: [hdr10, hlg, dv, lldv]
-                for: {seconds: 5}
               - condition: not
                 conditions:
                   - condition: state
@@ -393,10 +404,11 @@ automation:
             sequence:
               - action: script.projector_hdr_mode
           - conditions:
+              - condition: trigger
+                id: [sdr, projector_on, playing, new_title]
               - condition: state
                 entity_id: sensor.jriver_dynamic_range
                 state: sdr
-                for: {seconds: 60}
               - condition: not
                 conditions:
                   - condition: state
@@ -408,18 +420,19 @@ automation:
 ```
 
 * `unknown` and `none` match neither branch, so the projector is left alone when the mode can't be known.
-* The 5 and 60 second holds also cover JRiver's fields going blank for a few seconds between items, which reads as
-  `sdr`.
-* The projector-on and start-playing triggers apply the same holds, so the mode is right when the projector is
-  turned on part way through.
+* The 5 second hold on a new title lets JRiver's fields settle; they go blank for a moment between items, which
+  reads as `sdr`. The 60 second hold covers the same gap within a playlist.
+* The capture card keeps one title whatever the source is showing, so it is only switched by the start-playing
+  trigger and the signal holds.
+* The projector-on trigger sets the mode when the projector is turned on part way through.
 * It only sends a command when the projector is in the wrong mode. Replace `sensor.projector` and its
   `picture_mode` attribute with whatever reports your projector's power and picture mode.
 
-### Lens: from the file, quick into scope, slow out of it
+### Lens: from the file, playback switches quickly, quick into scope and slow out of it
 
 The filter sees a 16:9 signal whatever the content's aspect ratio, so scope can't be detected for the capture card.
-For files, a `UseLens` library field (`1` for scope, `0` for 16:9) can drive the lens. 16:9 is the resting state
-here, so a short 16:9 item such as a trailer before a scope film doesn't move the lens out and back:
+For files, a `UseLens` library field (`1` for scope, `0` for 16:9) can drive the lens. As for the picture mode,
+starting playback or a new title applies that title's lens straight away, and otherwise 16:9 is the resting state:
 
 ```yaml
 automation:
@@ -446,12 +459,20 @@ automation:
       - trigger: state
         entity_id: media_player.jriver
         to: playing
-        for: {seconds: 10}
+        for: {seconds: 5}
         id: playing
+      - trigger: state
+        entity_id: media_player.jriver
+        attribute: media_title
+        for: {seconds: 5}
+        id: new_title
     conditions:
       - condition: state
         entity_id: sensor.projector
         state: "on"
+      - condition: state
+        entity_id: media_player.jriver
+        state: playing
       - alias: a file, not the capture card
         condition: state
         entity_id: sensor.jriver_dynamic_range
@@ -461,10 +482,7 @@ automation:
       - choose:
           - conditions:
               - condition: trigger
-                id: [scope, projector_on, playing]
-              - condition: state
-                entity_id: media_player.jriver
-                state: playing
+                id: [scope, projector_on, playing, new_title]
               - condition: state
                 entity_id: media_player.jriver
                 attribute: UseLens
@@ -473,7 +491,7 @@ automation:
               - action: script.projector_scope
           - conditions:
               - condition: trigger
-                id: flat
+                id: [flat, projector_on, playing, new_title]
               - condition: state
                 entity_id: media_player.jriver
                 attribute: UseLens
@@ -484,8 +502,6 @@ automation:
 
 * The holds are on the triggers, not the conditions. A `for:` on an attribute condition is measured from the
   entity's last update, and a playing media player updates every few seconds, so it would never be met.
-* Only the 60 second `UseLens` trigger moves the lens out of scope; turning the projector on or starting playback
-  never does, otherwise a 16:9 pre-roll at the start of a scope film would cause a round trip.
 * Add a check that the lens isn't already in position, as for the picture mode, so the scripts only run when
   needed.
 
