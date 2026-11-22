@@ -489,7 +489,7 @@ end;
 { a token in the filter's format, 128 random bits as 32 lower case hex digits, empty if no random numbers are available }
 function NewToken: String;
 var
-  I: Integer;
+  I, J: Integer;
   V: Cardinal;
 begin
   Result := '';
@@ -500,7 +500,9 @@ begin
       Result := '';
       Exit;
     end;
-    Result := Result + Lowercase(IntToHex(V, 8));
+    { Pascal Script has no IntToHex, so emit the 8 hex digits of V by hand, most significant first }
+    for J := 7 downto 0 do
+      Result := Result + Copy('0123456789abcdef', ((V shr (J * 4)) and 15) + 1, 1);
   end;
 end;
 
