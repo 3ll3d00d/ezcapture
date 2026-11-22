@@ -33,8 +33,12 @@ foreach ($name in $filters.Keys) {
     Show $name "$path; $inCat"
 }
 
-'--- web API firewall rules'
-foreach ($rule in @(@{ Name = 'ezcapture Magewell web API'; Port = '9474' }, @{ Name = 'ezcapture DeckLink web API'; Port = '9475' })) {
+'--- web API and Prometheus firewall rules'
+foreach ($rule in @(
+        @{ Name = 'ezcapture Magewell web API'; Port = '9474' },
+        @{ Name = 'ezcapture DeckLink web API'; Port = '9475' },
+        @{ Name = 'ezcapture Magewell Prometheus metrics'; Port = '9464' },
+        @{ Name = 'ezcapture DeckLink Prometheus metrics'; Port = '9465' })) {
     $r = Get-NetFirewallRule -DisplayName $rule.Name
     if ($r) {
         $port = ($r | Get-NetFirewallPortFilter).LocalPort
@@ -54,6 +58,17 @@ if ($blocks) {
     foreach ($b in $blocks) { Show 'Player block rule' "$($b.DisplayName): $(($b | Get-NetFirewallApplicationFilter).Program) (blocks the web API, delete it in Windows Defender Firewall)" }
 } else {
     Show 'Player block rules' 'none'
+}
+
+'--- remote access settings (HKCU, the user running this script)'
+foreach ($f in @(@{ Name = 'Magewell'; Key = 'MWCapture' }, @{ Name = 'Blackmagic'; Key = 'BMCapture' })) {
+    $s = Get-ItemProperty "HKCU:\Software\3ll3d00d\$($f.Key)"
+    if ($s) {
+        $token = if ($s.webToken) { "set ($($s.webToken.Length) chars)" } else { 'none' }
+        Show $f.Name "web=$($s.webEnabled) webAddress=$($s.webBindAddress) token=$token prometheus=$($s.prometheusEnabled) prometheusAddress=$($s.prometheusBindAddress)"
+    } else {
+        Show $f.Name 'no settings'
+    }
 }
 
 '--- prerequisites'

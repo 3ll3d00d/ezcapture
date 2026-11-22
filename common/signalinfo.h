@@ -153,6 +153,8 @@ private:
 	// the web page link (with the token) and the token, for the copy buttons
 	std::string mWebUrl;
 	std::string mWebToken;
+	// set while reloading after a new token so the reload leaves the editable controls as the user left them
+	bool mKeepEdits{false};
 	void CopyToClipboard(const std::string& text) const;
 	hdr_status mLastHdr{};
 

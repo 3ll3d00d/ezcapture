@@ -6,6 +6,9 @@ built-in REST integrations, so no custom component is needed. This page is the r
 
 ## Setting it up
 
+The installer's **Remote access** page can do step 1 for you: it turns the web API on, sets the address and shows the
+token to enter in Home Assistant. Then go straight to step 2.
+
 1. Open the filter's property page. In the **Web API** row, tick **Enable?**, then set the address and port.
    * `127.0.0.1` (the default) only allows this PC. For Home Assistant on another machine, use `0.0.0.0` (all
      networks) or this PC's LAN address.

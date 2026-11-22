@@ -33,8 +33,13 @@ Download `ezcapture-<version>-setup.exe` from https://github.com/3ll3d00d/ezcapt
 
 * asks which filters to install (Magewell, Blackmagic or both) and whether to add the trace builds alongside them
 * picks the AVX2 or no-arch build to suit the CPU
-* offers to install the Microsoft Visual C++ runtime and the Magewell capture runtime if they are missing or out of date
-* tells you what else is needed, e.g. Blackmagic Desktop Video, which cannot be bundled
+* lists the software the filters depend on with the installed versions, offers to install the Microsoft Visual C++
+  runtime and the Magewell capture runtime if they are missing or out of date, and tells you what else is needed,
+  e.g. Blackmagic Desktop Video, which cannot be bundled
+* can turn on the web API and Prometheus metrics, choose the address they listen on and make the web API token
+  (saved for the Windows user running setup)
+* can add Windows Firewall rules for the web API (ports 9474/9475) and Prometheus (9464/9465), on private networks
+  and to the local subnet only
 * registers the filters, so there is no need to run `regsvr32`
 
 Running it again upgrades, or changes which filters are installed. It can be removed from Windows' Installed apps.
@@ -266,7 +271,7 @@ The settings are stored in the registry under `HKEY_CURRENT_USER\Software\3ll3d0
 | `prometheusBindAddress`     | REG_SZ    | `127.0.0.1`                        | address to listen on                                                             |
 | `prometheusSignalRetention` | REG_DWORD | 60                                 | seconds to keep the series of a signal that is no longer present, registry only |
 
-By default the endpoint is only reachable from the same PC. To scrape from another machine set the listen address to `0.0.0.0` (or a specific interface address) and allow the port through the Windows firewall. There is no authentication so only do this on a trusted network.
+By default the endpoint is only reachable from the same PC. To scrape from another machine set the listen address to `0.0.0.0` (or a specific interface address) and allow the port through the Windows firewall; the installer's firewall task does this for the default ports. There is no authentication so only do this on a trusted network.
 
 The endpoint only exists while the filter is loaded, i.e. while something is playing from the capture card, so expect the target to be reported as down at other times.
 

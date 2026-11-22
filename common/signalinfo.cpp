@@ -386,12 +386,18 @@ INT_PTR CSignalInfoProp::OnReceiveMessage(HWND hwnd, UINT uMsg, WPARAM wParam, L
 		}
 		if (LOWORD(wParam) == IDC_WEB_NEW_TOKEN && HIWORD(wParam) == BN_CLICKED)
 		{
-			if (MessageBoxW(m_Dlg, L"Make a new access token? Anything using the current one, such as Home Assistant, "
-			                L"will need the new one. It applies when the filter is next loaded.",
-			                L"Web API", MB_OKCANCEL | MB_ICONQUESTION) == IDOK)
+			// only replacing a token needs a warning, there is nothing using it yet if there is none
+			if (mWebToken.empty()
+				|| MessageBoxW(m_Dlg, L"Replace the access token? Anything using the current one, such as Home "
+				               L"Assistant, will need the new one. It applies when the filter is next loaded.",
+				               L"Web API", MB_OKCANCEL | MB_ICONQUESTION) == IDOK)
 			{
 				mSignalInfo->NewWebToken();
+				// picks up the new token and link without discarding edits that have not been applied yet; the
+				// filter calls back on this thread so the flag covers the whole reload
+				mKeepEdits = true;
 				mSignalInfo->Reload();
+				mKeepEdits = false;
 			}
 			return TRUE;
 		}
@@ -1030,6 +1036,10 @@ HRESULT CSignalInfoProp::ReloadControls(const bool& rateEnabled, const bool& pro
 	{
 		return S_OK;
 	}
+	if (mKeepEdits)
+	{
+		return S_OK;
+	}
 	WCHAR buffer[8];
 
 	_snwprintf_s(buffer, _TRUNCATE, L"%d", hdr);
@@ -1064,23 +1074,26 @@ HRESULT CSignalInfoProp::ReloadWebControls(const bool& enabled, const std::strin
 	mWebUrl = url;
 	mWebToken = token;
 
-	WCHAR addressBuffer[64];
-	_snwprintf_s(addressBuffer, _TRUNCATE, L"%hs", bindAddress.c_str());
-	SendDlgItemMessage(m_Dlg, IDC_WEB_BIND_ADDRESS, EM_SETLIMITTEXT, 63, 0);
-	SendDlgItemMessage(m_Dlg, IDC_WEB_BIND_ADDRESS, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(addressBuffer));
-	EnableWindow(GetDlgItem(m_Dlg, IDC_WEB_BIND_ADDRESS), enabled);
+	if (!mKeepEdits)
+	{
+		WCHAR addressBuffer[64];
+		_snwprintf_s(addressBuffer, _TRUNCATE, L"%hs", bindAddress.c_str());
+		SendDlgItemMessage(m_Dlg, IDC_WEB_BIND_ADDRESS, EM_SETLIMITTEXT, 63, 0);
+		SendDlgItemMessage(m_Dlg, IDC_WEB_BIND_ADDRESS, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(addressBuffer));
+		EnableWindow(GetDlgItem(m_Dlg, IDC_WEB_BIND_ADDRESS), enabled);
 
-	WCHAR buffer[8];
-	_snwprintf_s(buffer, _TRUNCATE, L"%d", port);
-	SendDlgItemMessage(m_Dlg, IDC_WEB_PORT, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
-	EnableWindow(GetDlgItem(m_Dlg, IDC_WEB_PORT), enabled);
-	SendDlgItemMessage(m_Dlg, IDC_ENABLE_WEB, BM_SETCHECK, enabled, 0);
+		WCHAR buffer[8];
+		_snwprintf_s(buffer, _TRUNCATE, L"%d", port);
+		SendDlgItemMessage(m_Dlg, IDC_WEB_PORT, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+		EnableWindow(GetDlgItem(m_Dlg, IDC_WEB_PORT), enabled);
+		SendDlgItemMessage(m_Dlg, IDC_ENABLE_WEB, BM_SETCHECK, enabled, 0);
 
-	WCHAR notifyBuffer[256];
-	_snwprintf_s(notifyBuffer, _TRUNCATE, L"%hs", notifyUrl.c_str());
-	SendDlgItemMessage(m_Dlg, IDC_WEB_NOTIFY_URL, EM_SETLIMITTEXT, 255, 0);
-	SendDlgItemMessage(m_Dlg, IDC_WEB_NOTIFY_URL, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(notifyBuffer));
-	EnableWindow(GetDlgItem(m_Dlg, IDC_WEB_NOTIFY_URL), enabled);
+		WCHAR notifyBuffer[256];
+		_snwprintf_s(notifyBuffer, _TRUNCATE, L"%hs", notifyUrl.c_str());
+		SendDlgItemMessage(m_Dlg, IDC_WEB_NOTIFY_URL, EM_SETLIMITTEXT, 255, 0);
+		SendDlgItemMessage(m_Dlg, IDC_WEB_NOTIFY_URL, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(notifyBuffer));
+		EnableWindow(GetDlgItem(m_Dlg, IDC_WEB_NOTIFY_URL), enabled);
+	}
 
 	WCHAR urlBuffer[256];
 	_snwprintf_s(urlBuffer, _TRUNCATE, L"%hs", url.c_str());
@@ -1124,6 +1137,10 @@ HRESULT CSignalInfoProp::ReloadMetricsControls(const bool& enabled, const std::s
                                                const std::string& status)
 {
 	if (PostToUiThread([this, enabled, bindAddress, port, status] { ReloadMetricsControls(enabled, bindAddress, port, status); }))
+	{
+		return S_OK;
+	}
+	if (mKeepEdits)
 	{
 		return S_OK;
 	}

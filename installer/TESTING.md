@@ -29,9 +29,10 @@ Notes:
 | Welcome              | "ezcapture 0.0.0-ci.64", no "currently installed" sentence                               |
 | Destination          | `C:\Program Files\ezcapture`                                                             |
 | Components           | Types: both / Magewell only / Blackmagic only / Custom. Unticking both and pressing Next gives "Select at least one filter" |
-| Tasks                | Trace and firewall explanation is fully readable, not clipped or overlapping the task boxes. "Also install the trace builds" is unticked, "Allow the web API through Windows Firewall" is ticked |
-| Prerequisites        | VC++ and Magewell runtimes are not listed (already current). "Do it yourself" lists Desktop Video if missing, the Magewell driver reminder and LAV Filters if not registered. If nothing is missing the page reads "Everything setup can install for you is already present" |
-| Ready                | Version, Build "AVX2 optimised" (or no-arch on an older CPU), both components, the trace and firewall tasks, no prerequisites to install |
+| Tasks                | Trace and firewall explanation (mentions Prometheus and ports 9474/9464/9475/9465) is fully readable, not clipped or overlapping the task boxes. "Install the trace builds" is unticked, "Allow the web API and Prometheus metrics through Windows Firewall" is ticked |
+| Remote access        | Both boxes match the current property page settings. "Listen on" lists 0.0.0.0, this PC's LAN address(es) and 127.0.0.1, and shows the address in use (0.0.0.0 if none set). The token box shows the existing token with "setup keeps it", or a new 32 hex digit token. Unticking both greys out the address, unticking the web API greys out the token |
+| Prerequisites        | A table with columns Dependency / Installed / To do: Visual C++ runtime, Magewell capture runtime, Magewell driver ("not checked", "check yourself"), Blackmagic Desktop Video, LAV Filters, each with its installed version. Current ones say "nothing". Rows line up and nothing is clipped. The box below lists the Magewell driver reminder, plus Desktop Video and LAV Filters if missing |
+| Ready                | Version, Build "AVX2 optimised" (or no-arch on an older CPU), both components, the trace and firewall tasks, the remote access choices, no prerequisites to install |
 | Finish               | "Open the Blackmagic Desktop Video download page" (ticked, only if Desktop Video is missing), LAV Filters page (unticked, only if LAV is not registered), player setup guide (unticked). Ticked ones open in the browser |
 
 Tick the trace task and install. Check:
@@ -41,7 +42,8 @@ Tick the trace task and install. Check:
 - [ ] Files: `mwcapture.ax`, `mwcapture-trace.ax`, `bmcapture.ax`, `bmcapture-trace.ax`, `COPYING`, `version.txt`,
       `licenses\MWCaptureRT-RedistLicense.rtf`, `unins000.exe/.dat`
 - [ ] All four filters registered to the Program Files paths and listed as video capture sources
-- [ ] Firewall rules `ezcapture Magewell web API` (port 9474) and `ezcapture DeckLink web API` (port 9475), both
+- [ ] Firewall rules `ezcapture Magewell web API` (port 9474), `ezcapture DeckLink web API` (port 9475),
+      `ezcapture Magewell Prometheus metrics` (9464) and `ezcapture DeckLink Prometheus metrics` (9465), all
       enabled, action Allow, profile Private, remote LocalSubnet
 - [ ] No "could not be registered" error box
 
@@ -62,7 +64,7 @@ Run A again:
 Choose "Magewell only", untick trace, install. Check:
 
 - [ ] `bmcapture.ax`, `bmcapture-trace.ax` and `mwcapture-trace.ax` deleted, and those three filters not registered
-- [ ] Only the Magewell firewall rule remains, and only one of it (not a duplicate)
+- [ ] Only the two Magewell firewall rules remain, and only one of each (not duplicates)
 - [ ] `mwcapture.ax` still registered, and JRiver still plays the Magewell channel
 - [ ] Still a single Installed apps entry
 
@@ -149,14 +151,21 @@ On a PC whose CPU lacks AVX2 (Check prints "no (NoArch)"):
 - [ ] Ready page shows the no-arch build, and `HKLM\Software\ezcapture\Build` is `NoArch`
 - [ ] Capture works (the AVX2 build would crash with an illegal instruction on such a CPU)
 
-## 9. Web API and firewall rule (capture PC)
+## 9. Web API, Prometheus and firewall rules (capture PC)
 
 Run setup again with the firewall task unticked:
 
-- [ ] Check shows both firewall rules absent
+- [ ] Check shows all four firewall rules absent
 
-Run it again with the task ticked, then enable the web API on the Magewell property page with address `0.0.0.0` and
-port 9474, apply, and restart playback:
+Run it again with the firewall task ticked. On the Remote access page tick both boxes, choose `0.0.0.0` and note the
+token, then finish:
+
+- [ ] Check's remote access section shows web=1, prometheus=1, both addresses `0.0.0.0` and a 32 character token for
+      each installed filter
+- [ ] Run setup once more: Remote access shows both ticked, `0.0.0.0`, and the same token with "setup keeps it"
+- [ ] Choose this PC's LAN address instead, finish: Check shows that address for both
+
+Set it back to `0.0.0.0` and the Magewell port to 9474 on the property page if it was changed, then restart playback:
 
 - [ ] The status line reads `Serving http://0.0.0.0:9474/ as magewell-<serial>`
 - [ ] No Windows Firewall prompt appears. If one does, choose Allow, never Cancel: Cancel creates a block rule for the
@@ -167,6 +176,11 @@ port 9474, apply, and restart playback:
 - [ ] Change the port to 9480, apply, restart playback: the status line adds "port 9480 is not covered by the
       installed firewall rule", and the other PC cannot connect
 - [ ] Set the port back to 9474
+- [ ] From another PC, `http://<capture-pc>:9464/metrics` returns the metrics
+- [ ] On the property page, untick the web API and change its address without applying, then click **New Token** and
+      confirm: the token and link change, the untick and the address edit are still there, and Apply saves them
+- [ ] Delete the `webToken` value under `HKCU\Software\3ll3d00d\MWCapture`, reopen the property page and click
+      **New Token**: it makes a token without asking to replace one
 
 ## 10. Release build
 
