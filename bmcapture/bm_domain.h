@@ -304,6 +304,20 @@ inline const char* to_string(BMDPixelFormat e)
 	}
 }
 
+// the FOURCC style name of the layout the card delivers frames in
+inline const char* pixelLayoutOf(BMDPixelFormat e)
+{
+	switch (e)
+	{
+	case bmdFormat8BitYUV: return "2VUY";
+	case bmdFormat10BitYUV: return "V210";
+	case bmdFormat8BitARGB: return "ARGB";
+	case bmdFormat10BitRGB: return "R210";
+	case bmdFormat12BitRGB: return "R12B";
+	default: return to_string(e);
+	}
+}
+
 inline const char* to_string(BMDDeckLinkFrameMetadataID e)
 {
 	switch (e)

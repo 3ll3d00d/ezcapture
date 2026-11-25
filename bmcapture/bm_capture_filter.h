@@ -28,6 +28,7 @@
 #include <atomic>
 #include <functional>
 #include <chrono>
+#include <vector>
 
 EXTERN_C const GUID CLSID_BMCAPTURE_FILTER;
 EXTERN_C const GUID CLSID_BMCAPTURE_PROPS;
@@ -217,6 +218,11 @@ private:
 	 * HDR option is enabled.
 	 */
 	void ApplyAssumedHdr(video_format& videoFormat, bool hasHdrMetadata);
+	/**
+	 * Returns the first of the candidate capture formats the card says it can deliver in this display mode.
+	 */
+	BMDPixelFormat SelectSupportedPixelFormat(BMDDisplayMode displayMode,
+	                                          const std::vector<BMDPixelFormat>& candidates);
 
 	// only accessed on the capture callback thread
 	assumed_hdr mAssumedHdr{ASSUMED_NONE};

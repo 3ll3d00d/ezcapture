@@ -584,6 +584,44 @@ void blackmagic_capture_filter::LoadSignalFromDisplayMode(video_signal* newSigna
 	newSignal->calc_derived_values();
 }
 
+BMDPixelFormat blackmagic_capture_filter::SelectSupportedPixelFormat(BMDDisplayMode displayMode,
+                                                                      const std::vector<BMDPixelFormat>& candidates)
+{
+	for (const auto candidate : candidates)
+	{
+		BOOL supported{false};
+		auto result = mDeckLinkInput->DoesSupportVideoMode(bmdVideoConnectionUnspecified, displayMode, candidate,
+		                                                   bmdNoVideoInputConversion, bmdSupportedVideoModeDefault,
+		                                                   nullptr, &supported);
+		if (result != S_OK)
+		{
+			// can't tell so use the preferred format, EnableVideoInput reports it if the card can't deliver it
+			#ifndef NO_LOGGING
+			LOG_WARNING(mLogData.logger, "[{}] Unable to check support for {} in {} [{:#08x}], using {}",
+			            mLogData.prefix, to_string(candidate), to_string(displayMode),
+			            static_cast<unsigned long>(result), to_string(candidates.front()));
+			#endif
+			return candidates.front();
+		}
+
+		#ifndef NO_LOGGING
+		LOG_INFO(mLogData.logger, "[{}] Capture format {} in {} is {}", mLogData.prefix, to_string(candidate),
+		         to_string(displayMode), supported ? "supported" : "not supported");
+		#endif
+
+		if (supported)
+		{
+			return candidate;
+		}
+	}
+
+	#ifndef NO_LOGGING
+	LOG_WARNING(mLogData.logger, "[{}] No supported capture format found in {}, trying {}", mLogData.prefix,
+	            to_string(displayMode), to_string(candidates.back()));
+	#endif
+	return candidates.back();
+}
+
 HRESULT blackmagic_capture_filter::VideoInputFormatChanged(BMDVideoInputFormatChangedEvents notificationEvents,
                                                            IDeckLinkDisplayMode* newDisplayMode,
                                                            BMDDetectedVideoInputFormatFlags detectedSignalFlags)
@@ -596,66 +634,43 @@ HRESULT blackmagic_capture_filter::VideoInputFormatChanged(BMDVideoInputFormatCh
 		             mLogData.prefix, detectedSignalFlags);
 		#endif
 
+		int bitDepth;
+		if (detectedSignalFlags & bmdDetectedVideoInput8BitDepth) bitDepth = 8;
+		else if (detectedSignalFlags & bmdDetectedVideoInput10BitDepth) bitDepth = 10;
+		else if (detectedSignalFlags & bmdDetectedVideoInput12BitDepth) bitDepth = 12;
+		else return E_FAIL;
+
+		// capture formats in order of preference, the card converts the input to whichever is requested
+		std::vector<BMDPixelFormat> candidates;
 		if (detectedSignalFlags & bmdDetectedVideoInputYCbCr422)
 		{
 			newSignal.colourFormat = "YUV 4:2:2";
 			newSignal.ycbcr422 = true;
-			if (detectedSignalFlags & bmdDetectedVideoInput8BitDepth)
-			{
-				newSignal.pixelLayout = "2VUY";
-				newSignal.pixelFormat = bmdFormat8BitYUV;
-				newSignal.bitDepth = 8;
-			}
-			else if (detectedSignalFlags & bmdDetectedVideoInput10BitDepth)
-			{
-				newSignal.pixelLayout = "V210";
-				newSignal.pixelFormat = bmdFormat10BitYUV;
-				newSignal.bitDepth = 10;
-			}
-			else if (detectedSignalFlags & bmdDetectedVideoInput12BitDepth)
-			{
-				// there is no 12-bit YCbCr capture format so the card converts it to 10-bit, this is how LLDV is sent
-				newSignal.pixelLayout = "V210";
-				newSignal.pixelFormat = bmdFormat10BitYUV;
-				newSignal.bitDepth = 12;
-
-				#ifndef NO_LOGGING
-				LOG_INFO(mLogData.logger, "[{}] 12-bit YUV 4:2:2 input will be captured as 10-bit YUV 4:2:2 (V210)",
-				         mLogData.prefix);
-				#endif
-			}
-			else
-			{
-				return E_FAIL;
-			}
+			// there is no 12-bit YCbCr capture format so 12-bit (e.g. LLDV) is captured as 10-bit
+			if (bitDepth == 8) candidates = {bmdFormat8BitYUV};
+			else candidates = {bmdFormat10BitYUV, bmdFormat8BitYUV};
 		}
 		else if (detectedSignalFlags & bmdDetectedVideoInputRGB444)
 		{
 			newSignal.colourFormat = "RGB 4:4:4";
 			newSignal.ycbcr422 = false;
-			if (detectedSignalFlags & bmdDetectedVideoInput8BitDepth)
-			{
-				newSignal.pixelLayout = "ARGB";
-				newSignal.pixelFormat = bmdFormat8BitARGB;
-				newSignal.bitDepth = 8;
-			}
-			else if (detectedSignalFlags & bmdDetectedVideoInput10BitDepth)
-			{
-				newSignal.pixelLayout = "R210";
-				newSignal.pixelFormat = bmdFormat10BitRGB;
-				newSignal.bitDepth = 10;
-			}
-			else if (detectedSignalFlags & bmdDetectedVideoInput12BitDepth)
-			{
-				newSignal.pixelLayout = "R12B";
-				newSignal.pixelFormat = bmdFormat12BitRGB;
-				newSignal.bitDepth = 12;
-			}
-			else
-			{
-				return E_FAIL;
-			}
+			if (bitDepth == 8) candidates = {bmdFormat8BitARGB};
+			else if (bitDepth == 10) candidates = {bmdFormat10BitRGB, bmdFormat8BitARGB};
+			else candidates = {bmdFormat12BitRGB, bmdFormat10BitRGB, bmdFormat8BitARGB};
 		}
+		else
+		{
+			return E_FAIL;
+		}
+
+		newSignal.bitDepth = bitDepth;
+		newSignal.pixelFormat = SelectSupportedPixelFormat(newDisplayMode->GetDisplayMode(), candidates);
+		newSignal.pixelLayout = pixelLayoutOf(newSignal.pixelFormat);
+
+		#ifndef NO_LOGGING
+		LOG_INFO(mLogData.logger, "[{}] {}-bit {} input will be captured as {}", mLogData.prefix, bitDepth,
+		         newSignal.colourFormat, to_string(newSignal.pixelFormat));
+		#endif
 	}
 
 	if (notificationEvents & bmdVideoInputDisplayModeChanged)
