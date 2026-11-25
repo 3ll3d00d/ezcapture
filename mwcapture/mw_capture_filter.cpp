@@ -108,9 +108,23 @@ magewell_capture_filter::magewell_capture_filter(LPUNKNOWN punk, HRESULT* phr) :
 			}
 			di.serialNo = std::string{ mci.szBoardSerialNo };
 			// TODO use MWCAP_DEVICE_NAME_MODE and MWUSBGetDeviceNameMode mode?
-			MWCAP_USB_CAPTURE_INFO info;
-			MWGetFamilyInfoByIndex(i, &info, sizeof(MWCAP_USB_CAPTURE_INFO));
+			MWCAP_USB_CAPTURE_INFO info{};
+			const auto infoResult = MWGetFamilyInfoByIndex(i, &info, sizeof(MWCAP_USB_CAPTURE_INFO));
 			di.linkSpeed = info.byUSBSpeed;
+			#ifndef NO_LOGGING
+			if (infoResult == MW_SUCCEEDED)
+			{
+				LOG_INFO(mLogData.logger,
+					"[{}] {} device {} USB link: {} (raw: {}), memory {} / {} bytes free", mLogData.prefix,
+					mci.szProductName, di.serialNo, usbSpeedName(info.byUSBSpeed),
+					static_cast<int>(info.byUSBSpeed), info.cbFreeMemorySize, info.cbTotalMemorySize);
+			}
+			else
+			{
+				LOG_WARNING(mLogData.logger, "[{}] Unable to read USB link details for {} device {} ({})",
+					mLogData.prefix, mci.szProductName, di.serialNo, static_cast<int>(infoResult));
+			}
+			#endif
 		}
 
 		MWGetDevicePath(i, di.devicePath);
@@ -180,6 +194,30 @@ magewell_capture_filter::magewell_capture_filter(LPUNKNOWN punk, HRESULT* phr) :
 			LOG_INFO(mLogData.logger, "[{}] Filter will use {} device {} at path {}", mLogData.prefix,
 				devicetype_to_name(di.deviceType),
 				di.serialNo, std::wstring{ di.devicePath });
+			if (di.deviceType != MW_PRO)
+			{
+				// the speed cap set in the USB Capture Utility, the card will not use a faster link than this
+				uint8_t currentMax{0};
+				uint8_t speeds[8]{};
+				int speedCount{0};
+				const auto menuResult = MWUSBGetMaxSpeedMenu(di.hChannel, &currentMax, speeds, &speedCount);
+				if (menuResult == MW_SUCCEEDED)
+				{
+					std::string allowed;
+					for (int s = 0; s < std::min(speedCount, 8); ++s)
+					{
+						if (s != 0) allowed += ", ";
+						allowed += std::format("{} (raw: {})", usbSpeedName(speeds[s]), static_cast<int>(speeds[s]));
+					}
+					LOG_INFO(mLogData.logger, "[{}] USB max speed setting: {} (raw: {}), available [{}]",
+						mLogData.prefix, usbSpeedName(currentMax), static_cast<int>(currentMax), allowed);
+				}
+				else
+				{
+					LOG_WARNING(mLogData.logger, "[{}] Unable to read the USB max speed setting ({})",
+						mLogData.prefix, static_cast<int>(menuResult));
+				}
+			}
 			#endif
 
 			diToUse = &di;

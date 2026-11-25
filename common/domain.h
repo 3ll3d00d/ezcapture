@@ -326,6 +326,25 @@ inline double usbCaptureBandwidth(int64_t speed)
 	}
 }
 
+// Names a Magewell USB speed value (MWCAP_USB_SPEED_TYPE, 1 = full speed .. 4 = 10Gbps Gen 2), the SDK defines nothing
+// faster than Gen 2 so any other value is shown raw. The short form fits the property page.
+inline std::string usbSpeedName(int64_t speed, bool shortForm = false)
+{
+	switch (speed)
+	{
+	case 1:
+		return shortForm ? "12Mbps (USB 1)" : "USB 1.1 Full Speed (12Mbps)";
+	case 2:
+		return shortForm ? "480Mbps (USB 2)" : "USB 2.0 High Speed (480Mbps)";
+	case 3:
+		return shortForm ? "5Gbps (Gen 1)" : "USB 3.2 Gen 1 SuperSpeed (5Gbps)";
+	case 4:
+		return shortForm ? "10Gbps (Gen 2)" : "USB 3.2 Gen 2 SuperSpeed+ (10Gbps)";
+	default:
+		return "Unknown (" + std::to_string(speed) + ")";
+	}
+}
+
 // bytes per second transferred when capturing pf at the given size and rate
 inline double captureBytesPerSecond(const pixel_format& pf, int cx, int cy, double fps)
 {

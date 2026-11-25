@@ -1114,8 +1114,11 @@ void magewell_video_capture_pin::LoadFormat(video_format* videoFormat, video_sig
 		found = false;
 		for (int i = 0; i < captureFormats->frameIntervals.byCount && !found; i++)
 		{
-			if (abs(captureFormats->frameIntervals.adwIntervals[i] - videoFormat->frameInterval) < 100)
+			const auto configured = captureFormats->frameIntervals.adwIntervals[i];
+			if (abs(configured - videoFormat->frameInterval) < 100)
 			{
+				// request exactly what the card advertises rather than the measured signal duration
+				videoFormat->frameInterval = configured;
 				found = true;
 			}
 		}

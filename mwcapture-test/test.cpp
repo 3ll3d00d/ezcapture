@@ -190,6 +190,15 @@ TEST(Bandwidth, UsbEstimates)
 	EXPECT_DOUBLE_EQ(usbCaptureBandwidth(1), 0.0);
 }
 
+TEST(UsbSpeed, NamesKnownSpeedsAndShowsOthersRaw)
+{
+	EXPECT_EQ(usbSpeedName(3), "USB 3.2 Gen 1 SuperSpeed (5Gbps)");
+	EXPECT_EQ(usbSpeedName(4, true), "10Gbps (Gen 2)");
+	EXPECT_EQ(usbSpeedName(2, true), "480Mbps (USB 2)");
+	EXPECT_EQ(usbSpeedName(5), "Unknown (5)");
+	EXPECT_EQ(usbSpeedName(0, true), "Unknown (0)");
+}
+
 TEST(Bandwidth, UsesTheRealFrameSize)
 {
 	// 4:2:0 and packed formats are not a whole number of bytes per pixel

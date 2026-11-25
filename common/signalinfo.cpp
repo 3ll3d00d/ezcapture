@@ -827,9 +827,14 @@ HRESULT CSignalInfoProp::Reload(device_status* payload)
 	}
 	_snwprintf_s(buffer, _TRUNCATE, L"%.1f C", payload->temperature);
 	SendDlgItemMessage(m_Dlg, IDC_TEMP, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
-	_snwprintf_s(buffer, _TRUNCATE, L"%hs%lld.0",
-	             payload->protocol == PCIE ? "Gen " : "",
-	             payload->linkSpeed);
+	if (payload->protocol == USB)
+	{
+		_snwprintf_s(buffer, _TRUNCATE, L"%hs", usbSpeedName(payload->linkSpeed, true).c_str());
+	}
+	else
+	{
+		_snwprintf_s(buffer, _TRUNCATE, L"Gen %lld.0", payload->linkSpeed);
+	}
 	SendDlgItemMessage(m_Dlg, IDC_LINKSPEED, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 	if (payload->linkWidth > 0)
 	{
