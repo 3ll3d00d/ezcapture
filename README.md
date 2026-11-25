@@ -174,9 +174,18 @@ A warning is logged when this happens. Formats that fit, e.g. anything at 2160p2
 The format is not changed automatically:
 
 * Magewell USB devices can only output the formats and frame rates configured on the device (via the Magewell USB Capture Utility) and the device already limits these to what its USB connection supports
-* Blackmagic cards capture in the format the card detects on the input
+* Blackmagic cards capture in the format the card detects on the input, except 12-bit YCbCr 4:2:2 which has no matching capture format and is captured as 10-bit YCbCr 4:2:2 (`v210`), the card does the conversion
 
 Use the `Bandwidth` row and the log to check whether the configured or detected format fits.
+
+### Blackmagic: Assume HDR
+
+A Blackmagic card cannot read the Dolby Vision VSIF, so it cannot tell that a signal is LLDV, and some sources send HDR without an HDR InfoFrame. With `Assume HDR?` ticked on the property page (the default), a signal that arrives without an HDR InfoFrame is described as HDR when its format is one that is normally HDR:
+
+* 12-bit YCbCr 4:2:2 is treated as LLDV
+* any other 10-bit or 12-bit signal in BT.2020 is treated as PQ
+
+Both are passed on as PQ in BT.2020 with a 1000 nit mastering display. A signal with an HDR InfoFrame is always described by that InfoFrame. A source that sends SDR as 12-bit YCbCr 4:2:2 (some players do at 2160p) will be shown as HDR, untick the option if this happens. The change applies from the next frame and is stored in the `assumeHdrEnabled` REG_DWORD under `HKEY_CURRENT_USER\Software\3ll3d00d\BMCapture`.
 
 ## Dolby Vision
 

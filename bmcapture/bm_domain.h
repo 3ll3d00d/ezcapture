@@ -48,7 +48,9 @@ struct video_signal
 	std::string colourFormat{"RGB"};
 	std::string pixelLayout{"ARGB"};
 	std::string displayModeName{"4K2160p23.98"};
+	// as sent, the card captures 12-bit YCbCr 4:2:2 as 10-bit
 	uint8_t bitDepth{8};
+	bool ycbcr422{false};
 	uint32_t frameDuration{1001};
 	uint16_t frameDurationScale{24000};
 	uint16_t cx{3840};

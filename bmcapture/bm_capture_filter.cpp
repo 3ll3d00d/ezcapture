@@ -599,6 +599,7 @@ HRESULT blackmagic_capture_filter::VideoInputFormatChanged(BMDVideoInputFormatCh
 		if (detectedSignalFlags & bmdDetectedVideoInputYCbCr422)
 		{
 			newSignal.colourFormat = "YUV 4:2:2";
+			newSignal.ycbcr422 = true;
 			if (detectedSignalFlags & bmdDetectedVideoInput8BitDepth)
 			{
 				newSignal.pixelLayout = "2VUY";
@@ -611,6 +612,18 @@ HRESULT blackmagic_capture_filter::VideoInputFormatChanged(BMDVideoInputFormatCh
 				newSignal.pixelFormat = bmdFormat10BitYUV;
 				newSignal.bitDepth = 10;
 			}
+			else if (detectedSignalFlags & bmdDetectedVideoInput12BitDepth)
+			{
+				// there is no 12-bit YCbCr capture format so the card converts it to 10-bit, this is how LLDV is sent
+				newSignal.pixelLayout = "V210";
+				newSignal.pixelFormat = bmdFormat10BitYUV;
+				newSignal.bitDepth = 12;
+
+				#ifndef NO_LOGGING
+				LOG_INFO(mLogData.logger, "[{}] 12-bit YUV 4:2:2 input will be captured as 10-bit YUV 4:2:2 (V210)",
+				         mLogData.prefix);
+				#endif
+			}
 			else
 			{
 				return E_FAIL;
@@ -619,6 +632,7 @@ HRESULT blackmagic_capture_filter::VideoInputFormatChanged(BMDVideoInputFormatCh
 		else if (detectedSignalFlags & bmdDetectedVideoInputRGB444)
 		{
 			newSignal.colourFormat = "RGB 4:4:4";
+			newSignal.ycbcr422 = false;
 			if (detectedSignalFlags & bmdDetectedVideoInput8BitDepth)
 			{
 				newSignal.pixelLayout = "ARGB";
@@ -1071,8 +1085,11 @@ HRESULT blackmagic_capture_filter::processVideoFrame(IDeckLinkVideoInputFrame* v
 		#endif
 	}
 
+	const bool hasHdrMetadata = (videoFrame->GetFlags() & bmdFrameContainsHDRMetadata) != 0;
+	ApplyAssumedHdr(newVideoFormat, hasHdrMetadata);
+
 	dv_frame dv{};
-	ProcessDvTunnel(videoFrame, newVideoFormat, (videoFrame->GetFlags() & bmdFrameContainsHDRMetadata) != 0, dv);
+	ProcessDvTunnel(videoFrame, newVideoFormat, hasHdrMetadata, dv);
 
 	{
 		CAutoLock lock(&mFrameSec);
@@ -1223,6 +1240,34 @@ void blackmagic_capture_filter::ProcessDvTunnel(IDeckLinkVideoInputFrame* videoF
 	LogDvTunnelStats(false);
 }
 
+void blackmagic_capture_filter::ApplyAssumedHdr(video_format& videoFormat, bool hasHdrMetadata)
+{
+	// the card cannot read the Dolby VSIF so LLDV, and HDR from a source that sends no HDR InfoFrame, can only be
+	// recognised by the signal format
+	const auto assumed = assumeHdr(mAssumeHdrEnabled, hasHdrMetadata, mVideoSignal.ycbcr422, mVideoSignal.bitDepth,
+	                               static_cast<colour_format>(videoFormat.colourFormat));
+	if (assumed != mAssumedHdr)
+	{
+		#ifndef NO_LOGGING
+		LOG_WARNING(mLogData.logger,
+		            "[{}] Assumed HDR changed from {} to {} at frame {} [enabled: {}, hdr infoframe: {}, {} {}-bit, {}]",
+		            mLogData.prefix, to_string(mAssumedHdr), to_string(assumed), mCurrentVideoFrameIndex,
+		            mAssumeHdrEnabled.load(), hasHdrMetadata, mVideoSignal.colourFormat,
+		            static_cast<int>(mVideoSignal.bitDepth),
+		            videoFormat.colourFormatName);
+		#endif
+		mAssumedHdr = assumed;
+	}
+	if (assumed == ASSUMED_NONE)
+	{
+		return;
+	}
+	// a source tone mapping to LLDV targets the sink, 1000 nits is a typical target when that is not known
+	loadAssumedPqMeta(&videoFormat.hdrMeta, 1000.0);
+	videoFormat.colourFormat = BT2020;
+	videoFormat.colourFormatName = assumed == ASSUMED_LLDV ? "LLDV" : "BT2020";
+}
+
 void blackmagic_capture_filter::OnDvRejected()
 {
 	if (!mDvRejected.exchange(true))
@@ -1239,7 +1284,7 @@ void blackmagic_capture_filter::PublishDvStatus()
 	const auto state = mDvRejected
 		                   ? DV_REJECTED
 		                   : !mDvCandidate
-		                   ? DV_INACTIVE
+		                   ? (mAssumedHdr == ASSUMED_LLDV ? DV_LLDV : DV_INACTIVE)
 		                   : !mDvDecoder.locked()
 		                   ? DV_SEARCHING
 		                   : mDvDecoder.render()

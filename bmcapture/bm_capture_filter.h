@@ -212,6 +212,14 @@ private:
 	                     dv_frame& dv);
 	void PublishDvStatus();
 	void LogDvTunnelStats(bool force);
+	/**
+	 * Describes a signal without an HDR InfoFrame as HDR (PQ or LLDV) when its format suggests it is and the assume
+	 * HDR option is enabled.
+	 */
+	void ApplyAssumedHdr(video_format& videoFormat, bool hasHdrMetadata);
+
+	// only accessed on the capture callback thread
+	assumed_hdr mAssumedHdr{ASSUMED_NONE};
 
 	// only accessed on the capture callback thread
 	dv_tunnel::decoder mDvDecoder{};

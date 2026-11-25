@@ -147,6 +147,14 @@ HRESULT CSignalInfoProp::OnApplyChanges()
 	bool enableAudio = static_cast<bool>(SendDlgItemMessage(m_Dlg, IDC_ENABLE_AUDIO, BM_GETCHECK, 0, 0));
 	auto hr6 = mSignalInfo->SetAudioCaptureEnabled(enableAudio);
 
+	// only some filters show this option
+	auto hrAssumeHdr = S_OK;
+	if (GetDlgItem(m_Dlg, IDC_ASSUME_HDR) != nullptr)
+	{
+		bool assumeHdr = static_cast<bool>(SendDlgItemMessage(m_Dlg, IDC_ASSUME_HDR, BM_GETCHECK, 0, 0));
+		hrAssumeHdr = mSignalInfo->SetAssumeHdrEnabled(assumeHdr);
+	}
+
 	bool enableMetrics = static_cast<bool>(SendDlgItemMessage(m_Dlg, IDC_ENABLE_METRICS, BM_GETCHECK, 0, 0));
 	auto hr7 = mSignalInfo->SetMetricsEnabled(enableMetrics);
 
@@ -181,7 +189,7 @@ HRESULT CSignalInfoProp::OnApplyChanges()
 	mSignalInfo->Reload();
 
 	return hr1 == S_OK && hr2 == S_OK && hr3 == S_OK && hr4 == S_OK && hr5 == S_OK && hr6 == S_OK && hr7 == S_OK
-	       && hr8 == S_OK && hr9 == S_OK && hr10 == S_OK && hr11 == S_OK && hr12 == S_OK && hr13 == S_OK
+	       && hr8 == S_OK && hr9 == S_OK && hr10 == S_OK && hr11 == S_OK && hr12 == S_OK && hr13 == S_OK && hrAssumeHdr == S_OK
 		       ? S_OK
 		       : E_FAIL;
 }
@@ -277,6 +285,19 @@ INT_PTR CSignalInfoProp::OnReceiveMessage(HWND hwnd, UINT uMsg, WPARAM wParam, L
 			bool bFlag = static_cast<bool>(SendDlgItemMessage(m_Dlg, LOWORD(wParam), BM_GETCHECK, 0, 0));
 			bool existing;
 			mSignalInfo->IsHighThreadPriorityEnabled(&existing);
+
+			if (bFlag != existing)
+			{
+				SetDirty();
+				return TRUE;
+			}
+			return FALSE;
+		}
+		if (LOWORD(wParam) == IDC_ASSUME_HDR && HIWORD(wParam) == BN_CLICKED)
+		{
+			bool bFlag = static_cast<bool>(SendDlgItemMessage(m_Dlg, LOWORD(wParam), BM_GETCHECK, 0, 0));
+			bool existing;
+			mSignalInfo->IsAssumeHdrEnabled(&existing);
 
 			if (bFlag != existing)
 			{
@@ -1061,6 +1082,10 @@ HRESULT CSignalInfoProp::ReloadControls(const bool& rateEnabled, const bool& pro
 	SendDlgItemMessage(m_Dlg, IDC_SWITCH_REFRESH_RATE, BM_SETCHECK, rateEnabled, 0);
 	SendDlgItemMessage(m_Dlg, IDC_ENABLE_HIGH_PRIORITY, BM_SETCHECK, highThreadPrio, 0);
 	SendDlgItemMessage(m_Dlg, IDC_ENABLE_AUDIO, BM_SETCHECK, audioCapture, 0);
+	if (bool assumeHdr; mSignalInfo != nullptr && SUCCEEDED(mSignalInfo->IsAssumeHdrEnabled(&assumeHdr)))
+	{
+		SendDlgItemMessage(m_Dlg, IDC_ASSUME_HDR, BM_SETCHECK, assumeHdr, 0);
+	}
 
 	return S_OK;
 }

@@ -190,6 +190,43 @@ TEST(Bandwidth, UsbEstimates)
 	EXPECT_DOUBLE_EQ(usbCaptureBandwidth(1), 0.0);
 }
 
+TEST(AssumeHdr, TwelveBitYuv422WithoutInfoFrameIsLldv)
+{
+	EXPECT_EQ(assumeHdr(true, false, true, 12, REC709), ASSUMED_LLDV);
+	EXPECT_EQ(assumeHdr(true, false, true, 12, BT2020), ASSUMED_LLDV);
+	EXPECT_EQ(assumeHdr(true, false, true, 12, COLOUR_FORMAT_UNKNOWN), ASSUMED_LLDV);
+}
+
+TEST(AssumeHdr, DeepColourBt2020WithoutInfoFrameIsPq)
+{
+	EXPECT_EQ(assumeHdr(true, false, true, 10, BT2020), ASSUMED_PQ);
+	EXPECT_EQ(assumeHdr(true, false, false, 12, BT2020), ASSUMED_PQ);
+	EXPECT_EQ(assumeHdr(true, false, false, 10, BT2020), ASSUMED_PQ);
+}
+
+TEST(AssumeHdr, LeavesOtherSignalsAlone)
+{
+	// an HDR InfoFrame describes the signal itself
+	EXPECT_EQ(assumeHdr(true, true, true, 12, BT2020), ASSUMED_NONE);
+	// disabled
+	EXPECT_EQ(assumeHdr(false, false, true, 12, BT2020), ASSUMED_NONE);
+	// 8-bit or not BT.2020
+	EXPECT_EQ(assumeHdr(true, false, true, 8, BT2020), ASSUMED_NONE);
+	EXPECT_EQ(assumeHdr(true, false, true, 10, REC709), ASSUMED_NONE);
+	EXPECT_EQ(assumeHdr(true, false, false, 12, REC709), ASSUMED_NONE);
+}
+
+TEST(AssumeHdr, AssumedMetadataIsCompletePq)
+{
+	hdr_meta meta{};
+	loadAssumedPqMeta(&meta, 1000.0);
+	EXPECT_TRUE(meta.exists());
+	EXPECT_EQ(meta.transferFunction, 15);
+	EXPECT_EQ(meta.maxCLL, 1000);
+	EXPECT_DOUBLE_EQ(meta.maxDML, 1000.0);
+	EXPECT_DOUBLE_EQ(meta.r_primary_x, 0.708);
+}
+
 TEST(UsbSpeed, NamesKnownSpeedsAndShowsOthersRaw)
 {
 	EXPECT_EQ(usbSpeedName(3), "USB 3.2 Gen 1 SuperSpeed (5Gbps)");

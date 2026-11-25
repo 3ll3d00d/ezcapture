@@ -243,6 +243,10 @@ capture_filter::capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSI
 		{
 			mAudioCaptureEnabled = res.GetValue() == 1;
 		}
+		if (auto res = key.TryGetDwordValue(assumeHdrEnabledRegKey))
+		{
+			mAssumeHdrEnabled = res.GetValue() == 1;
+		}
 		if (auto res = key.TryGetDwordValue(metricsEnabledRegKey))
 		{
 			mMetricsConfig.enabled = res.GetValue() == 1;
@@ -293,9 +297,9 @@ capture_filter::capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSI
 		}
 		#ifndef NO_LOGGING
 		LOG_INFO(mLogData.logger,
-		         "[{}] Loaded properties from registry [hdrProfile:{}, sdrProfile: {}, profileSwitch: {}, rateSwitch: {}, highPriority: {}, audio: {}]",
+		         "[{}] Loaded properties from registry [hdrProfile:{}, sdrProfile: {}, profileSwitch: {}, rateSwitch: {}, highPriority: {}, audio: {}, assumeHdr: {}]",
 		         mLogData.prefix, mHdrProfile, mSdrProfile, mHdrProfileSwitchEnabled, mRefreshRateSwitchEnabled,
-		         mHighThreadPriorityEnabled, mAudioCaptureEnabled);
+		         mHighThreadPriorityEnabled, mAudioCaptureEnabled, mAssumeHdrEnabled.load());
 		#endif
 
 		if (mAudioCaptureEnabled)
@@ -651,6 +655,24 @@ HRESULT capture_filter::SetAudioCaptureEnabled(bool enabled)
 			if (res)
 			{
 				mAudioCaptureEnabled = enabled;
+				return S_OK;
+			}
+		}
+	}
+	return E_FAIL;
+}
+
+HRESULT capture_filter::SetAssumeHdrEnabled(bool enabled)
+{
+	std::lock_guard lock{mSettingsLock};
+	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
+	{
+		if (const auto res = key.TrySetDwordValue(assumeHdrEnabledRegKey, enabled ? 1 : 0))
+		{
+			if (res)
+			{
+				// applies from the next frame
+				mAssumeHdrEnabled = enabled;
 				return S_OK;
 			}
 		}

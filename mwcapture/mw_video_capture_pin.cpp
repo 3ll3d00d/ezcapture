@@ -1340,22 +1340,7 @@ void magewell_video_capture_pin::LoadLldvHdrMeta(hdr_meta* meta) const
 {
 	// LLDV is PQ in BT.2020 mapped by the source to the sink's target, there is no HDR InfoFrame so describe that
 	// target
-	const auto peak = LldvPeakNits();
-	*meta = {};
-	meta->r_primary_x = 0.708;
-	meta->r_primary_y = 0.292;
-	meta->g_primary_x = 0.170;
-	meta->g_primary_y = 0.797;
-	meta->b_primary_x = 0.131;
-	meta->b_primary_y = 0.046;
-	meta->whitepoint_x = 0.3127;
-	meta->whitepoint_y = 0.3290;
-	meta->minDML = 0.005;
-	meta->maxDML = peak;
-	meta->maxCLL = static_cast<int>(std::lround(peak));
-	// unknown, but every field must be non zero for the metadata to be sent
-	meta->maxFALL = meta->maxCLL;
-	meta->transferFunction = 15;
+	loadAssumedPqMeta(meta, LldvPeakNits());
 }
 
 bool magewell_video_capture_pin::IsDvTunnelCandidate() const

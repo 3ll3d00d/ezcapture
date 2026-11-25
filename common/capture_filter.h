@@ -34,6 +34,7 @@
 #include "ISpecifyPropertyPages2.h"
 #include "lavfilters_side_data.h"
 #include <array>
+#include <atomic>
 #include <set>
 #include <mutex>
 
@@ -45,6 +46,7 @@ inline constexpr auto hdrProfileSwitchEnabledRegKey = L"hdrProfileSwitchEnabled"
 inline constexpr auto refreshRateSwitchEnabledRegKey = L"refreshRateSwitchEnabled";
 inline constexpr auto highThreadPriorityEnabledRegKey = L"highThreadPriorityEnabled";
 inline constexpr auto audioCaptureEnabledRegKey = L"audioCaptureEnabled";
+inline constexpr auto assumeHdrEnabledRegKey = L"assumeHdrEnabled";
 inline constexpr auto webEnabledRegKey = L"webEnabled";
 inline constexpr auto webPortRegKey = L"webPort";
 inline constexpr auto webBindAddressRegKey = L"webBindAddress";
@@ -183,6 +185,15 @@ public:
 	}
 
 	STDMETHODIMP SetAudioCaptureEnabled(bool enabled) override;
+
+	STDMETHODIMP IsAssumeHdrEnabled(bool* enabled) override
+	{
+		if (!enabled) return E_POINTER;
+		*enabled = mAssumeHdrEnabled;
+		return S_OK;
+	}
+
+	STDMETHODIMP SetAssumeHdrEnabled(bool enabled) override;
 
 	STDMETHODIMP IsMetricsEnabled(bool* enabled) override
 	{
@@ -472,6 +483,8 @@ protected:
 	bool mRefreshRateSwitchEnabled{true};
 	bool mHighThreadPriorityEnabled{true};
 	bool mAudioCaptureEnabled{true};
+	// read on the capture thread, only used by cards that cannot read the Dolby VSIF
+	std::atomic<bool> mAssumeHdrEnabled{true};
 	metrics_config mMetricsConfig{};
 	std::string mMetricsStatus{"Disabled"};
 	capture_metrics mMetrics{};

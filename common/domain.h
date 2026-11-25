@@ -420,6 +420,66 @@ struct hdr_meta
 	}
 };
 
+// PQ in BT.2020 mastered to the given peak, for a picture known (or assumed) to be HDR that arrives without an HDR
+// InfoFrame, e.g. LLDV. Every field is set as the renderer ignores metadata with any field missing.
+inline void loadAssumedPqMeta(hdr_meta* meta, double peakNits)
+{
+	*meta = {};
+	meta->r_primary_x = 0.708;
+	meta->r_primary_y = 0.292;
+	meta->g_primary_x = 0.170;
+	meta->g_primary_y = 0.797;
+	meta->b_primary_x = 0.131;
+	meta->b_primary_y = 0.046;
+	meta->whitepoint_x = 0.3127;
+	meta->whitepoint_y = 0.3290;
+	meta->minDML = 0.005;
+	meta->maxDML = peakNits;
+	meta->maxCLL = static_cast<int>(std::lround(peakNits));
+	// unknown, but every field must be non zero for the metadata to be sent
+	meta->maxFALL = meta->maxCLL;
+	meta->transferFunction = 15;
+}
+
+enum assumed_hdr : std::uint8_t
+{
+	ASSUMED_NONE,
+	// a deep colour BT.2020 signal, taken to be PQ
+	ASSUMED_PQ,
+	// 12-bit YCbCr 4:2:2, the format sources use for low latency DV
+	ASSUMED_LLDV
+};
+
+// For a card that cannot read the Dolby VSIF, decides whether a signal that arrives without an HDR InfoFrame is HDR
+// from its format alone. A signal with an HDR InfoFrame is described by that instead.
+inline assumed_hdr assumeHdr(bool enabled, bool hasHdrInfoFrame, bool ycbcr422, int inputBitDepth,
+                             colour_format colourFormat)
+{
+	if (!enabled || hasHdrInfoFrame)
+	{
+		return ASSUMED_NONE;
+	}
+	if (ycbcr422 && inputBitDepth == 12)
+	{
+		return ASSUMED_LLDV;
+	}
+	if (inputBitDepth >= 10 && colourFormat == BT2020)
+	{
+		return ASSUMED_PQ;
+	}
+	return ASSUMED_NONE;
+}
+
+inline const char* to_string(assumed_hdr a)
+{
+	switch (a)
+	{
+	case ASSUMED_PQ: return "PQ";
+	case ASSUMED_LLDV: return "LLDV";
+	default: return "none";
+	}
+}
+
 inline boolean hdrMetaExists(const hdr_meta* hdrOut)
 {
 	return

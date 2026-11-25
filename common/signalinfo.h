@@ -79,6 +79,9 @@ interface __declspec(uuid("6A505550-28B2-4668-BC2C-461E75A63BC4")) ISignalInfo :
 	STDMETHOD(SetHighThreadPriorityEnabled)(bool enabled) = 0;
 	STDMETHOD(IsAudioCaptureEnabled)(bool* enabled) = 0;
 	STDMETHOD(SetAudioCaptureEnabled)(bool enabled) = 0;
+	// describe a signal without an HDR InfoFrame as HDR when its format suggests it is (e.g. LLDV)
+	STDMETHOD(IsAssumeHdrEnabled)(bool* enabled) = 0;
+	STDMETHOD(SetAssumeHdrEnabled)(bool enabled) = 0;
 	STDMETHOD(IsMetricsEnabled)(bool* enabled) = 0;
 	STDMETHOD(SetMetricsEnabled)(bool enabled) = 0;
 	STDMETHOD(GetMetricsPort)(DWORD* port) = 0;
