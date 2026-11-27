@@ -910,10 +910,6 @@ HRESULT blackmagic_capture_filter::processVideoFrame(IDeckLinkVideoInputFrame* v
 			newVideoFormat.hdrMeta.transferFunction = 4;
 		}
 	}
-	else if (newVideoFormat.colourFormat == BT2020)
-	{
-		newVideoFormat.hdrMeta.transferFunction = 15;
-	}
 
 	if (videoFrame->GetFlags() & bmdFrameContainsHDRMetadata)
 	{
@@ -1259,15 +1255,15 @@ void blackmagic_capture_filter::ApplyAssumedHdr(video_format& videoFormat, bool 
 {
 	// the card cannot read the Dolby VSIF so LLDV, and HDR from a source that sends no HDR InfoFrame, can only be
 	// recognised by the signal format
-	const auto assumed = assumeHdr(mAssumeHdrEnabled, hasHdrMetadata, mVideoSignal.ycbcr422, mVideoSignal.bitDepth,
-	                               static_cast<colour_format>(videoFormat.colourFormat));
+	const auto assumed = assumeHdr(mAssumeHdrEnabled, mAssumePqEnabled, hasHdrMetadata, mVideoSignal.ycbcr422,
+	                               mVideoSignal.bitDepth, static_cast<colour_format>(videoFormat.colourFormat));
 	if (assumed != mAssumedHdr)
 	{
 		#ifndef NO_LOGGING
 		LOG_WARNING(mLogData.logger,
-		            "[{}] Assumed HDR changed from {} to {} at frame {} [enabled: {}, hdr infoframe: {}, {} {}-bit, {}]",
+		            "[{}] Assumed HDR changed from {} to {} at frame {} [lldv: {}, pq: {}, hdr infoframe: {}, {} {}-bit, {}]",
 		            mLogData.prefix, to_string(mAssumedHdr), to_string(assumed), mCurrentVideoFrameIndex,
-		            mAssumeHdrEnabled.load(), hasHdrMetadata, mVideoSignal.colourFormat,
+		            mAssumeHdrEnabled.load(), mAssumePqEnabled.load(), hasHdrMetadata, mVideoSignal.colourFormat,
 		            static_cast<int>(mVideoSignal.bitDepth),
 		            videoFormat.colourFormatName);
 		#endif
@@ -1277,8 +1273,8 @@ void blackmagic_capture_filter::ApplyAssumedHdr(video_format& videoFormat, bool 
 	{
 		return;
 	}
-	// a source tone mapping to LLDV targets the sink, 1000 nits is a typical target when that is not known
-	loadAssumedPqMeta(&videoFormat.hdrMeta, 1000.0);
+	// the signal does not say what peak the source mastered or tone mapped to so use the configured one
+	loadAssumedPqMeta(&videoFormat.hdrMeta, AssumedPeakNits());
 	videoFormat.colourFormat = BT2020;
 	videoFormat.colourFormatName = assumed == ASSUMED_LLDV ? "LLDV" : "BT2020";
 }
@@ -1305,9 +1301,9 @@ void blackmagic_capture_filter::PublishDvStatus()
 		                   : mDvDecoder.render()
 		                   ? DV_LOCKED
 		                   : DV_NO_METADATA;
-	// on any change of state and about once a second while locked
+	// on any change of state and about once a second while locked or LLDV (the configured peak can change)
 	const auto interval = static_cast<uint64_t>(std::max(1L, std::lround(mVideoFormat.fps)));
-	const bool periodic = (state == DV_LOCKED || state == DV_NO_METADATA)
+	const bool periodic = (state == DV_LOCKED || state == DV_NO_METADATA || state == DV_LLDV)
 		&& mCurrentVideoFrameIndex >= mDvStatusPublishedAt + interval;
 	if (state == mDvPublishedState && !periodic)
 	{
@@ -1333,6 +1329,15 @@ void blackmagic_capture_filter::PublishDvStatus()
 		.crcFailedCopies = stats.crcFailedCopies,
 		.recoveredPackets = stats.recoveredPackets
 	};
+	if (state == DV_LLDV)
+	{
+		// the card cannot read the VSIF so everything known comes from the signal format
+		status.lldvAssumed = true;
+		status.fullRange = mVideoFormat.quantisation == QUANTISATION_FULL;
+		status.lldvBitDepth = mVideoSignal.bitDepth;
+		status.lldvPixelEncoding = YUV_422;
+		status.lldvPeakNits = AssumedPeakNits();
+	}
 	OnDvStatusUpdated(status);
 	mDvPublishedState = state;
 	mDvStatusPublishedAt = mCurrentVideoFrameIndex;

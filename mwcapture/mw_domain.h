@@ -232,7 +232,8 @@ inline void LoadHdrMeta(hdr_meta* meta, const HDMI_HDR_INFOFRAME_PAYLOAD* frame)
 	hdrOut->maxCLL = hdrIn.maximum_content_light_level_lsb + (hdrIn.maximum_content_light_level_msb << 8);
 	hdrOut->maxFALL = hdrIn.maximum_frame_average_light_level_lsb + (hdrIn.maximum_frame_average_light_level_msb << 8);
 
-	hdrOut->transferFunction = hdrIn.byEOTF == 0x2 ? 15 : 4;
+	// 0 = SDR gamma, 1 = HDR gamma, 2 = PQ, 3 = HLG
+	hdrOut->transferFunction = hdrIn.byEOTF == 0x2 ? 15 : hdrIn.byEOTF == 0x3 ? 16 : 4;
 }
 
 // HDMI Audio Bitstream Codec Identification metadata

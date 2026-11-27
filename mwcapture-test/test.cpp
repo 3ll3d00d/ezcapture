@@ -192,28 +192,32 @@ TEST(Bandwidth, UsbEstimates)
 
 TEST(AssumeHdr, TwelveBitYuv422WithoutInfoFrameIsLldv)
 {
-	EXPECT_EQ(assumeHdr(true, false, true, 12, REC709), ASSUMED_LLDV);
-	EXPECT_EQ(assumeHdr(true, false, true, 12, BT2020), ASSUMED_LLDV);
-	EXPECT_EQ(assumeHdr(true, false, true, 12, COLOUR_FORMAT_UNKNOWN), ASSUMED_LLDV);
+	// lldv, pq, infoframe, 4:2:2, bit depth, colour
+	EXPECT_EQ(assumeHdr(true, false, false, true, 12, REC709), ASSUMED_LLDV);
+	EXPECT_EQ(assumeHdr(true, false, false, true, 12, BT2020), ASSUMED_LLDV);
+	EXPECT_EQ(assumeHdr(true, true, false, true, 12, COLOUR_FORMAT_UNKNOWN), ASSUMED_LLDV);
 }
 
-TEST(AssumeHdr, DeepColourBt2020WithoutInfoFrameIsPq)
+TEST(AssumeHdr, DeepColourBt2020WithoutInfoFrameIsPqOnlyWhenEnabled)
 {
-	EXPECT_EQ(assumeHdr(true, false, true, 10, BT2020), ASSUMED_PQ);
-	EXPECT_EQ(assumeHdr(true, false, false, 12, BT2020), ASSUMED_PQ);
-	EXPECT_EQ(assumeHdr(true, false, false, 10, BT2020), ASSUMED_PQ);
+	EXPECT_EQ(assumeHdr(false, true, false, true, 10, BT2020), ASSUMED_PQ);
+	EXPECT_EQ(assumeHdr(true, true, false, false, 12, BT2020), ASSUMED_PQ);
+	EXPECT_EQ(assumeHdr(true, true, false, false, 10, BT2020), ASSUMED_PQ);
+	// BT.2020 SDR exists so it is not assumed by default
+	EXPECT_EQ(assumeHdr(true, false, false, true, 10, BT2020), ASSUMED_NONE);
+	EXPECT_EQ(assumeHdr(true, false, false, false, 12, BT2020), ASSUMED_NONE);
 }
 
 TEST(AssumeHdr, LeavesOtherSignalsAlone)
 {
 	// an HDR InfoFrame describes the signal itself
-	EXPECT_EQ(assumeHdr(true, true, true, 12, BT2020), ASSUMED_NONE);
-	// disabled
-	EXPECT_EQ(assumeHdr(false, false, true, 12, BT2020), ASSUMED_NONE);
+	EXPECT_EQ(assumeHdr(true, true, true, true, 12, BT2020), ASSUMED_NONE);
+	// lldv disabled, 12-bit 4:2:2 that is not BT.2020
+	EXPECT_EQ(assumeHdr(false, true, false, true, 12, REC709), ASSUMED_NONE);
 	// 8-bit or not BT.2020
-	EXPECT_EQ(assumeHdr(true, false, true, 8, BT2020), ASSUMED_NONE);
-	EXPECT_EQ(assumeHdr(true, false, true, 10, REC709), ASSUMED_NONE);
-	EXPECT_EQ(assumeHdr(true, false, false, 12, REC709), ASSUMED_NONE);
+	EXPECT_EQ(assumeHdr(true, true, false, true, 8, BT2020), ASSUMED_NONE);
+	EXPECT_EQ(assumeHdr(true, true, false, true, 10, REC709), ASSUMED_NONE);
+	EXPECT_EQ(assumeHdr(true, true, false, false, 12, REC709), ASSUMED_NONE);
 }
 
 TEST(AssumeHdr, AssumedMetadataIsCompletePq)
@@ -225,6 +229,38 @@ TEST(AssumeHdr, AssumedMetadataIsCompletePq)
 	EXPECT_EQ(meta.maxCLL, 1000);
 	EXPECT_DOUBLE_EQ(meta.maxDML, 1000.0);
 	EXPECT_DOUBLE_EQ(meta.r_primary_x, 0.708);
+}
+
+TEST(MagewellHdr, InfoFrameTransferFunction)
+{
+	HDMI_HDR_INFOFRAME_PAYLOAD frame{};
+	hdr_meta meta{};
+	frame.byEOTF = 0;
+	LoadHdrMeta(&meta, &frame);
+	EXPECT_EQ(meta.transferFunction, 4);
+	frame.byEOTF = 2;
+	LoadHdrMeta(&meta, &frame);
+	EXPECT_EQ(meta.transferFunction, 15);
+	frame.byEOTF = 3;
+	LoadHdrMeta(&meta, &frame);
+	EXPECT_EQ(meta.transferFunction, 16);
+}
+
+TEST(AssumeHdr, AssumedPeakIsConfigurableWithinRange)
+{
+	EXPECT_TRUE(isValidAssumedPeakNits(defaultAssumedPeakNits));
+	EXPECT_TRUE(isValidAssumedPeakNits(100));
+	EXPECT_TRUE(isValidAssumedPeakNits(10000));
+	EXPECT_FALSE(isValidAssumedPeakNits(0));
+	EXPECT_FALSE(isValidAssumedPeakNits(99));
+	EXPECT_FALSE(isValidAssumedPeakNits(10001));
+
+	hdr_meta meta{};
+	loadAssumedPqMeta(&meta, 600.0);
+	EXPECT_TRUE(meta.exists());
+	EXPECT_EQ(meta.maxCLL, 600);
+	EXPECT_EQ(meta.maxFALL, 600);
+	EXPECT_DOUBLE_EQ(meta.maxDML, 600.0);
 }
 
 TEST(UsbSpeed, NamesKnownSpeedsAndShowsOthersRaw)

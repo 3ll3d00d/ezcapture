@@ -420,6 +420,16 @@ struct hdr_meta
 	}
 };
 
+// the peak brightness assumed for HDR that arrives without saying what it is
+inline constexpr DWORD defaultAssumedPeakNits = 1000;
+inline constexpr DWORD minAssumedPeakNits = 100;
+inline constexpr DWORD maxAssumedPeakNits = 10000;
+
+inline bool isValidAssumedPeakNits(DWORD nits)
+{
+	return nits >= minAssumedPeakNits && nits <= maxAssumedPeakNits;
+}
+
 // PQ in BT.2020 mastered to the given peak, for a picture known (or assumed) to be HDR that arrives without an HDR
 // InfoFrame, e.g. LLDV. Every field is set as the renderer ignores metadata with any field missing.
 inline void loadAssumedPqMeta(hdr_meta* meta, double peakNits)
@@ -451,19 +461,20 @@ enum assumed_hdr : std::uint8_t
 };
 
 // For a card that cannot read the Dolby VSIF, decides whether a signal that arrives without an HDR InfoFrame is HDR
-// from its format alone. A signal with an HDR InfoFrame is described by that instead.
-inline assumed_hdr assumeHdr(bool enabled, bool hasHdrInfoFrame, bool ycbcr422, int inputBitDepth,
+// from its format alone. A signal with an HDR InfoFrame is described by that instead. 12-bit YCbCr 4:2:2 is a strong
+// sign of LLDV, a deep colour BT.2020 signal is a weaker sign of PQ (BT.2020 SDR exists) so each has its own option.
+inline assumed_hdr assumeHdr(bool lldvEnabled, bool pqEnabled, bool hasHdrInfoFrame, bool ycbcr422, int inputBitDepth,
                              colour_format colourFormat)
 {
-	if (!enabled || hasHdrInfoFrame)
+	if (hasHdrInfoFrame)
 	{
 		return ASSUMED_NONE;
 	}
-	if (ycbcr422 && inputBitDepth == 12)
+	if (lldvEnabled && ycbcr422 && inputBitDepth == 12)
 	{
 		return ASSUMED_LLDV;
 	}
-	if (inputBitDepth >= 10 && colourFormat == BT2020)
+	if (pqEnabled && inputBitDepth >= 10 && colourFormat == BT2020)
 	{
 		return ASSUMED_PQ;
 	}
@@ -624,6 +635,8 @@ struct dv_status
 	uint64_t crcFailedCopies{0};
 	uint64_t recoveredPackets{0};
 	// LLDV only, from the signal and the Dolby vendor specific InfoFrame
+	// true when the card cannot read the VSIF so LLDV is assumed from the signal format
+	bool lldvAssumed{false};
 	uint8_t lldvBitDepth{0};
 	pixel_encoding lldvPixelEncoding{YUV_422};
 	bool lldvBacklightMetadata{false};

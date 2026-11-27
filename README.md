@@ -132,6 +132,159 @@ To play using the filter, just start playback of the specified channel & configu
 
 The same process applies for blackmagic cards except the filter will be named `Blackmagic Capture` or `Blackmagic Capture (Trace)`.
 
+## Output Format and HDR
+
+Every time the signal changes, the filter makes two decisions:
+
+1. **Pixel format**: the format the card is asked to capture and the format passed to the renderer. These are the same except while a Dolby Vision tunnel is being decoded.
+2. **Dynamic range**: whether the picture is described to the renderer as SDR or HDR.
+
+The renderer is told the dynamic range in two ways:
+
+* **Media type**: the colour primaries, matrix and transfer function (SDR gamma, PQ or HLG). The picture is presented as HDR whenever the transfer function is PQ or HLG.
+* **HDR metadata**: mastering display and content light levels, attached to a frame at most once a second. It is only sent when every value is known.
+
+The JRiver profile switch picks the HDR profile whenever the transfer function is not SDR gamma.
+
+### Pixel format
+
+```mermaid
+flowchart TD
+    start([Signal changes]) --> card{Which card?}
+
+    card -->|Magewell Pro| p1{Signal locked?}
+    p1 -->|no| p0["BGR24 720x480<br/>no signal image"]
+    p1 -->|yes| p2["Look up the input's bit depth and<br/>pixel encoding in the Magewell Pro table"]
+    p2 --> p3{"Does it fit the bandwidth<br/>estimate for the PCIe link?"}
+    p3 -->|yes| pdv
+    p3 -->|no| p4["Use the first bandwidth fallback that fits,<br/>or the last fallback if none fit"]
+    p4 --> pdv
+
+    card -->|Magewell USB| u1["Look up the input's pixel encoding<br/>in the Magewell USB table"]
+    u1 --> u2{"Is that format enabled in the<br/>USB Capture Utility?"}
+    u2 -->|yes| udv
+    u2 -->|no| u3{"Is any alternative<br/>enabled?"}
+    u3 -->|yes| u4[Use the first enabled alternative]
+    u3 -->|no| u5["Use it anyway, an error is logged<br/>and capture fails"]
+    u4 --> udv
+    u5 --> udv
+
+    card -->|Blackmagic| b1["Take the encoding and bit depth<br/>the card detects on the input"]
+    b1 --> b2["Ask the card, best first, whether it can capture<br/>each format listed in the Blackmagic table"]
+    b2 --> b3{"Card's answer"}
+    b3 -->|"one or more supported"| b4[Use the first supported format]
+    b3 -->|"none supported"| b5[Use the last format in the list]
+    b3 -->|"query failed"| b6[Use the first format in the list]
+    b4 --> bdv
+    b5 --> bdv
+    b6 --> bdv
+
+    pdv{"Dolby Vision<br/>tunnel locked?"}
+    udv{"Dolby Vision<br/>tunnel locked?"}
+    bdv{"Dolby Vision<br/>tunnel locked?"}
+    pdv -->|no| out[Pass the captured format to the renderer]
+    udv -->|no| out
+    bdv -->|no| out
+    pdv -->|yes| dv["Capture RGB, pass P210<br/>(decoded 12-bit IPT-PQ 4:2:2)"]
+    udv -->|yes| dv
+    bdv -->|yes| dv
+```
+
+#### Magewell Pro
+
+| Bit depth | RGB   | YCbCr 4:2:2 | YCbCr 4:4:4 | YCbCr 4:2:0 |
+|-----------|-------|-------------|-------------|-------------|
+| 8         | BGR24 | NV16        | AYUV        | NV12        |
+| 10 or 12  | BGR10 | P210        | AYUV        | P010        |
+
+| Format | Bandwidth fallbacks, in order |
+|--------|-------------------------------|
+| P210   | P010                          |
+| BGR10  | P010                          |
+| AYUV   | BGR24, NV16, NV12             |
+| BGR24  | NV16, NV12                    |
+| NV16   | NV12                          |
+
+An RGB signal captured as P010 is converted by the card using the BT.2020 matrix if the signal is PQ, otherwise Rec.709.
+
+#### Magewell USB
+
+The input's bit depth does not change the format.
+
+| Device   | RGB   | YCbCr 4:2:2 or 4:4:4 | YCbCr 4:2:0 |
+|----------|-------|----------------------|-------------|
+| USB Pro  | BGR24 | Y210                 | P010        |
+| USB Plus | BGR24 | UYVY                 | NV12        |
+
+| Device   | Format | Alternatives, in order        |
+|----------|--------|-------------------------------|
+| USB Pro  | BGR24  | Y210, UYVY, YUY2, P010, NV12  |
+| USB Pro  | Y210   | P010, BGR24, UYVY, YUY2, NV12 |
+| USB Pro  | P010   | Y210, BGR24, NV12, UYVY, YUY2 |
+| USB Plus | BGR24  | UYVY, YUY2, NV12              |
+| USB Plus | UYVY   | YUY2, BGR24, NV12             |
+| USB Plus | NV12   | UYVY, YUY2, BGR24             |
+
+The formats, frame sizes and frame rates enabled in the USB Capture Utility are read once, when the filter starts. The signal's resolution and frame rate must also be enabled. If either isn't, the device's default is used instead and the card scales the picture.
+
+#### Blackmagic
+
+| Input              | Capture formats tried, best first | Passed to the renderer as |
+|--------------------|-----------------------------------|---------------------------|
+| YCbCr 4:2:2 8-bit  | 8BitYUV                           | 2VUY                      |
+| YCbCr 4:2:2 10-bit | 10BitYUV, 8BitYUV                 | v210, 2VUY                |
+| YCbCr 4:2:2 12-bit | 10BitYUV, 8BitYUV                 | v210, 2VUY                |
+| RGB 4:4:4 8-bit    | 8BitARGB                          | RGBA                      |
+| RGB 4:4:4 10-bit   | 10BitRGB, 8BitARGB                | r210, RGBA                |
+| RGB 4:4:4 12-bit   | 12BitRGB, 10BitRGB, 8BitARGB      | R12B, r210, RGBA          |
+
+The DeckLink SDK has no 12-bit YCbCr capture format, so the card converts 12-bit YCbCr 4:2:2 (how LLDV is sent) to 10-bit. The with-logging variant logs the card's answer for each format it asks about, e.g. `Capture format 10BitYUV in 4K2398 is supported`, and the format it chose.
+
+#### Dolby Vision tunnel
+
+The tunnel is only looked for when every condition for the card is true. It only locks when a metadata packet passes its CRC check, see [Dolby Vision](#dolby-vision).
+
+| Card         | Looked for when                                                                                   |
+|--------------|---------------------------------------------------------------------------------------------------|
+| Magewell Pro | 8-bit RGB 4:4:4, no HDR InfoFrame, even width                                                      |
+| Magewell USB | as Magewell Pro, and BGR24 and the signal's resolution are both enabled in the USB Capture Utility |
+| Blackmagic   | captured as 8BitARGB, 8BitBGRA or 10BitRGB, no HDR InfoFrame, even width                           |
+
+### Dynamic range
+
+Magewell decides this every time the signal changes, Blackmagic on every frame.
+
+```mermaid
+flowchart TD
+    start([Signal or frame]) --> dv{"Dolby Vision<br/>tunnel locked?"}
+    dv -->|yes| outDv["<b>Dolby Vision</b><br/>BT.2020, PQ<br/>Dolby Vision metadata on every frame"]
+    dv -->|no| info{"HDR InfoFrame<br/>present?"}
+
+    info -->|yes| eotf{"InfoFrame<br/>transfer function?"}
+    eotf -->|PQ| outPq["<b>HDR (PQ)</b><br/>metadata from the InfoFrame"]
+    eotf -->|HLG| outHlg["<b>HDR (HLG)</b><br/>metadata from the InfoFrame"]
+    eotf -->|"SDR or other"| outSdr["<b>SDR</b><br/>colour from the signal"]
+
+    info -->|no| which{Which card?}
+
+    which -->|"Magewell<br/>(Pro or USB)"| vsif{"Dolby VSIF<br/>says LLDV?"}
+    vsif -->|yes| peak{"VSIF carries<br/>backlight metadata?"}
+    peak -->|yes| outLldvVsif["<b>HDR (LLDV)</b><br/>BT.2020, PQ<br/>peak from the VSIF"]
+    peak -->|no| outLldvCfg["<b>HDR (LLDV)</b><br/>BT.2020, PQ<br/>configured peak"]
+    vsif -->|no| outSdr
+
+    which -->|Blackmagic| lldv{"Assume LLDV? ticked<br/>and input is 12-bit<br/>YCbCr 4:2:2?"}
+    lldv -->|yes| outBmLldv["<b>HDR (LLDV)</b><br/>BT.2020, PQ<br/>configured peak"]
+    lldv -->|no| pq{"Assume PQ? ticked<br/>and input is 10 or 12-bit<br/>BT.2020?"}
+    pq -->|yes| outBmPq["<b>HDR (PQ)</b><br/>BT.2020<br/>configured peak"]
+    pq -->|no| outSdr
+```
+
+* The configured peak is the nits value next to `Assume LLDV?` (Blackmagic) or `LLDV Peak` (Magewell) on the property page, 1000 nits by default. It is sent as the mastering display maximum, MaxCLL and MaxFALL, with BT.2020 primaries, a D65 white point and a 0.005 nit minimum.
+* HLG rarely carries mastering metadata, so usually only the transfer function is sent. Only JRVR is known to understand HLG in the media type.
+* The colour format on the property page reads `LLDV` or `DV` in those cases, otherwise it is the signal's colour format. SDR in BT.2020 is passed on as BT.2020 SDR.
+* Reading the Dolby VSIF on Magewell USB devices is untested. The with-logging variant logs each VSIF it reads, `Vendor specific InfoFrame [dolby: ...]`, and none if the device doesn't report it.
+
 ## Bandwidth
 
 The pixel format captured is chosen from the incoming signal, e.g. P210 for 10 or 12-bit 4:2:2 on a Magewell Pro card.
@@ -174,18 +327,30 @@ A warning is logged when this happens. Formats that fit, e.g. anything at 2160p2
 The format is not changed automatically:
 
 * Magewell USB devices can only output the formats and frame rates configured on the device (via the Magewell USB Capture Utility) and the device already limits these to what its USB connection supports
-* Blackmagic cards capture in the format the card detects on the input, except 12-bit YCbCr 4:2:2 which has no matching capture format and is captured as 10-bit YCbCr 4:2:2 (`v210`), the card does the conversion
+* Blackmagic cards capture in the best format the card says it supports for the detected input, see [Output Format and HDR](#output-format-and-hdr)
 
 Use the `Bandwidth` row and the log to check whether the configured or detected format fits.
 
-### Blackmagic: Assume HDR
+### Blackmagic: Assume LLDV and Assume PQ
 
-A Blackmagic card cannot read the Dolby Vision VSIF, so it cannot tell that a signal is LLDV, and some sources send HDR without an HDR InfoFrame. With `Assume HDR?` ticked on the property page (the default), a signal that arrives without an HDR InfoFrame is described as HDR when its format is one that is normally HDR:
+A Blackmagic card cannot read the Dolby Vision VSIF, so it cannot tell that a signal is LLDV. Some sources also send HDR without an HDR InfoFrame. Two options on the property page describe a signal that arrives without an HDR InfoFrame as HDR when its format suggests it is:
 
-* 12-bit YCbCr 4:2:2 is treated as LLDV
-* any other 10-bit or 12-bit signal in BT.2020 is treated as PQ
+| Option          | Default | Signal                               | Described as |
+|-----------------|---------|--------------------------------------|--------------|
+| `Assume LLDV?`  | on      | 12-bit YCbCr 4:2:2                   | LLDV         |
+| `Assume PQ?`    | off     | any other 10 or 12-bit BT.2020 signal | PQ           |
 
-Both are passed on as PQ in BT.2020 with a 1000 nit mastering display. A signal with an HDR InfoFrame is always described by that InfoFrame. A source that sends SDR as 12-bit YCbCr 4:2:2 (some players do at 2160p) will be shown as HDR, untick the option if this happens. The change applies from the next frame and is stored in the `assumeHdrEnabled` REG_DWORD under `HKEY_CURRENT_USER\Software\3ll3d00d\BMCapture`.
+`Assume PQ?` is off by default because BT.2020 SDR exists, rare as it is. Both are passed on as PQ in BT.2020. A signal with an HDR InfoFrame is always described by that InfoFrame.
+
+The signal doesn't say what peak brightness it was mastered or tone mapped to, so the nits value next to `Assume LLDV?` is used (1000 by default, 100 to 10000 allowed). Set it to the peak the source tone maps to, e.g. the target luminance in the EDID it reads.
+
+A source that sends SDR as 12-bit YCbCr 4:2:2 (some players do at 2160p) will be shown as HDR, untick `Assume LLDV?` if this happens.
+
+The settings apply from the next frame. They are stored in the `assumeHdrEnabled` (LLDV), `assumePqEnabled` and `assumedPeakNits` REG_DWORDs under `HKEY_CURRENT_USER\Software\3ll3d00d\BMCapture`.
+
+On a Magewell card the `LLDV Peak` value is used for LLDV when the Dolby VSIF does not carry the peak (no backlight metadata). It is stored in `assumedPeakNits` under `HKEY_CURRENT_USER\Software\3ll3d00d\MWCapture`.
+
+See [Output Format and HDR](#output-format-and-hdr) for the full decision.
 
 ## Dolby Vision
 

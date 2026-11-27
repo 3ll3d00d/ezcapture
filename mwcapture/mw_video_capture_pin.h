@@ -212,7 +212,7 @@ protected:
 	video_signal mVideoSignal{};
 	usb_capture_formats mUsbCaptureFormats{};
 	bool mHasHdrInfoFrame{false};
-	// LLDV (pro only), the last vendor specific InfoFrame as read so changes are logged once
+	// LLDV, the last vendor specific InfoFrame as read so changes are logged once
 	std::vector<uint8_t> mVsInfoFrame{};
 	dv_tunnel::dolby_vsif mDolbyVsif{};
 	uint8_t mVsMissedReads{0};

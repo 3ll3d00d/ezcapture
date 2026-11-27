@@ -247,6 +247,17 @@ capture_filter::capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSI
 		{
 			mAssumeHdrEnabled = res.GetValue() == 1;
 		}
+		if (auto res = key.TryGetDwordValue(assumePqEnabledRegKey))
+		{
+			mAssumePqEnabled = res.GetValue() == 1;
+		}
+		if (auto res = key.TryGetDwordValue(assumedPeakNitsRegKey))
+		{
+			if (isValidAssumedPeakNits(res.GetValue()))
+			{
+				mAssumedPeakNits = res.GetValue();
+			}
+		}
 		if (auto res = key.TryGetDwordValue(metricsEnabledRegKey))
 		{
 			mMetricsConfig.enabled = res.GetValue() == 1;
@@ -297,9 +308,9 @@ capture_filter::capture_filter(LPCTSTR pName, LPUNKNOWN punk, HRESULT* phr, CLSI
 		}
 		#ifndef NO_LOGGING
 		LOG_INFO(mLogData.logger,
-		         "[{}] Loaded properties from registry [hdrProfile:{}, sdrProfile: {}, profileSwitch: {}, rateSwitch: {}, highPriority: {}, audio: {}, assumeHdr: {}]",
+		         "[{}] Loaded properties from registry [hdrProfile:{}, sdrProfile: {}, profileSwitch: {}, rateSwitch: {}, highPriority: {}, audio: {}, assumeLldv: {}, assumePq: {}, assumedPeakNits: {}]",
 		         mLogData.prefix, mHdrProfile, mSdrProfile, mHdrProfileSwitchEnabled, mRefreshRateSwitchEnabled,
-		         mHighThreadPriorityEnabled, mAudioCaptureEnabled, mAssumeHdrEnabled.load());
+		         mHighThreadPriorityEnabled, mAudioCaptureEnabled, mAssumeHdrEnabled.load(), mAssumePqEnabled.load(), mAssumedPeakNits.load());
 		#endif
 
 		if (mAudioCaptureEnabled)
@@ -673,6 +684,46 @@ HRESULT capture_filter::SetAssumeHdrEnabled(bool enabled)
 			{
 				// applies from the next frame
 				mAssumeHdrEnabled = enabled;
+				return S_OK;
+			}
+		}
+	}
+	return E_FAIL;
+}
+
+HRESULT capture_filter::SetAssumePqEnabled(bool enabled)
+{
+	std::lock_guard lock{mSettingsLock};
+	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
+	{
+		if (const auto res = key.TrySetDwordValue(assumePqEnabledRegKey, enabled ? 1 : 0))
+		{
+			if (res)
+			{
+				// applies from the next frame
+				mAssumePqEnabled = enabled;
+				return S_OK;
+			}
+		}
+	}
+	return E_FAIL;
+}
+
+HRESULT capture_filter::SetAssumedPeakNits(DWORD nits)
+{
+	if (!isValidAssumedPeakNits(nits))
+	{
+		return E_INVALIDARG;
+	}
+	std::lock_guard lock{mSettingsLock};
+	if (winreg::RegKey key{HKEY_CURRENT_USER, mRegKeyBase})
+	{
+		if (const auto res = key.TrySetDwordValue(assumedPeakNitsRegKey, nits))
+		{
+			if (res)
+			{
+				// applies from the next frame
+				mAssumedPeakNits = nits;
 				return S_OK;
 			}
 		}

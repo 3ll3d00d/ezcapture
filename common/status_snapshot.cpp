@@ -621,6 +621,7 @@ std::string status_snapshot::ToJson(const std::string& id, const std::string& na
 	if (dv.state == DV_LLDV)
 	{
 		w.key("lldv").begin_object();
+		w.key("assumed").value(dv.lldvAssumed);
 		w.key("bit_depth").value(static_cast<int>(dv.lldvBitDepth));
 		w.key("pixel_encoding").value(pixel_encoding_id(dv.lldvPixelEncoding));
 		w.key("backlight_metadata").value(dv.lldvBacklightMetadata);

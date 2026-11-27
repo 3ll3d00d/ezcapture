@@ -47,6 +47,8 @@ inline constexpr auto refreshRateSwitchEnabledRegKey = L"refreshRateSwitchEnable
 inline constexpr auto highThreadPriorityEnabledRegKey = L"highThreadPriorityEnabled";
 inline constexpr auto audioCaptureEnabledRegKey = L"audioCaptureEnabled";
 inline constexpr auto assumeHdrEnabledRegKey = L"assumeHdrEnabled";
+inline constexpr auto assumedPeakNitsRegKey = L"assumedPeakNits";
+inline constexpr auto assumePqEnabledRegKey = L"assumePqEnabled";
 inline constexpr auto webEnabledRegKey = L"webEnabled";
 inline constexpr auto webPortRegKey = L"webPort";
 inline constexpr auto webBindAddressRegKey = L"webBindAddress";
@@ -194,6 +196,27 @@ public:
 	}
 
 	STDMETHODIMP SetAssumeHdrEnabled(bool enabled) override;
+
+	STDMETHODIMP IsAssumePqEnabled(bool* enabled) override
+	{
+		if (!enabled) return E_POINTER;
+		*enabled = mAssumePqEnabled;
+		return S_OK;
+	}
+
+	STDMETHODIMP SetAssumePqEnabled(bool enabled) override;
+
+	STDMETHODIMP GetAssumedPeakNits(DWORD* nits) override
+	{
+		if (!nits) return E_POINTER;
+		*nits = mAssumedPeakNits;
+		return S_OK;
+	}
+
+	STDMETHODIMP SetAssumedPeakNits(DWORD nits) override;
+
+	// the peak to describe HDR with when the signal does not say what it is
+	double AssumedPeakNits() const { return static_cast<double>(mAssumedPeakNits.load()); }
 
 	STDMETHODIMP IsMetricsEnabled(bool* enabled) override
 	{
@@ -485,6 +508,10 @@ protected:
 	bool mAudioCaptureEnabled{true};
 	// read on the capture thread, only used by cards that cannot read the Dolby VSIF
 	std::atomic<bool> mAssumeHdrEnabled{true};
+	// as above, off by default as BT.2020 SDR exists
+	std::atomic<bool> mAssumePqEnabled{false};
+	// read on the capture thread
+	std::atomic<DWORD> mAssumedPeakNits{defaultAssumedPeakNits};
 	metrics_config mMetricsConfig{};
 	std::string mMetricsStatus{"Disabled"};
 	capture_metrics mMetrics{};

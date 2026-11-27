@@ -79,9 +79,15 @@ interface __declspec(uuid("6A505550-28B2-4668-BC2C-461E75A63BC4")) ISignalInfo :
 	STDMETHOD(SetHighThreadPriorityEnabled)(bool enabled) = 0;
 	STDMETHOD(IsAudioCaptureEnabled)(bool* enabled) = 0;
 	STDMETHOD(SetAudioCaptureEnabled)(bool enabled) = 0;
-	// describe a signal without an HDR InfoFrame as HDR when its format suggests it is (e.g. LLDV)
+	// describe a 12-bit YCbCr 4:2:2 signal without an HDR InfoFrame as LLDV
 	STDMETHOD(IsAssumeHdrEnabled)(bool* enabled) = 0;
 	STDMETHOD(SetAssumeHdrEnabled)(bool enabled) = 0;
+	// describe a 10 or 12-bit BT.2020 signal without an HDR InfoFrame as PQ
+	STDMETHOD(IsAssumePqEnabled)(bool* enabled) = 0;
+	STDMETHOD(SetAssumePqEnabled)(bool enabled) = 0;
+	// the peak brightness used to describe HDR when the signal does not carry it (e.g. LLDV)
+	STDMETHOD(GetAssumedPeakNits)(DWORD* nits) = 0;
+	STDMETHOD(SetAssumedPeakNits)(DWORD nits) = 0;
 	STDMETHOD(IsMetricsEnabled)(bool* enabled) = 0;
 	STDMETHOD(SetMetricsEnabled)(bool enabled) = 0;
 	STDMETHOD(GetMetricsPort)(DWORD* port) = 0;

@@ -146,6 +146,10 @@
 #define IDC_WEB_NOTIFY_LABEL            1142
 #define IDC_WEB_NOTIFY_URL              1143
 #define IDC_ASSUME_HDR                  1144
+#define IDC_ASSUMED_PEAK_LABEL          1145
+#define IDC_ASSUMED_PEAK                1146
+#define IDC_ASSUMED_PEAK_UNIT           1147
+#define IDC_ASSUME_PQ                   1148
 
 // Next default values for new objects
 // 
@@ -153,7 +157,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        103
 #define _APS_NEXT_COMMAND_VALUE         40001
-#define _APS_NEXT_CONTROL_VALUE         1145
+#define _APS_NEXT_CONTROL_VALUE         1149
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

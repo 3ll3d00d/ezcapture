@@ -154,6 +154,22 @@ HRESULT CSignalInfoProp::OnApplyChanges()
 		bool assumeHdr = static_cast<bool>(SendDlgItemMessage(m_Dlg, IDC_ASSUME_HDR, BM_GETCHECK, 0, 0));
 		hrAssumeHdr = mSignalInfo->SetAssumeHdrEnabled(assumeHdr);
 	}
+	auto hrAssumePq = S_OK;
+	if (GetDlgItem(m_Dlg, IDC_ASSUME_PQ) != nullptr)
+	{
+		bool assumePq = static_cast<bool>(SendDlgItemMessage(m_Dlg, IDC_ASSUME_PQ, BM_GETCHECK, 0, 0));
+		hrAssumePq = mSignalInfo->SetAssumePqEnabled(assumePq);
+	}
+
+	SendDlgItemMessage(m_Dlg, IDC_ASSUMED_PEAK, WM_GETTEXT, 16, reinterpret_cast<LPARAM>(&b1));
+	auto hrPeak = mSignalInfo->SetAssumedPeakNits(_wtoi(b1));
+	if (hrPeak == E_INVALIDARG)
+	{
+		WCHAR msg[128];
+		_snwprintf_s(msg, _TRUNCATE, L"The assumed peak must be between %u and %u nits", minAssumedPeakNits,
+		             maxAssumedPeakNits);
+		MessageBoxW(m_Dlg, msg, L"Assumed Peak", MB_OK | MB_ICONWARNING);
+	}
 
 	bool enableMetrics = static_cast<bool>(SendDlgItemMessage(m_Dlg, IDC_ENABLE_METRICS, BM_GETCHECK, 0, 0));
 	auto hr7 = mSignalInfo->SetMetricsEnabled(enableMetrics);
@@ -190,6 +206,7 @@ HRESULT CSignalInfoProp::OnApplyChanges()
 
 	return hr1 == S_OK && hr2 == S_OK && hr3 == S_OK && hr4 == S_OK && hr5 == S_OK && hr6 == S_OK && hr7 == S_OK
 	       && hr8 == S_OK && hr9 == S_OK && hr10 == S_OK && hr11 == S_OK && hr12 == S_OK && hr13 == S_OK && hrAssumeHdr == S_OK
+	       && hrPeak == S_OK && hrAssumePq == S_OK
 		       ? S_OK
 		       : E_FAIL;
 }
@@ -298,6 +315,19 @@ INT_PTR CSignalInfoProp::OnReceiveMessage(HWND hwnd, UINT uMsg, WPARAM wParam, L
 			bool bFlag = static_cast<bool>(SendDlgItemMessage(m_Dlg, LOWORD(wParam), BM_GETCHECK, 0, 0));
 			bool existing;
 			mSignalInfo->IsAssumeHdrEnabled(&existing);
+
+			if (bFlag != existing)
+			{
+				SetDirty();
+				return TRUE;
+			}
+			return FALSE;
+		}
+		if (LOWORD(wParam) == IDC_ASSUME_PQ && HIWORD(wParam) == BN_CLICKED)
+		{
+			bool bFlag = static_cast<bool>(SendDlgItemMessage(m_Dlg, LOWORD(wParam), BM_GETCHECK, 0, 0));
+			bool existing;
+			mSignalInfo->IsAssumePqEnabled(&existing);
 
 			if (bFlag != existing)
 			{
@@ -421,6 +451,21 @@ INT_PTR CSignalInfoProp::OnReceiveMessage(HWND hwnd, UINT uMsg, WPARAM wParam, L
 				mKeepEdits = false;
 			}
 			return TRUE;
+		}
+		if (LOWORD(wParam) == IDC_ASSUMED_PEAK && HIWORD(wParam) == EN_CHANGE)
+		{
+			WCHAR b1[16];
+			SendDlgItemMessage(m_Dlg, IDC_ASSUMED_PEAK, WM_GETTEXT, 16, reinterpret_cast<LPARAM>(&b1));
+			const DWORD nits = _wtoi(b1);
+			DWORD existing;
+			mSignalInfo->GetAssumedPeakNits(&existing);
+			// validated on apply as a partly typed value is out of range
+			if (nits != existing)
+			{
+				SetDirty();
+				return TRUE;
+			}
+			return FALSE;
 		}
 		if (LOWORD(wParam) == IDC_METRICS_PORT && HIWORD(wParam) == EN_CHANGE)
 		{
@@ -756,7 +801,7 @@ HRESULT CSignalInfoProp::Reload(dv_status* payload)
 		set_text(m_Dlg, IDC_HDR_MAX_FALL_LABEL, L"Aux");
 		set_text(m_Dlg, IDC_HDR_MAX_CLL_LABEL, L"Sent as");
 
-		set_text(m_Dlg, IDC_HDR_RED, L"LLDV, source tone mapped");
+		set_text(m_Dlg, IDC_HDR_RED, payload->lldvAssumed ? L"LLDV, assumed from signal" : L"LLDV, source tone mapped");
 		set_text(m_Dlg, IDC_HDR_GREEN, payload->fullRange ? L"Full" : L"Limited");
 		const auto* encoding = payload->lldvPixelEncoding == YUV_422
 			                       ? L"4:2:2"
@@ -769,9 +814,13 @@ HRESULT CSignalInfoProp::Reload(dv_status* payload)
 		             encoding);
 		set_text(m_Dlg, IDC_HDR_BLUE, buffer);
 		_snwprintf_s(buffer, _TRUNCATE, L"%.0f nits (%s)", payload->lldvPeakNits,
-		             payload->lldvBacklightMetadata ? L"from VSIF" : L"assumed");
+		             payload->lldvBacklightMetadata ? L"from VSIF" : L"configured");
 		set_text(m_Dlg, IDC_HDR_WHITE, buffer);
-		if (payload->lldvBacklightMetadata)
+		if (payload->lldvAssumed)
+		{
+			_snwprintf_s(buffer, _TRUNCATE, L"not readable by card");
+		}
+		else if (payload->lldvBacklightMetadata)
 		{
 			_snwprintf_s(buffer, _TRUNCATE, L"backlight md, max PQ %u", static_cast<unsigned>(payload->lldvEffectiveMaxPq));
 		}
@@ -780,8 +829,15 @@ HRESULT CSignalInfoProp::Reload(dv_status* payload)
 			_snwprintf_s(buffer, _TRUNCATE, L"no backlight md");
 		}
 		set_text(m_Dlg, IDC_HDR_DML, buffer);
-		_snwprintf_s(buffer, _TRUNCATE, L"mode %u, v%u, debug %u", static_cast<unsigned>(payload->lldvAuxRunMode),
-		             static_cast<unsigned>(payload->lldvAuxVersion), static_cast<unsigned>(payload->lldvAuxDebug));
+		if (payload->lldvAssumed)
+		{
+			_snwprintf_s(buffer, _TRUNCATE, L"-");
+		}
+		else
+		{
+			_snwprintf_s(buffer, _TRUNCATE, L"mode %u, v%u, debug %u", static_cast<unsigned>(payload->lldvAuxRunMode),
+			             static_cast<unsigned>(payload->lldvAuxVersion), static_cast<unsigned>(payload->lldvAuxDebug));
+		}
 		set_text(m_Dlg, IDC_HDR_MAX_FALL, buffer);
 		_snwprintf_s(buffer, _TRUNCATE, L"HDR10, MaxCLL %.0f", payload->lldvPeakNits);
 		set_text(m_Dlg, IDC_HDR_MAX_CLL, buffer);
@@ -1085,6 +1141,15 @@ HRESULT CSignalInfoProp::ReloadControls(const bool& rateEnabled, const bool& pro
 	if (bool assumeHdr; mSignalInfo != nullptr && SUCCEEDED(mSignalInfo->IsAssumeHdrEnabled(&assumeHdr)))
 	{
 		SendDlgItemMessage(m_Dlg, IDC_ASSUME_HDR, BM_SETCHECK, assumeHdr, 0);
+	}
+	if (bool assumePq; mSignalInfo != nullptr && SUCCEEDED(mSignalInfo->IsAssumePqEnabled(&assumePq)))
+	{
+		SendDlgItemMessage(m_Dlg, IDC_ASSUME_PQ, BM_SETCHECK, assumePq, 0);
+	}
+	if (DWORD nits; mSignalInfo != nullptr && SUCCEEDED(mSignalInfo->GetAssumedPeakNits(&nits)))
+	{
+		_snwprintf_s(buffer, _TRUNCATE, L"%u", nits);
+		SendDlgItemMessage(m_Dlg, IDC_ASSUMED_PEAK, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 	}
 
 	return S_OK;

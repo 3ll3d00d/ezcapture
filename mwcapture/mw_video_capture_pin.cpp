@@ -1000,7 +1000,8 @@ void magewell_video_capture_pin::LoadFormat(video_format* videoFormat, video_sig
 		{
 			// an RGB signal captured as YCbCr (e.g. BGR10 to P010), the card converts it using this matrix and the
 			// media type must describe the same one
-			videoFormat->colourFormat = videoFormat->hdrMeta.transferFunction == 15 ? BT2020 : REC709;
+			const auto tf = videoFormat->hdrMeta.transferFunction;
+			videoFormat->colourFormat = tf == 15 || tf == 16 ? BT2020 : REC709;
 		}
 		#ifndef NO_LOGGING
 		// LoadFormat runs on every signal check so only log when the decision changes
@@ -1262,10 +1263,6 @@ HRESULT magewell_video_capture_pin::LoadSignal(HCHANNEL* pChannel)
 
 void magewell_video_capture_pin::LoadVsInfoFrame(HCHANNEL hChannel, DWORD validFlags)
 {
-	if (mFilter->GetDeviceType() != MW_PRO)
-	{
-		return;
-	}
 	// type, version, length then the payload, the checksum is left out so it is compared by content only
 	std::vector<uint8_t> data;
 	dv_tunnel::dolby_vsif vsif;
@@ -1322,16 +1319,15 @@ void magewell_video_capture_pin::LoadVsInfoFrame(HCHANNEL hChannel, DWORD validF
 
 double magewell_video_capture_pin::LldvPeakNits() const
 {
-	// the VSIF carries the effective peak when backlight metadata is present, otherwise assume 1000 nits
+	// the VSIF carries the effective peak when backlight metadata is present, otherwise use the configured peak
 	return mDolbyVsif.backlightMetadataPresent && mDolbyVsif.effectiveMaxPq > 0
 		       ? dv_tunnel::pq12_to_nits(mDolbyVsif.effectiveMaxPq)
-		       : 1000.0;
+		       : mFilter->AssumedPeakNits();
 }
 
 bool magewell_video_capture_pin::IsLldv() const
 {
-	return mFilter->GetDeviceType() == MW_PRO
-		&& mVideoSignal.signalStatus.state == MWCAP_VIDEO_SIGNAL_LOCKED
+	return mVideoSignal.signalStatus.state == MWCAP_VIDEO_SIGNAL_LOCKED
 		&& mDolbyVsif.is_lldv()
 		&& !mHasHdrInfoFrame;
 }
