@@ -13,7 +13,7 @@ Supports
 * Linear PCM audio
 * Non linear PCM audio (magewell pro pcie only)
 * SDR and HDR video formats
-* Dolby Vision via the HDMI RGB tunnel (experimental, see [Dolby Vision](#dolby-vision))
+* Dolby Vision via the HDMI RGB tunnel (see [Dolby Vision](#dolby-vision))
 * automatic reaction to audio codec changes or video format changes
 * automatic refresh rate switching
 
@@ -354,7 +354,7 @@ See [Output Format and HDR](#output-format-and-hdr) for the full decision.
 
 ## Dolby Vision
 
-Experimental, Magewell Pro (PCIe), Magewell USB and Blackmagic DeckLink cards.
+Tested and working up to 4K60 on Magewell Pro (PCIe) cards. Also implemented for Magewell USB and Blackmagic DeckLink cards but untested on those, see [Limitations](#limitations).
 
 A source sends standard (TV-led) Dolby Vision over HDMI as an "RGB tunnel": the signal is 8-bit RGB 4:4:4 with no HDR infoframe but the pixels actually carry 12-bit IPT-PQ 4:2:2 and the Dolby Vision display management metadata is hidden in the low bits of the first rows of every frame. Passed on as ordinary RGB it shows as a green/purple image.
 
@@ -417,7 +417,6 @@ BGR24 needs 3 bytes per pixel, 1080p60 fits a 5Gbps USB link but 4K needs a 10Gb
 
 ### Limitations
 
-* tested at 1080p50 on a Magewell Pro only, the unpacking is not optimised so 4K, particularly 4K60, may not keep up
 * Blackmagic support is untested on hardware. It follows [videoprocessor](https://github.com/billslack2/videoprocessor), which decodes a live DeckLink 4K23.976 tunnel captured as `r210`. [The test plan](docs/dolby-vision-capture-plan.md#test-protocol) describes how to check a card
 * Magewell USB support is untested on hardware and there is no evidence that USB cards pass the pixels through unchanged
 * only the L1 (scene brightness) metadata is passed on, other levels (trims etc.) are ignored
