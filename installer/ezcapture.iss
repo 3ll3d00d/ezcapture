@@ -536,23 +536,34 @@ end;
 
 { lays out one row at Top, Check replaces the To do text when it is not nil, and moves Top to the next row }
 procedure ShowRow(Row: Integer; Shown: Boolean; const Installed, Todo: String; Check: TNewCheckBox; var Top: Integer);
+var
+  RowHeight, TextTop: Integer;
 begin
   RowName[Row].Visible := Shown;
   RowInstalled[Row].Visible := Shown;
   RowTodo[Row].Visible := Shown and (Check = nil);
   if not Shown then
     Exit;
-  RowName[Row].Top := Top + ScaleY(2);
-  RowInstalled[Row].Top := Top + ScaleY(2);
-  RowTodo[Row].Top := Top + ScaleY(2);
   RowInstalled[Row].Caption := Installed;
   RowTodo[Row].Caption := Todo;
+  { the row is as tall as its text, or its tick box if that is taller, with the text centred on the tick box; the
+    heights come from the controls so the spacing follows the display's font and scaling }
+  RowHeight := RowName[Row].Height;
+  TextTop := Top;
   if Check <> nil then
   begin
     Check.Visible := True;
     Check.Top := Top;
+    if Check.Height > RowHeight then
+    begin
+      TextTop := Top + (Check.Height - RowHeight) div 2;
+      RowHeight := Check.Height;
+    end;
   end;
-  Top := Top + ScaleY(20);
+  RowName[Row].Top := TextTop;
+  RowInstalled[Row].Top := TextTop;
+  RowTodo[Row].Top := TextTop;
+  Top := Top + RowHeight + ScaleY(6);
 end;
 
 procedure RefreshPrereqPage;
@@ -721,65 +732,65 @@ begin
   UpdateRemoteControls;
 end;
 
+{ a word wrapped label the full width of the page at Top, as tall as its text needs }
+function NewWrappedLabel(Page: TWizardPage; Top: Integer; const Caption: String): TNewStaticText;
+begin
+  Result := TNewStaticText.Create(Page);
+  Result.Parent := Page.Surface;
+  Result.AutoSize := False;
+  Result.WordWrap := True;
+  Result.Top := Top;
+  Result.Width := Page.SurfaceWidth;
+  Result.Caption := Caption;
+  WizardForm.AdjustLabelHeight(Result);
+end;
+
+{ the page is laid out top to bottom from the height of each control, so the spacing follows the display's font and
+  scaling instead of assuming a line height }
 procedure CreateRemotePage;
 var
   Intro, BindLabel, BindHint: TNewStaticText;
-  Top: Integer;
 begin
   RemotePage := CreateCustomPage(wpSelectTasks, 'Remote access',
     'Turn on the web API and Prometheus metrics.');
 
-  Intro := TNewStaticText.Create(RemotePage);
-  Intro.Parent := RemotePage.Surface;
-  Intro.AutoSize := False;
-  Intro.WordWrap := True;
-  Intro.Width := RemotePage.SurfaceWidth;
-  Intro.Height := ScaleY(42);
-  Intro.Caption := 'The web API serves a status page for a browser and the Home Assistant integration, the metrics ' +
-    'endpoint is for Prometheus. These settings are saved for the Windows user running setup, and you can change ' +
-    'them later on the filter''s property page.';
+  Intro := NewWrappedLabel(RemotePage, 0, 'The web API serves a status page for a browser and the Home Assistant ' +
+    'integration, the metrics endpoint is for Prometheus. These settings are saved for the Windows user running ' +
+    'setup, and you can change them later on the filter''s property page.');
 
-  Top := Intro.Top + Intro.Height + ScaleY(6);
   WebCheck := TNewCheckBox.Create(RemotePage);
   WebCheck.Parent := RemotePage.Surface;
-  WebCheck.Top := Top;
+  WebCheck.Top := Intro.Top + Intro.Height + ScaleY(10);
   WebCheck.Width := RemotePage.SurfaceWidth;
   WebCheck.Caption := 'Turn on the web API (status page and Home Assistant)';
   WebCheck.OnClick := @RemoteCheckClick;
 
   MetricsCheck := TNewCheckBox.Create(RemotePage);
   MetricsCheck.Parent := RemotePage.Surface;
-  MetricsCheck.Top := WebCheck.Top + ScaleY(22);
+  MetricsCheck.Top := WebCheck.Top + WebCheck.Height + ScaleY(6);
   MetricsCheck.Width := RemotePage.SurfaceWidth;
   MetricsCheck.Caption := 'Turn on the Prometheus metrics endpoint';
   MetricsCheck.OnClick := @RemoteCheckClick;
 
   BindLabel := TNewStaticText.Create(RemotePage);
   BindLabel.Parent := RemotePage.Surface;
-  BindLabel.Top := MetricsCheck.Top + ScaleY(30);
   BindLabel.Caption := 'Listen on:';
 
   BindCombo := TNewComboBox.Create(RemotePage);
   BindCombo.Parent := RemotePage.Surface;
-  BindCombo.Left := ScaleX(70);
-  BindCombo.Top := BindLabel.Top - ScaleY(3);
+  BindCombo.Left := BindLabel.Width + ScaleX(8);
+  BindCombo.Top := MetricsCheck.Top + MetricsCheck.Height + ScaleY(12);
   BindCombo.Width := RemotePage.SurfaceWidth - BindCombo.Left;
   BindCombo.Style := csDropDown;
+  { the label is centred on the box beside it }
+  BindLabel.Top := BindCombo.Top + (BindCombo.Height - BindLabel.Height) div 2;
 
-  BindHint := TNewStaticText.Create(RemotePage);
-  BindHint.Parent := RemotePage.Surface;
-  BindHint.AutoSize := False;
-  BindHint.WordWrap := True;
-  BindHint.Top := BindCombo.Top + BindCombo.Height + ScaleY(4);
-  BindHint.Width := RemotePage.SurfaceWidth;
-  BindHint.Height := ScaleY(28);
-  BindHint.Caption := 'Choose all network adapters or one of this PC''s addresses so Home Assistant or Prometheus ' +
-    'on another PC can connect, or 127.0.0.1 to keep them to this PC.';
+  BindHint := NewWrappedLabel(RemotePage, BindCombo.Top + BindCombo.Height + ScaleY(4),
+    'Choose all network adapters or one of this PC''s addresses so Home Assistant or Prometheus on another PC can ' +
+    'connect, or 127.0.0.1 to keep them to this PC.');
 
-  TokenLabel := TNewStaticText.Create(RemotePage);
-  TokenLabel.Parent := RemotePage.Surface;
-  TokenLabel.Top := BindHint.Top + BindHint.Height + ScaleY(10);
-  TokenLabel.Caption := 'Web API access token (enter it in Home Assistant):';
+  TokenLabel := NewWrappedLabel(RemotePage, BindHint.Top + BindHint.Height + ScaleY(12),
+    'Web API access token (enter it in Home Assistant):');
 
   TokenEdit := TNewEdit.Create(RemotePage);
   TokenEdit.Parent := RemotePage.Surface;
@@ -787,13 +798,8 @@ begin
   TokenEdit.Width := RemotePage.SurfaceWidth;
   TokenEdit.ReadOnly := True;
 
-  TokenNote := TNewStaticText.Create(RemotePage);
-  TokenNote.Parent := RemotePage.Surface;
-  TokenNote.AutoSize := False;
-  TokenNote.WordWrap := True;
-  TokenNote.Top := TokenEdit.Top + TokenEdit.Height + ScaleY(4);
-  TokenNote.Width := RemotePage.SurfaceWidth;
-  TokenNote.Height := ScaleY(28);
+  { its text is set when the page is first shown, which sizes it then }
+  TokenNote := NewWrappedLabel(RemotePage, TokenEdit.Top + TokenEdit.Height + ScaleY(4), '');
 end;
 
 { starts the page from the current settings, the first time it is shown }
@@ -845,6 +851,7 @@ begin
     else
       TokenNote.Caption := 'Setup could not make a token, the filter makes one when the web API is turned on.';
   end;
+  WizardForm.AdjustLabelHeight(TokenNote);
   UpdateRemoteControls;
 end;
 
@@ -891,7 +898,8 @@ begin
   Gap := WizardForm.TasksList.Top - WizardForm.SelectTasksLabel.Top - WizardForm.SelectTasksLabel.Height;
   WizardForm.SelectTasksLabel.Caption := CustomMessage('TraceExplain');
   WizardForm.SelectTasksLabel.WordWrap := True;
-  WizardForm.SelectTasksLabel.Height := ScaleY(165);
+  { as tall as the text wraps to on this display }
+  WizardForm.AdjustLabelHeight(WizardForm.SelectTasksLabel);
   WizardForm.TasksList.Top := WizardForm.SelectTasksLabel.Top + WizardForm.SelectTasksLabel.Height + Gap;
   WizardForm.TasksList.Height := WizardForm.SelectTasksPage.Height - WizardForm.TasksList.Top;
 
