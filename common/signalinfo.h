@@ -167,6 +167,16 @@ private:
 	void CopyToClipboard(const std::string& text) const;
 	hdr_status mLastHdr{};
 
+	// the Bandwidth row shows the estimate and, once the measured frame rate is short of the output rate twice in a
+	// row, that frames are being dropped (e.g. a USB device capturing more than its link carries)
+	static constexpr double droppingFpsRatio = 0.95;
+	double mBandwidth{0.0};
+	double mBandwidthUsed{0.0};
+	double mExpectedFps{0.0};
+	double mMeasuredFps{0.0};
+	int mShortMeasurements{0};
+	void ShowBandwidth();
+
 	void SetDirty()
 	{
 		m_bDirty = TRUE;

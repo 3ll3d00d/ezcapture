@@ -676,6 +676,13 @@ HRESULT CSignalInfoProp::Reload(video_output_status* payload)
 	SendDlgItemMessage(m_Dlg, IDC_OUT_DIMENSIONS, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 	_snwprintf_s(buffer, _TRUNCATE, L"%.3f Hz", payload->outFps);
 	SendDlgItemMessage(m_Dlg, IDC_OUT_FPS, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+	if (payload->outFps != mExpectedFps)
+	{
+		// the measured rate covers the old format until the next measurement
+		mExpectedFps = payload->outFps;
+		mShortMeasurements = 0;
+		ShowBandwidth();
+	}
 	_snwprintf_s(buffer, _TRUNCATE, L"%hs", payload->outColourFormat.c_str());
 	SendDlgItemMessage(m_Dlg, IDC_OUT_CF, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 	_snwprintf_s(buffer, _TRUNCATE, L"%hs", payload->outQuantisation.c_str());
@@ -937,24 +944,9 @@ HRESULT CSignalInfoProp::Reload(device_status* payload)
 		ShowWindow(GetDlgItem(m_Dlg, IDC_PCIE_MPS_LABEL), SW_HIDE);
 		ShowWindow(GetDlgItem(m_Dlg, IDC_PCIE_MPS), SW_HIDE);
 	}
-	if (payload->bandwidth > 0.0 && payload->bandwidthUsed > 0.0)
-	{
-		_snwprintf_s(buffer, _TRUNCATE, L"%.0f / %.0f MB/s (%.0f%%)", payload->bandwidthUsed / 1e6,
-		             payload->bandwidth / 1e6, 100.0 * payload->bandwidthUsed / payload->bandwidth);
-	}
-	else if (payload->bandwidth > 0.0)
-	{
-		_snwprintf_s(buffer, _TRUNCATE, L"%.0f MB/s available", payload->bandwidth / 1e6);
-	}
-	else if (payload->bandwidthUsed > 0.0)
-	{
-		_snwprintf_s(buffer, _TRUNCATE, L"%.0f MB/s", payload->bandwidthUsed / 1e6);
-	}
-	else
-	{
-		_snwprintf_s(buffer, _TRUNCATE, L"?");
-	}
-	SendDlgItemMessage(m_Dlg, IDC_BANDWIDTH, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+	mBandwidth = payload->bandwidth;
+	mBandwidthUsed = payload->bandwidthUsed;
+	ShowBandwidth();
 	if (payload->fanSpeed > 0)
 	{
 		_snwprintf_s(buffer, _TRUNCATE, L"%d", payload->fanSpeed);
@@ -1076,7 +1068,47 @@ HRESULT CSignalInfoProp::ReloadVfps(double* payload)
 	_snwprintf_s(buffer, _TRUNCATE, L"%.3f Hz", *payload);
 	SendDlgItemMessage(m_Dlg, IDC_VIDEO_FPS, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 
+	mMeasuredFps = *payload;
+	if (mExpectedFps > 0.0 && mMeasuredFps > 0.0 && mMeasuredFps < mExpectedFps * droppingFpsRatio)
+	{
+		++mShortMeasurements;
+	}
+	else
+	{
+		mShortMeasurements = 0;
+	}
+	ShowBandwidth();
 	return S_OK;
+}
+
+void CSignalInfoProp::ShowBandwidth()
+{
+	WCHAR buffer[128];
+	int len;
+	if (mBandwidth > 0.0 && mBandwidthUsed > 0.0)
+	{
+		len = _snwprintf_s(buffer, _TRUNCATE, L"%.0f / %.0f MB/s (%.0f%%)", mBandwidthUsed / 1e6, mBandwidth / 1e6,
+		                   100.0 * mBandwidthUsed / mBandwidth);
+	}
+	else if (mBandwidth > 0.0)
+	{
+		len = _snwprintf_s(buffer, _TRUNCATE, L"%.0f MB/s available", mBandwidth / 1e6);
+	}
+	else if (mBandwidthUsed > 0.0)
+	{
+		len = _snwprintf_s(buffer, _TRUNCATE, L"%.0f MB/s", mBandwidthUsed / 1e6);
+	}
+	else
+	{
+		len = _snwprintf_s(buffer, _TRUNCATE, L"?");
+	}
+	// one short measurement can straddle a format change, two in a row means frames really are missing
+	if (mShortMeasurements >= 2 && len > 0)
+	{
+		_snwprintf_s(buffer + len, std::size(buffer) - len, _TRUNCATE, L"\nDropping: %.1f of %.1f fps", mMeasuredFps,
+		             mExpectedFps);
+	}
+	SendDlgItemMessage(m_Dlg, IDC_BANDWIDTH, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
 }
 
 HRESULT CSignalInfoProp::ReloadA1(latency_stats* payload)

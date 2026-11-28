@@ -150,6 +150,7 @@
 #define IDC_ASSUMED_PEAK                1146
 #define IDC_ASSUMED_PEAK_UNIT           1147
 #define IDC_ASSUME_PQ                   1148
+#define IDC_MC_HDR_PROFILE_LABEL        1149
 
 // Next default values for new objects
 // 
@@ -157,7 +158,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        103
 #define _APS_NEXT_COMMAND_VALUE         40001
-#define _APS_NEXT_CONTROL_VALUE         1149
+#define _APS_NEXT_CONTROL_VALUE         1150
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

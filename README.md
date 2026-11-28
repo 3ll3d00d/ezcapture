@@ -31,11 +31,15 @@ The installer picks the right build automatically. If installing from the zips a
 
 Download `ezcapture-<version>-setup.exe` from https://github.com/3ll3d00d/ezcapture/releases and run it. It
 
-* asks which filters to install (Magewell, Blackmagic or both) and whether to add the trace builds alongside them
+* asks which filters to install (Magewell, Blackmagic or both) and whether to add the trace builds alongside them.
+  For Magewell it also asks whether you have Pro Capture (PCIe) cards, USB Capture devices or both, ticking the ones
+  Windows has seen on this PC, as they need different things from Magewell: Pro Capture cards need the Pro Capture
+  driver, USB Capture devices use the Windows driver but need the USB Capture Utility and current firmware
 * picks the AVX2 or no-arch build to suit the CPU
 * lists the software the filters depend on with the installed versions, offers to install the Microsoft Visual C++
   runtime and the Magewell capture runtime if they are missing or out of date, and tells you what else is needed,
-  e.g. Blackmagic Desktop Video, which cannot be bundled
+  e.g. Blackmagic Desktop Video, which cannot be bundled, or the Magewell Pro Capture driver or USB Capture Utility.
+  The Magewell runtime is separate from the Pro Capture driver, installing the driver does not install it
 * can turn on the web API and Prometheus metrics, choose the address they listen on and make the web API token
   (saved for the Windows user running setup)
 * can add Windows Firewall rules for the web API (ports 9474/9475) and Prometheus (9464/9465), on private networks
@@ -50,7 +54,9 @@ by default), under `HKLM\Software\ezcapture` and in the footer of the filter's p
 If you previously registered a filter from a zip, the installer re-registers the same filter from its own folder,
 so the old copy is no longer used and can be deleted.
 
-Silent installs are supported, e.g. `ezcapture-1.0.0-setup.exe /VERYSILENT /COMPONENTS="mw,bm" /TASKS="trace"`.
+Silent installs are supported, e.g. `ezcapture-1.0.0-setup.exe /VERYSILENT /COMPONENTS="mw,mw\pro,bm" /TASKS="trace"`.
+The components are `mw` (the Magewell filter), `mw\pro` (Pro Capture cards), `mw\usb` (USB Capture devices) and `bm`
+(the Blackmagic filter); `mw` without either of the others is treated as both.
 
 ### Manual Installation
 
@@ -280,7 +286,7 @@ flowchart TD
     pq -->|no| outSdr
 ```
 
-* The configured peak is the nits value next to `Assume LLDV?` (Blackmagic) or `LLDV Peak` (Magewell) on the property page, 1000 nits by default. It is sent as the mastering display maximum, MaxCLL and MaxFALL, with BT.2020 primaries, a D65 white point and a 0.005 nit minimum.
+* The configured peak is the nits value next to `Assumed peak` (Blackmagic) or `LLDV peak` (Magewell) in the HDR Options box of the property page, 1000 nits by default. It is sent as the mastering display maximum, MaxCLL and MaxFALL, with BT.2020 primaries, a D65 white point and a 0.005 nit minimum.
 * HLG rarely carries mastering metadata, so usually only the transfer function is sent. Only JRVR is known to understand HLG in the media type.
 * The colour format on the property page reads `LLDV` or `DV` in those cases, otherwise it is the signal's colour format. SDR in BT.2020 is passed on as BT.2020 SDR.
 * Reading the Dolby VSIF on Magewell USB devices is untested. The with-logging variant logs each VSIF it reads, `Vendor specific InfoFrame [dolby: ...]`, and none if the device doesn't report it.
@@ -293,6 +299,9 @@ At 2160p50/60 some of those formats need more bandwidth than the card can transf
 
 The `Bandwidth` row of the property page shows what the current capture format uses against an estimate of what the
 link can carry, e.g. `1493 / 1600 MB/s (93%)`, and a warning is logged when the format needs more than the estimate.
+If the frames actually arriving fall more than 5% short of the output frame rate, a second line says so, e.g.
+`Dropping: 11.8 of 24.0 fps`. A USB device that is asked for more than its link carries does not fail, it just
+delivers fewer frames, so the picture can look right while every other frame is missing.
 
 | Link             | Estimate    |
 |------------------|-------------|
@@ -337,18 +346,18 @@ A Blackmagic card cannot read the Dolby Vision VSIF, so it cannot tell that a si
 
 | Option          | Default | Signal                               | Described as |
 |-----------------|---------|--------------------------------------|--------------|
-| `Assume LLDV?`  | on      | 12-bit YCbCr 4:2:2                   | LLDV         |
-| `Assume PQ?`    | off     | any other 10 or 12-bit BT.2020 signal | PQ           |
+| `Assume LLDV`   | on      | 12-bit YCbCr 4:2:2                   | LLDV         |
+| `Assume PQ`     | off     | any other 10 or 12-bit BT.2020 signal | PQ           |
 
-`Assume PQ?` is off by default because BT.2020 SDR exists, rare as it is. Both are passed on as PQ in BT.2020. A signal with an HDR InfoFrame is always described by that InfoFrame.
+`Assume PQ` is off by default because BT.2020 SDR exists, rare as it is. Both are passed on as PQ in BT.2020. A signal with an HDR InfoFrame is always described by that InfoFrame.
 
-The signal doesn't say what peak brightness it was mastered or tone mapped to, so the nits value next to `Assume LLDV?` is used (1000 by default, 100 to 10000 allowed). Set it to the peak the source tone maps to, e.g. the target luminance in the EDID it reads.
+The signal doesn't say what peak brightness it was mastered or tone mapped to, so the `Assumed peak` value is used (1000 by default, 100 to 10000 allowed). Set it to the peak the source tone maps to, e.g. the target luminance in the EDID it reads.
 
-A source that sends SDR as 12-bit YCbCr 4:2:2 (some players do at 2160p) will be shown as HDR, untick `Assume LLDV?` if this happens.
+A source that sends SDR as 12-bit YCbCr 4:2:2 (some players do at 2160p) will be shown as HDR, untick `Assume LLDV` if this happens.
 
 The settings apply from the next frame. They are stored in the `assumeHdrEnabled` (LLDV), `assumePqEnabled` and `assumedPeakNits` REG_DWORDs under `HKEY_CURRENT_USER\Software\3ll3d00d\BMCapture`.
 
-On a Magewell card the `LLDV Peak` value is used for LLDV when the Dolby VSIF does not carry the peak (no backlight metadata). It is stored in `assumedPeakNits` under `HKEY_CURRENT_USER\Software\3ll3d00d\MWCapture`.
+On a Magewell card the `LLDV peak` value is used for LLDV when the Dolby VSIF does not carry the peak (no backlight metadata). It is stored in `assumedPeakNits` under `HKEY_CURRENT_USER\Software\3ll3d00d\MWCapture`.
 
 See [Output Format and HDR](#output-format-and-hdr) for the full decision.
 
@@ -433,7 +442,7 @@ Every variant (not just the with-logging ones) can publish its frame timing stat
 
 ### Enabling
 
-Open the filter property page, tick `Prometheus?`, optionally change the listen address and port, and click Apply. The change takes effect the next time the filter is loaded (i.e. restart playback). The line below them shows the scrape URL once it is running, or the reason it could not start (e.g. the port is already in use). A failure to start the endpoint never stops the filter from working.
+Open the filter property page, tick `Enable` in the Prometheus Metrics box, optionally change the listen address and port, and click Apply. The change takes effect the next time the filter is loaded (i.e. restart playback). The line below them shows the scrape URL once it is running, or the reason it could not start (e.g. the port is already in use). A failure to start the endpoint never stops the filter from working.
 
 The settings are stored in the registry under `HKEY_CURRENT_USER\Software\3ll3d00d\MWCapture` (Magewell) or `HKEY_CURRENT_USER\Software\3ll3d00d\BMCapture` (Blackmagic):
 

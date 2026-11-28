@@ -1134,6 +1134,12 @@ void magewell_video_capture_pin::LoadFormat(video_format* videoFormat, video_sig
 			            mLogData.prefix, requestedInterval, videoFormat->frameInterval);
 			#endif
 		}
+		// the card delivers frames at the interval requested, not the signal's rate, so the media type, the output
+		// frame rate on the property page and the bandwidth used must all follow it
+		if (videoFormat->frameInterval > 0)
+		{
+			videoFormat->fps = static_cast<double>(dshowTicksPerSecond) / videoFormat->frameInterval;
+		}
 
 		found = false;
 		for (int i = 0; i < captureFormats->frameSizes.byCount && !found; i++)
