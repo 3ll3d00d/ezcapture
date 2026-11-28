@@ -79,7 +79,11 @@ Name: "bm"; Description: "Blackmagic only"
 Name: "custom"; Description: "Custom"; Flags: iscustom
 
 [Components]
-Name: "mw"; Description: "Magewell filter (Pro Capture PCIe and USB Capture)"; Types: full mw
+; one Magewell filter serves both families, the subcomponents only decide which drivers and tools setup checks for.
+; mw on its own (e.g. /COMPONENTS="mw" from an older silent install) is treated as both.
+Name: "mw"; Description: "Magewell filter"; Types: full mw; Flags: checkablealone
+Name: "mw\pro"; Description: "Pro Capture (PCIe) cards, need the Pro Capture driver"; Types: full mw
+Name: "mw\usb"; Description: "USB Capture devices, need the USB Capture Utility and current firmware"; Types: full mw
 Name: "bm"; Description: "Blackmagic filter (DeckLink)"; Types: full bm
 
 [Tasks]
@@ -125,7 +129,8 @@ Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""e
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""ezcapture Magewell Prometheus metrics"" dir=in action=allow protocol=TCP localport=9464 profile=private remoteip=localsubnet"; StatusMsg: "Updating firewall rules..."; Flags: runhidden; Tasks: firewall; Components: mw
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""ezcapture DeckLink Prometheus metrics"" dir=in action=allow protocol=TCP localport=9465 profile=private remoteip=localsubnet"; StatusMsg: "Updating firewall rules..."; Flags: runhidden; Tasks: firewall; Components: bm
 Filename: "https://www.blackmagicdesign.com/support/family/capture-and-playback"; Description: "Open the Blackmagic Desktop Video download page"; Flags: postinstall shellexec skipifsilent nowait; Check: NeedDesktopVideo
-Filename: "https://www.magewell.com/downloads"; Description: "Open the Magewell download page (Pro Capture driver)"; Flags: postinstall shellexec skipifsilent nowait; Check: NeedMwDriver
+Filename: "https://www.magewell.com/downloads/pro-capture"; Description: "Open the Magewell Pro Capture driver download page"; Flags: postinstall shellexec skipifsilent nowait; Check: NeedMwDriver
+Filename: "https://www.magewell.com/downloads/usb-capture"; Description: "Open the Magewell USB Capture download page (USB Capture Utility and firmware)"; Flags: postinstall shellexec skipifsilent nowait; Check: NeedUsbUtility
 Filename: "https://github.com/Nevcairiel/LAVFilters/releases"; Description: "Open the LAV Filters download page"; Flags: postinstall shellexec skipifsilent nowait unchecked; Check: NeedLav
 Filename: "{#AppUrl}#configuration"; Description: "Open the player setup guide"; Flags: postinstall shellexec skipifsilent nowait unchecked
 
@@ -151,7 +156,14 @@ const
   { the Pro Capture driver binds cards in the MEDIA class and runs as the ProCapture service }
   MediaClassKey = 'SYSTEM\CurrentControlSet\Control\Class\{4d36e96c-e325-11ce-bfc1-08002be10318}';
   MwDriverServiceKey = 'SYSTEM\CurrentControlSet\Services\ProCapture';
-  MagewellDownloads = 'https://www.magewell.com/downloads';
+  ProCaptureDownloads = 'https://www.magewell.com/downloads/pro-capture';
+  UsbCaptureDownloads = 'https://www.magewell.com/downloads/usb-capture';
+  UninstallRoot = 'Software\Microsoft\Windows\CurrentVersion\Uninstall';
+  { devices Windows has seen, found by Magewell's PCI and USB vendor ids }
+  PciEnumKey = 'SYSTEM\CurrentControlSet\Enum\PCI';
+  UsbEnumKey = 'SYSTEM\CurrentControlSet\Enum\USB';
+  MagewellPciVendor = 'ven_1cd7&';
+  MagewellUsbVendor = 'vid_2935&';
   { where each filter keeps its settings, under HKCU (see capture_filter.cpp) }
   MwSettingsKey = 'Software\3ll3d00d\MWCapture';
   BmSettingsKey = 'Software\3ll3d00d\BMCapture';
@@ -162,14 +174,15 @@ const
   RowVc = 0;
   RowMw = 1;
   RowMwDriver = 2;
-  RowDv = 3;
-  RowLav = 4;
-  RowLast = 4;
+  RowUsbUtility = 3;
+  RowDv = 4;
+  RowLav = 5;
+  RowLast = 5;
 
 var
   PrereqPage: TWizardPage;
   HeaderName, HeaderInstalled, HeaderTodo: TNewStaticText;
-  RowName, RowInstalled, RowTodo: array[0..4] of TNewStaticText;
+  RowName, RowInstalled, RowTodo: array[0..5] of TNewStaticText;
   VcCheck, MwCheck: TNewCheckBox;
   ManualLabel: TNewStaticText;
   ManualMemo: TNewMemo;
@@ -181,6 +194,7 @@ var
   TokenLabel, TokenNote: TNewStaticText;
   TokenEdit: TNewEdit;
   RemoteLoaded: Boolean;
+  MwFamiliesPicked: Boolean;
 
 function IsProcessorFeaturePresent(ProcessorFeature: DWORD): Boolean;
   external 'IsProcessorFeaturePresent@kernel32.dll stdcall';
@@ -237,12 +251,28 @@ begin
   Result := ExpandConstant('{sys}\LibMWCapture.dll');
 end;
 
-function NeedMw: Boolean;
+{ true if LibMWCapture.dll is missing or older than the runtime we bundle }
+function MwRuntimeOutdated: Boolean;
 var
   Installed, Bundled: Int64;
 begin
   StrToVersion('{#MwRuntimeVersion}', Bundled);
   Result := (not GetPackedVersion(MwRuntimeDll, Installed)) or (ComparePackedVersion(Installed, Bundled) < 0);
+end;
+
+{ true if Windows will replace LibMWCapture.dll at the next restart, i.e. the runtime was installed while the old DLL
+  was in use. Offering to install it again would not help, the PC needs restarting. }
+function MwRuntimeRestartPending: Boolean;
+var
+  Pending: String;
+begin
+  Result := RegQueryMultiStringValue(HKLM64, 'SYSTEM\CurrentControlSet\Control\Session Manager',
+    'PendingFileRenameOperations', Pending) and (Pos('libmwcapture.dll', Lowercase(Pending)) > 0);
+end;
+
+function NeedMw: Boolean;
+begin
+  Result := MwRuntimeOutdated and not MwRuntimeRestartPending;
 end;
 
 function HasDesktopVideo: Boolean;
@@ -257,7 +287,7 @@ end;
 
 { the Pro Capture (PCIe) driver: its version from the driver key of a card it is bound to, or 'installed' if the
   driver's service exists but no card is bound, empty if it is not installed. USB Capture devices use the Windows
-  driver and do not need it. }
+  UVC driver and do not need it. }
 function MwDriverVersion: String;
 var
   Keys: TArrayOfString;
@@ -276,9 +306,75 @@ begin
     Result := 'installed';
 end;
 
+{ which Magewell families the user has, from the subcomponents, mw with neither means both }
+function MwFamilyUnknown: Boolean;
+begin
+  Result := WizardIsComponentSelected('mw') and not WizardIsComponentSelected('mw\pro')
+    and not WizardIsComponentSelected('mw\usb');
+end;
+
+function WantMwPro: Boolean;
+begin
+  Result := WizardIsComponentSelected('mw\pro') or MwFamilyUnknown;
+end;
+
+function WantMwUsb: Boolean;
+begin
+  Result := WizardIsComponentSelected('mw\usb') or MwFamilyUnknown;
+end;
+
 function NeedMwDriver: Boolean;
 begin
-  Result := WizardIsComponentSelected('mw') and (MwDriverVersion = '');
+  Result := WantMwPro and (MwDriverVersion = '');
+end;
+
+{ true if Windows has seen a device whose enum key under Key starts with Prefix, e.g. ven_1cd7& }
+function HasEnumDevice(const Key, Prefix: String): Boolean;
+var
+  Keys: TArrayOfString;
+  I: Integer;
+begin
+  Result := False;
+  if RegGetSubkeyNames(HKLM64, Key, Keys) then
+    for I := 0 to GetArrayLength(Keys) - 1 do
+      if Pos(Prefix, Lowercase(Keys[I])) = 1 then
+      begin
+        Result := True;
+        Exit;
+      end;
+end;
+
+{ the version of an installed program whose name contains Name, 'installed' if it has none, empty if not found }
+function FindUninstallVersion(const RootKey: Integer; const Name: String): String;
+var
+  Keys: TArrayOfString;
+  I: Integer;
+  DisplayName: String;
+begin
+  Result := '';
+  if RegGetSubkeyNames(RootKey, UninstallRoot, Keys) then
+    for I := 0 to GetArrayLength(Keys) - 1 do
+      if RegQueryStringValue(RootKey, UninstallRoot + '\' + Keys[I], 'DisplayName', DisplayName)
+        and (Pos(Lowercase(Name), Lowercase(DisplayName)) > 0) then
+      begin
+        if not RegQueryStringValue(RootKey, UninstallRoot + '\' + Keys[I], 'DisplayVersion', Result)
+          or (Result = '') then
+          Result := 'installed';
+        Exit;
+      end;
+end;
+
+{ the USB Capture Utility, from its uninstall entry (32 or 64-bit), empty if not found }
+function UsbUtilityVersion: String;
+begin
+  Result := FindUninstallVersion(HKLM64, 'USB Capture Utility');
+  if Result = '' then
+    Result := FindUninstallVersion(HKLM32, 'USB Capture Utility');
+end;
+
+function NeedUsbUtility: Boolean;
+begin
+  Result := WantMwUsb and (UsbUtilityVersion = '');
 end;
 
 { the file version of the DLL registered for a COM class, or 'installed' if it cannot be read }
@@ -328,6 +424,9 @@ begin
       '(setup can open that page when it finishes). The Blackmagic filter will not find any cards until it is installed.');
   if WizardIsComponentSelected('mw') then
   begin
+    if MwRuntimeOutdated and MwRuntimeRestartPending then
+      Result := Result + Bullet('The Magewell runtime {#MwRuntimeVersion} has been installed but Windows replaces ' +
+        'LibMWCapture.dll at the next restart, as the old one was in use. Restart Windows before using the filter.');
     if NeedMw and DeclinedMw then
     begin
       if GetPackedVersion(MwRuntimeDll, V) then
@@ -337,10 +436,19 @@ begin
         Result := Result + Bullet('The Magewell runtime (LibMWCapture.dll) is not installed. The Magewell filter cannot be ' +
           'registered without it; run this installer again and let it install the runtime.');
     end;
-    if MwDriverVersion = '' then
-      Result := Result + Bullet('The Magewell Pro Capture driver is not installed. Pro Capture (PCIe) cards need it, ' +
-        'download it from ' + MagewellDownloads + ' (setup can open that page when it finishes). USB Capture devices ' +
-        'do not need it, but their output formats must be set in the USB Capture Utility from the same page, see the README.');
+    if NeedMwDriver then
+      Result := Result + Bullet('Pro Capture: the Magewell Pro Capture driver is not installed. Pro Capture (PCIe) ' +
+        'cards need it, download it from ' + ProCaptureDownloads + ' (setup can open that page when it finishes).');
+    if WantMwUsb then
+    begin
+      if NeedUsbUtility then
+        Result := Result + Bullet('USB Capture: the Magewell USB Capture Utility was not found. USB Capture devices ' +
+          'use the Windows driver so no Magewell driver is needed, but the formats the filter uses (e.g. BGR24, UYVY, ' +
+          'NV12 or P010, and the signal''s resolution) must be enabled in the utility, see the README. Download it ' +
+          'from ' + UsbCaptureDownloads + ' (setup can open that page when it finishes).');
+      Result := Result + Bullet('USB Capture: keep the device firmware up to date, older firmware may not send the ' +
+        'HDR or Dolby Vision information the filter reads. It is on ' + UsbCaptureDownloads + '.');
+    end;
   end;
   if NeedVc and DeclinedVc then
     Result := Result + Bullet('The Microsoft Visual C++ runtime {#VcRedistVersion} or later is needed. Download it from ' +
@@ -405,6 +513,7 @@ begin
   RowName[RowVc].Caption := 'Visual C++ runtime';
   RowName[RowMw].Caption := 'Magewell capture runtime';
   RowName[RowMwDriver].Caption := 'Magewell Pro Capture driver';
+  RowName[RowUsbUtility].Caption := 'Magewell USB Capture Utility';
   RowName[RowDv].Caption := 'Blackmagic Desktop Video';
   RowName[RowLav].Caption := 'LAV Filters';
   VcCheck := NewInstallCheck;
@@ -477,14 +586,22 @@ begin
   MwCheck.Checked := not DeclinedMw;
   if NeedMw then
     ShowRow(RowMw, Mw, S, '', MwCheck, Top)
+  else if MwRuntimeOutdated then
+    ShowRow(RowMw, Mw, S, 'restart Windows', nil, Top)
   else
     ShowRow(RowMw, Mw, S, 'nothing', nil, Top);
 
   S := MwDriverVersion;
   if S <> '' then
-    ShowRow(RowMwDriver, Mw, S, 'nothing', nil, Top)
+    ShowRow(RowMwDriver, Mw and WantMwPro, S, 'nothing', nil, Top)
   else
-    ShowRow(RowMwDriver, Mw, 'not installed', 'install for PCIe', nil, Top);
+    ShowRow(RowMwDriver, Mw and WantMwPro, 'not installed', 'install yourself', nil, Top);
+
+  S := UsbUtilityVersion;
+  if S <> '' then
+    ShowRow(RowUsbUtility, Mw and WantMwUsb, S, 'set formats', nil, Top)
+  else
+    ShowRow(RowUsbUtility, Mw and WantMwUsb, 'not found', 'install yourself', nil, Top);
 
   if HasDesktopVideo then
     ShowRow(RowDv, Bm, ComServerVersion(DeckLinkIteratorClsid), 'nothing', nil, Top)
@@ -785,9 +902,39 @@ begin
   CreateRemotePage;
 end;
 
+{ the first time the components page is shown, ticks the Magewell families of the devices Windows has seen, on a new
+  install or an upgrade from a version that did not ask. Nothing changes if no Magewell device has been seen. }
+procedure PickMwFamilies;
+var
+  Pro, Usb: Boolean;
+begin
+  if MwFamiliesPicked then
+    Exit;
+  MwFamiliesPicked := True;
+  if ((PreviousVersion <> '') and not MwFamilyUnknown) or not WizardIsComponentSelected('mw') then
+    Exit;
+  Pro := HasEnumDevice(PciEnumKey, MagewellPciVendor);
+  Usb := HasEnumDevice(UsbEnumKey, MagewellUsbVendor);
+  if not (Pro or Usb) then
+  begin
+    Log('No Magewell device seen, keeping the Magewell components as they are');
+    Exit;
+  end;
+  if Pro then
+    WizardSelectComponents('mw\pro')
+  else
+    WizardSelectComponents('!mw\pro');
+  if Usb then
+    WizardSelectComponents('mw\usb')
+  else
+    WizardSelectComponents('!mw\usb');
+end;
+
 procedure CurPageChanged(CurPageID: Integer);
 begin
-  if CurPageID = PrereqPage.ID then
+  if CurPageID = wpSelectComponents then
+    PickMwFamilies
+  else if CurPageID = PrereqPage.ID then
     RefreshPrereqPage
   else if CurPageID = RemotePage.ID then
     LoadRemotePage;
@@ -888,7 +1035,24 @@ begin
     if WantVc then
       Result := RunPrereq(ProgressPage, 'Microsoft Visual C++ runtime', 'vc_redist.x64.exe', '/install /quiet /norestart', NeedsRestart);
     if (Result = '') and WantMw then
-      Result := RunPrereq(ProgressPage, 'Magewell capture runtime', 'MWCaptureRT.exe', '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-', NeedsRestart);
+    begin
+      { MWCaptureRT is an Inno Setup installer, /RESTARTEXITCODE makes it report a replacement left for the next
+        restart instead of exiting 0 }
+      Result := RunPrereq(ProgressPage, 'Magewell capture runtime', 'MWCaptureRT.exe',
+        '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /RESTARTEXITCODE=3010', NeedsRestart);
+      if Result = '' then
+      begin
+        if MwRuntimeRestartPending then
+        begin
+          Log('LibMWCapture.dll will be replaced at the next restart');
+          NeedsRestart := True;
+        end
+        else if MwRuntimeOutdated then
+          Result := 'The Magewell runtime installer finished but ' + MwRuntimeDll + ' is still missing or older ' +
+            'than {#MwRuntimeVersion}. Install MWCaptureRT {#MwRuntimeVersion} yourself (it is in the Magewell ' +
+            'SDK, https://www.magewell.com/sdk), or go back and untick it, then try again.';
+      end;
+    end;
   finally
     ProgressPage.Hide;
   end;
